@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   extensionFor,
   mimeFor,
+  slicePageRange,
   toDocx,
   toEpub,
   toHtml,
@@ -11,6 +12,7 @@ import {
 import { extractPageTexts } from '../lib/extract.ts'
 import { convertEpubToMobi, getMobiStatus } from '../lib/mobi.ts'
 import { readPdfFile, swapExtension } from '../lib/limits.ts'
+import { clampPageRange } from '../lib/selection.ts'
 import { downloadBlob, setDocument } from '../lib/document-store.ts'
 import { useDocument } from '../use-document.ts'
 
@@ -30,6 +32,12 @@ export function Convert() {
   const [note, setNote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [calibre, setCalibre] = useState(false)
+  const docId = doc ? `${doc.name}:${doc.bytes.byteLength}:${doc.pageCount}` : ''
+  const [range, setRange] = useState<{ id: string; fromPage: number; toPage: number } | null>(
+    null,
+  )
+  const fromPage = range?.id === docId ? range.fromPage : 1
+  const toPage = range?.id === docId ? range.toPage : (doc?.pageCount ?? 1)
 
   useEffect(() => {
     let cancelled = false
@@ -65,7 +73,8 @@ export function Convert() {
     setError(null)
     setNote(null)
     try {
-      const pages = await extractPageTexts(doc.bytes)
+      const range = clampPageRange(fromPage, toPage, doc.pageCount)
+      const pages = slicePageRange(await extractPageTexts(doc.bytes), range.fromPage, range.toPage)
       const title = doc.name.replace(/\.pdf$/i, '')
       if (format === 'txt') {
         downloadBlob(
@@ -145,6 +154,45 @@ export function Convert() {
         </p>
       ) : null}
       {note ? <p className="note">{note}</p> : null}
+
+      {doc ? (
+        <div className="page-range" role="group" aria-label="Khoảng trang xuất">
+          <label>
+            Từ trang
+            <input
+              type="number"
+              min={1}
+              max={doc.pageCount}
+              value={fromPage}
+              aria-label="Từ trang"
+              onChange={(event) =>
+                setRange({
+                  id: docId,
+                  fromPage: Number(event.target.value),
+                  toPage,
+                })
+              }
+            />
+          </label>
+          <label>
+            Đến trang
+            <input
+              type="number"
+              min={1}
+              max={doc.pageCount}
+              value={toPage}
+              aria-label="Đến trang"
+              onChange={(event) =>
+                setRange({
+                  id: docId,
+                  fromPage,
+                  toPage: Number(event.target.value),
+                })
+              }
+            />
+          </label>
+        </div>
+      ) : null}
 
       <fieldset className="formats">
         <legend>Định dạng đầu ra</legend>

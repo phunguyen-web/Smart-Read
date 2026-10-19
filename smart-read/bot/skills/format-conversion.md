@@ -18,7 +18,7 @@ Extract text with `pdfjs-dist` (`getTextContent` per page), then build the targe
 
 ## Rules
 
-- Preserve page order.
+- Preserve page order. If the user set a from–to range, slice extracted pages with `slicePageRange` before building the file.
 - Strip NULs and cap extracted text so a huge PDF cannot freeze the tab.
 - Name downloads from the source filename plus the new extension.
 - Never upload the file to a third-party conversion API.

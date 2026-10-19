@@ -48,7 +48,7 @@ body {
 }
 
 .shell {
-  max-width: 1080px;
+  max-width: 1180px;
   margin: 0 auto;
   padding: 20px 20px 64px;
 }
@@ -200,9 +200,58 @@ button:disabled {
 
 .editor-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.8fr);
-  gap: 20px;
+  grid-template-columns: 112px minmax(0, 1.4fr) minmax(220px, 0.8fr);
+  gap: 16px;
   margin-top: 20px;
+  align-items: start;
+}
+
+.thumb-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(72vh, 860px);
+  overflow: auto;
+  padding: 8px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid transparent;
+  background: #fffdf8;
+}
+
+.thumb canvas {
+  width: 88px;
+  height: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+
+.thumb span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.thumb.selected {
+  background: #f8eadc;
+  border-color: #e8c4a2;
+}
+
+.thumb.current {
+  border-color: var(--accent);
+}
+
+.thumb.current span {
+  color: var(--accent);
+  font-weight: 650;
 }
 
 .preview-card,
@@ -296,11 +345,31 @@ button:disabled {
   font-size: 14px;
 }
 
-.overlay-field input {
+.overlay-field input,
+.page-range input {
   font: inherit;
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--line);
+}
+
+.page-range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 16px 0 8px;
+}
+
+.page-range label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.page-range input {
+  width: 7rem;
 }
 
 .formats {
@@ -342,5 +411,15 @@ button:disabled {
 
   .editor-grid {
     grid-template-columns: 1fr;
+  }
+
+  .thumb-strip {
+    flex-direction: row;
+    max-height: none;
+    overflow-x: auto;
+  }
+
+  .thumb canvas {
+    width: 72px;
   }
 }

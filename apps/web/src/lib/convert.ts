@@ -9,6 +9,22 @@ export type EpubOptions = {
   language?: string
 }
 
+export function slicePageRange(
+  pages: string[],
+  fromPage: number,
+  toPage: number,
+): string[] {
+  if (pages.length === 0) {
+    return pages
+  }
+  const from = Math.max(1, Math.trunc(fromPage) || 1)
+  const to = Math.min(pages.length, Math.trunc(toPage) || pages.length)
+  if (from > to) {
+    throw new Error('Khoảng trang không hợp lệ.')
+  }
+  return pages.slice(from - 1, to)
+}
+
 export function toTxt(pages: string[]): string {
   return pages
     .map((text, index) => `--- Trang ${index + 1} ---\n${text || '(không có chữ)'}`)
