@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   extensionFor,
   mimeFor,
@@ -9,6 +9,7 @@ import {
   type ExportFormat,
 } from '../lib/convert.ts'
 import { extractPageTexts } from '../lib/extract.ts'
+import { convertEpubToMobi, getMobiStatus } from '../lib/mobi.ts'
 import { readPdfFile, swapExtension } from '../lib/limits.ts'
 import { downloadBlob, setDocument } from '../lib/document-store.ts'
 import { useDocument } from '../use-document.ts'
@@ -18,8 +19,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'html', label: 'HTML', hint: 'Trang web' },
   { id: 'docx', label: 'DOCX', hint: 'Microsoft Word' },
   { id: 'doc', label: 'DOC', hint: 'Word (cùng nội dung DOCX)' },
-  { id: 'epub', label: 'EPUB', hint: 'Sách điện tử' },
-  { id: 'mobi', label: 'MOBI', hint: 'Kindle — EPUB nếu chưa có Calibre' },
+  { id: 'epub', label: 'EPUB', hint: 'Sách điện tử, có mục lục' },
+  { id: 'mobi', label: 'MOBI', hint: 'Kindle — cần Calibre ebook-convert' },
 ]
 
 export function Convert() {
@@ -28,6 +29,19 @@ export function Convert() {
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [calibre, setCalibre] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void getMobiStatus().then((status) => {
+      if (!cancelled) {
+        setCalibre(status.available)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   async function onUpload(file: File | undefined): Promise<void> {
     if (!file) {
@@ -53,22 +67,36 @@ export function Convert() {
     try {
       const pages = await extractPageTexts(doc.bytes)
       const title = doc.name.replace(/\.pdf$/i, '')
-      let blob: Blob
       if (format === 'txt') {
-        blob = new Blob([toTxt(pages)], { type: mimeFor(format) })
+        downloadBlob(
+          new Blob([toTxt(pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
       } else if (format === 'html') {
-        blob = new Blob([toHtml(title, pages)], { type: mimeFor(format) })
+        downloadBlob(
+          new Blob([toHtml(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
       } else if (format === 'docx' || format === 'doc') {
-        blob = await toDocx(title, pages)
+        const blob = await toDocx(title, pages)
+        downloadBlob(blob, swapExtension(doc.name, extensionFor(format)))
       } else {
-        blob = await toEpub(title, pages)
-        if (format === 'mobi') {
-          setNote(
-            'Máy này không chạy Calibre ebook-convert trong trình duyệt. Đã tải EPUB; dùng ebook-convert để ra MOBI.',
-          )
+        const epub = await toEpub(title, pages)
+        if (format === 'epub') {
+          downloadBlob(epub, swapExtension(doc.name, 'epub'))
+        } else {
+          const mobi = await convertEpubToMobi(epub)
+          if (mobi) {
+            downloadBlob(mobi, swapExtension(doc.name, 'mobi'))
+            setNote('Đã chuyển MOBI bằng Calibre ebook-convert trên máy này.')
+          } else {
+            downloadBlob(epub, swapExtension(doc.name, 'epub'))
+            setNote(
+              'Không có Calibre ebook-convert. Đã tải EPUB; cài Calibre rồi chạy lại để ra MOBI.',
+            )
+          }
         }
       }
-      downloadBlob(blob, swapExtension(doc.name, extensionFor(format)))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Chuyển đổi thất bại.')
     } finally {
@@ -76,8 +104,19 @@ export function Convert() {
     }
   }
 
+  const formats = FORMATS.map((item) =>
+    item.id === 'mobi'
+      ? {
+          ...item,
+          hint: calibre
+            ? 'Kindle — Calibre sẵn sàng trên máy này'
+            : 'Kindle — EPUB nếu chưa có Calibre',
+        }
+      : item,
+  )
+
   return (
-    <main className="page convert-page">
+    <main id="main" className="page convert-page">
       <header className="page-head">
         <h1>Chuyển đổi định dạng</h1>
         <p>Trích chữ từ PDF rồi xuất TXT, HTML, DOCX/DOC, EPUB hoặc MOBI.</p>
@@ -88,17 +127,28 @@ export function Convert() {
         <input
           type="file"
           accept="application/pdf,.pdf"
+          aria-label="Tải tệp PDF để chuyển đổi"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
 
-      {doc ? <p className="meta">{doc.name} · {doc.pageCount} trang</p> : <p className="empty">Chưa có tài liệu.</p>}
-      {error ? <p className="error" role="alert">{error}</p> : null}
+      {doc ? (
+        <p className="meta">
+          {doc.name} · {doc.pageCount} trang
+        </p>
+      ) : (
+        <p className="empty">Chưa có tài liệu.</p>
+      )}
+      {error ? (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      ) : null}
       {note ? <p className="note">{note}</p> : null}
 
       <fieldset className="formats">
         <legend>Định dạng đầu ra</legend>
-        {FORMATS.map((item) => (
+        {formats.map((item) => (
           <label key={item.id} className={format === item.id ? 'picked' : undefined}>
             <input
               type="radio"

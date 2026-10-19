@@ -2,7 +2,7 @@ import { navigate } from '../use-route.ts'
 
 export function Home() {
   return (
-    <main className="page hero-page">
+    <main id="main" className="page hero-page">
       <p className="eyebrow">Smart-Read</p>
       <h1>Chỉnh sửa PDF và chuyển sang DOC, EPUB, MOBI</h1>
       <p className="lede">

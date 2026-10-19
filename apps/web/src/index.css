@@ -32,6 +32,21 @@ body {
     var(--paper);
 }
 
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 12px;
+  z-index: 10;
+  padding: 8px 12px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+}
+
+.skip-link:focus {
+  left: 16px;
+}
+
 .shell {
   max-width: 1080px;
   margin: 0 auto;
@@ -199,11 +214,73 @@ button:disabled {
   padding: 16px;
 }
 
+.preview-wrap {
+  position: relative;
+}
+
 .preview {
   width: 100%;
   height: auto;
   background: #fff;
   border: 1px solid var(--line);
+  cursor: crosshair;
+}
+
+.overlay-mark {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--accent);
+  background: #fff;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.kbd-hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 10px 0 0;
+}
+
+.merge-card {
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.merge-where {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.merge-where legend {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preset-row button {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.preset-row button.picked,
+.topbar nav button.active {
+  background: #efe4d4;
 }
 
 .tools {

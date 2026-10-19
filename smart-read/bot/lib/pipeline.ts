@@ -137,6 +137,6 @@ export const SUPPORTED_FORMATS = [
     id: "mobi",
     label: "MOBI",
     role: "export",
-    notes: "Kindle-oriented export. Prefers Calibre ebook-convert when available; otherwise EPUB fallback.",
+    notes: "Kindle-oriented export. POSTs EPUB to /api/mobi for Calibre ebook-convert when available; otherwise EPUB fallback.",
   },
 ] as const;
