@@ -9,8 +9,8 @@ Smart-Read is a Vite + React + TypeScript SPA in `apps/web`.
 ## Routes
 
 - `/` landing: Edit PDF and Convert file.
-- `/edit` PDF editor: upload, page list, rotate / delete / reorder / merge-at-position / click-to-place text overlay, download.
-- `/convert` converter: upload PDF, pick TXT / HTML / DOCX / EPUB / MOBI, download. EPUB is built in the browser; MOBI uses `/api/mobi` (Calibre) when available.
+- `/edit` PDF editor: upload, page list, rotate / delete / drag-reorder / undo-redo / merge-at-position / click-to-place text overlay, download.
+- `/convert` converter: upload PDF, pick TXT / HTML / DOCX / EPUB / MOBI, validate from–to range, download. EPUB is built in the browser; MOBI uses `/api/mobi` (Calibre) when available.
 
 ## Rules
 

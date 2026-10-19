@@ -254,6 +254,20 @@ button:disabled {
   font-weight: 650;
 }
 
+.thumb[draggable='true'] {
+  cursor: grab;
+}
+
+.thumb.dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+.thumb.drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: 1px;
+}
+
 .preview-card,
 .tools,
 .formats {
@@ -370,6 +384,22 @@ button:disabled {
 
 .page-range input {
   width: 7rem;
+}
+
+.page-range input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.range-help,
+.range-ok,
+.range-error {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 14px;
+}
+
+.range-ok {
+  color: var(--ok);
 }
 
 .formats {

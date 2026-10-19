@@ -12,7 +12,14 @@ import {
   pageCount,
   rotatePages,
 } from './pdf.ts'
-import { clampPageRange, nextPageAfterDelete, pageRange, togglePage } from './selection.ts'
+import { MAX_EDITOR_HISTORY, popSnapshot, pushSnapshot, snapshotOf } from './history.ts'
+import {
+  clampPageRange,
+  nextPageAfterDelete,
+  pageRange,
+  parsePageRange,
+  togglePage,
+} from './selection.ts'
 
 async function samplePdf(pageLabels: string[]): Promise<Uint8Array> {
   const doc = await PDFDocument.create()
@@ -107,6 +114,48 @@ describe('page selection', () => {
     expect(nextPageAfterDelete(2, [1, 2], 2)).toBe(1)
     expect(nextPageAfterDelete(0, [0], 2)).toBe(0)
     expect(clampPageRange(0, 99, 4)).toEqual({ fromPage: 1, toPage: 4 })
+  })
+
+  it('rejects empty, inverted, and out-of-range convert bounds', () => {
+    expect(parsePageRange('', '', 4)).toEqual({
+      ok: false,
+      message: 'Nhập số trang bắt đầu và kết thúc.',
+    })
+    expect(parsePageRange('', '2', 4).ok).toBe(false)
+    expect(parsePageRange('1', '', 4).ok).toBe(false)
+    expect(parsePageRange('1.5', '2', 4)).toEqual({
+      ok: false,
+      message: 'Khoảng trang phải là số nguyên.',
+    })
+    const tooLow = parsePageRange('0', '2', 4)
+    expect(tooLow.ok).toBe(false)
+    if (!tooLow.ok) {
+      expect(tooLow.message).toMatch(/từ 1/)
+    }
+    const tooHigh = parsePageRange('1', '9', 4)
+    expect(tooHigh.ok).toBe(false)
+    if (!tooHigh.ok) {
+      expect(tooHigh.message).toMatch(/vượt quá 4/)
+    }
+    const inverted = parsePageRange('3', '1', 4)
+    expect(inverted.ok).toBe(false)
+    if (!inverted.ok) {
+      expect(inverted.message).toMatch(/không được lớn hơn/)
+    }
+    expect(parsePageRange('2', '3', 4)).toEqual({ ok: true, fromPage: 2, toPage: 3 })
+  })
+
+  it('caps undo snapshots and pops the latest first', () => {
+    const first = snapshotOf(new Uint8Array([1]), 0, [0], 0)
+    const second = snapshotOf(new Uint8Array([2]), 1, [1], 1)
+    const stacked = pushSnapshot(pushSnapshot([], first, 1), second, 1)
+    expect(stacked).toHaveLength(1)
+    expect(stacked[0]?.page).toBe(1)
+    const popped = popSnapshot(stacked)
+    expect(popped?.snapshot.page).toBe(1)
+    expect(popped?.rest).toEqual([])
+    expect(popSnapshot([])).toBeNull()
+    expect(MAX_EDITOR_HISTORY).toBeGreaterThan(0)
   })
 
   it('scales sparse pages more strongly than letter-size pages', () => {

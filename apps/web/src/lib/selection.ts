@@ -51,3 +51,61 @@ export function clampPageRange(
   const to = Math.min(last, Math.max(from, Math.trunc(toPage) || last))
   return { fromPage: from, toPage: to }
 }
+
+export type PageRangeParse =
+  | { ok: true; fromPage: number; toPage: number }
+  | { ok: false; message: string }
+
+function asRangeNumber(raw: string): number | null {
+  const trimmed = raw.trim()
+  if (trimmed === '') {
+    return null
+  }
+  if (!/^-?\d+$/.test(trimmed)) {
+    return Number.NaN
+  }
+  return Number(trimmed)
+}
+
+/** Validate a from–to page range without silently clamping. */
+export function parsePageRange(
+  fromRaw: string,
+  toRaw: string,
+  pageCount: number,
+): PageRangeParse {
+  if (pageCount < 1) {
+    return { ok: false, message: 'Tài liệu không có trang để xuất.' }
+  }
+  const fromEmpty = fromRaw.trim() === ''
+  const toEmpty = toRaw.trim() === ''
+  if (fromEmpty && toEmpty) {
+    return { ok: false, message: 'Nhập số trang bắt đầu và kết thúc.' }
+  }
+  if (fromEmpty) {
+    return { ok: false, message: 'Nhập số trang bắt đầu.' }
+  }
+  if (toEmpty) {
+    return { ok: false, message: 'Nhập số trang kết thúc.' }
+  }
+  const from = asRangeNumber(fromRaw)
+  const to = asRangeNumber(toRaw)
+  if (from == null || to == null || !Number.isFinite(from) || !Number.isFinite(to)) {
+    return { ok: false, message: 'Khoảng trang phải là số nguyên.' }
+  }
+  if (from < 1) {
+    return { ok: false, message: 'Trang bắt đầu phải từ 1.' }
+  }
+  if (to < 1) {
+    return { ok: false, message: 'Trang kết thúc phải từ 1.' }
+  }
+  if (from > pageCount) {
+    return { ok: false, message: `Trang bắt đầu không được vượt quá ${pageCount}.` }
+  }
+  if (to > pageCount) {
+    return { ok: false, message: `Trang kết thúc không được vượt quá ${pageCount}.` }
+  }
+  if (from > to) {
+    return { ok: false, message: 'Trang bắt đầu không được lớn hơn trang kết thúc.' }
+  }
+  return { ok: true, fromPage: from, toPage: to }
+}

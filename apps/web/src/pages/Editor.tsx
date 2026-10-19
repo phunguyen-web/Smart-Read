@@ -14,6 +14,7 @@ import {
   type OverlayPresetId,
 } from '../lib/pdf.ts'
 import { readPdfFile } from '../lib/limits.ts'
+import { popSnapshot, pushSnapshot, snapshotOf, type EditorSnapshot } from '../lib/history.ts'
 import { nextPageAfterDelete, pageRange, togglePage } from '../lib/selection.ts'
 import { bytesToBlob, downloadBlob, setDocument, updateBytes } from '../lib/document-store.ts'
 import { useDocument } from '../use-document.ts'
@@ -42,11 +43,19 @@ export function Editor() {
   const [mergeWhere, setMergeWhere] = useState<MergeWhere>('end')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [past, setPast] = useState<EditorSnapshot[]>([])
+  const [future, setFuture] = useState<EditorSnapshot[]>([])
 
   const targets = useMemo(
     () => (selected.length > 0 ? selected : [page]),
     [selected, page],
   )
+
+  const restore = useCallback((snapshot: EditorSnapshot): void => {
+    setPage(snapshot.page)
+    setSelected(snapshot.selected)
+    setAnchor(snapshot.anchor)
+  }, [])
 
   const run = useCallback(
     async (
@@ -56,11 +65,14 @@ export function Editor() {
       if (!doc) {
         return
       }
+      const before = snapshotOf(doc.bytes, page, selected, anchor)
       setBusy(true)
       setError(null)
       try {
         const next = await mutate(doc.bytes)
         const updated = await updateBytes(next)
+        setPast((stack) => pushSnapshot(stack, before))
+        setFuture([])
         if (after) {
           after(updated.pageCount)
           return
@@ -80,8 +92,54 @@ export function Editor() {
         setBusy(false)
       }
     },
-    [doc, page],
+    [doc, page, selected, anchor],
   )
+
+  const undo = useCallback(async (): Promise<void> => {
+    if (!doc) {
+      return
+    }
+    const popped = popSnapshot(past)
+    if (!popped) {
+      return
+    }
+    const current = snapshotOf(doc.bytes, page, selected, anchor)
+    setBusy(true)
+    setError(null)
+    try {
+      await updateBytes(popped.snapshot.bytes)
+      setPast(popped.rest)
+      setFuture((stack) => pushSnapshot(stack, current))
+      restore(popped.snapshot)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không hoàn tác được.')
+    } finally {
+      setBusy(false)
+    }
+  }, [doc, past, page, selected, anchor, restore])
+
+  const redo = useCallback(async (): Promise<void> => {
+    if (!doc) {
+      return
+    }
+    const popped = popSnapshot(future)
+    if (!popped) {
+      return
+    }
+    const current = snapshotOf(doc.bytes, page, selected, anchor)
+    setBusy(true)
+    setError(null)
+    try {
+      await updateBytes(popped.snapshot.bytes)
+      setFuture(popped.rest)
+      setPast((stack) => pushSnapshot(stack, current))
+      restore(popped.snapshot)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không làm lại được.')
+    } finally {
+      setBusy(false)
+    }
+  }, [doc, future, page, selected, anchor, restore])
 
   useEffect(() => {
     if (!doc || !canvasRef.current) {
@@ -172,22 +230,30 @@ export function Editor() {
       } else if (event.altKey && event.key === 'ArrowUp') {
         event.preventDefault()
         if (page > 0) {
-          void run((bytes) => movePage(bytes, page, page - 1)).then(() =>
-            goToPage(Math.max(0, page - 1), 'replace'),
-          )
+          const to = page - 1
+          void run((bytes) => movePage(bytes, page, to), () => goToPage(to, 'replace'))
         }
       } else if (event.altKey && event.key === 'ArrowDown') {
         event.preventDefault()
         if (page < doc.pageCount - 1) {
-          void run((bytes) => movePage(bytes, page, page + 1)).then(() =>
-            goToPage(Math.min(doc.pageCount - 1, page + 1), 'replace'),
-          )
+          const to = page + 1
+          void run((bytes) => movePage(bytes, page, to), () => goToPage(to, 'replace'))
         }
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) {
+          void redo()
+        } else {
+          void undo()
+        }
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
+        event.preventDefault()
+        void redo()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [doc, busy, page, run, targets, goToPage, deleteSelected])
+  }, [doc, busy, page, run, targets, goToPage, deleteSelected, undo, redo])
 
   async function onUpload(file: File | undefined): Promise<void> {
     if (!file) {
@@ -201,6 +267,8 @@ export function Editor() {
       setPage(0)
       setSelected([0])
       setAnchor(0)
+      setPast([])
+      setFuture([])
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Không đọc được tệp.')
     }
@@ -259,7 +327,7 @@ export function Editor() {
     <main id="main" className="page editor-page">
       <header className="page-head">
         <h1>Chỉnh sửa PDF</h1>
-        <p>Xoay, xóa, đổi thứ tự, gộp tệp và chèn chữ, rồi tải PDF mới.</p>
+        <p>Xoay, xóa, kéo thumbnail để đổi thứ tự, hoàn tác, gộp tệp và chèn chữ, rồi tải PDF mới.</p>
       </header>
 
       <label className="file-btn">
@@ -289,6 +357,9 @@ export function Editor() {
             selected={selected}
             disabled={busy}
             onSelect={onThumbSelect}
+            onReorder={(from, to) => {
+              void run((bytes) => movePage(bytes, from, to), () => goToPage(to, 'replace'))
+            }}
           />
           <div className="preview-card">
             <p className="meta" aria-live="polite">
@@ -309,11 +380,30 @@ export function Editor() {
               />
             </div>
             <p className="kbd-hint">
-              Nhấn thumbnail để xem trang. Ctrl/Cmd chọn thêm, Shift chọn dải. Phím: ← →, R xoay
-              các trang đã chọn, Delete xóa, Alt+↑↓ sắp xếp.
+              Nhấn thumbnail để xem trang, kéo để đổi thứ tự. Ctrl/Cmd chọn thêm, Shift chọn dải.
+              Phím: ← →, R xoay các trang đã chọn, Delete xóa, Alt+↑↓ sắp xếp, Ctrl+Z hoàn tác,
+              Ctrl+Y làm lại.
             </p>
           </div>
           <div className="tools" role="toolbar" aria-label="Công cụ chỉnh PDF">
+            <div className="tool-row">
+              <button
+                type="button"
+                disabled={busy || past.length === 0}
+                aria-keyshortcuts="Control+Z"
+                onClick={() => void undo()}
+              >
+                Hoàn tác
+              </button>
+              <button
+                type="button"
+                disabled={busy || future.length === 0}
+                aria-keyshortcuts="Control+Y Control+Shift+Z"
+                onClick={() => void redo()}
+              >
+                Làm lại
+              </button>
+            </div>
             <div className="tool-row">
               <button
                 type="button"
@@ -363,11 +453,10 @@ export function Editor() {
                 type="button"
                 disabled={busy || page === 0}
                 aria-keyshortcuts="Alt+ArrowUp"
-                onClick={() =>
-                  void run((bytes) => movePage(bytes, page, page - 1)).then(() =>
-                    goToPage(Math.max(0, page - 1), 'replace'),
-                  )
-                }
+                onClick={() => {
+                  const to = page - 1
+                  void run((bytes) => movePage(bytes, page, to), () => goToPage(to, 'replace'))
+                }}
               >
                 Đưa lên
               </button>
@@ -375,11 +464,10 @@ export function Editor() {
                 type="button"
                 disabled={busy || page >= doc.pageCount - 1}
                 aria-keyshortcuts="Alt+ArrowDown"
-                onClick={() =>
-                  void run((bytes) => movePage(bytes, page, page + 1)).then(() =>
-                    goToPage(Math.min(doc.pageCount - 1, page + 1), 'replace'),
-                  )
-                }
+                onClick={() => {
+                  const to = page + 1
+                  void run((bytes) => movePage(bytes, page, to), () => goToPage(to, 'replace'))
+                }}
               >
                 Đưa xuống
               </button>

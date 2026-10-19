@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   extensionFor,
   mimeFor,
@@ -12,7 +12,7 @@ import {
 import { extractPageTexts } from '../lib/extract.ts'
 import { convertEpubToMobi, getMobiStatus } from '../lib/mobi.ts'
 import { readPdfFile, swapExtension } from '../lib/limits.ts'
-import { clampPageRange } from '../lib/selection.ts'
+import { parsePageRange } from '../lib/selection.ts'
 import { downloadBlob, setDocument } from '../lib/document-store.ts'
 import { useDocument } from '../use-document.ts'
 
@@ -33,11 +33,16 @@ export function Convert() {
   const [busy, setBusy] = useState(false)
   const [calibre, setCalibre] = useState(false)
   const docId = doc ? `${doc.name}:${doc.bytes.byteLength}:${doc.pageCount}` : ''
-  const [range, setRange] = useState<{ id: string; fromPage: number; toPage: number } | null>(
+  const [range, setRange] = useState<{ id: string; fromPage: string; toPage: string } | null>(
     null,
   )
-  const fromPage = range?.id === docId ? range.fromPage : 1
-  const toPage = range?.id === docId ? range.toPage : (doc?.pageCount ?? 1)
+  const fromPage = range?.id === docId ? range.fromPage : '1'
+  const toPage = range?.id === docId ? range.toPage : doc ? String(doc.pageCount) : ''
+  const parsedRange = useMemo(
+    () => (doc ? parsePageRange(fromPage, toPage, doc.pageCount) : null),
+    [doc, fromPage, toPage],
+  )
+  const rangeError = parsedRange && !parsedRange.ok ? parsedRange.message : null
 
   useEffect(() => {
     let cancelled = false
@@ -56,6 +61,7 @@ export function Convert() {
       return
     }
     setError(null)
+    setNote(null)
     try {
       const bytes = await readPdfFile(file)
       await setDocument(file.name, bytes)
@@ -69,12 +75,24 @@ export function Convert() {
       setError('Hãy tải một tệp PDF trước.')
       return
     }
+    const parsed = parsePageRange(fromPage, toPage, doc.pageCount)
+    if (!parsed.ok) {
+      setError(parsed.message)
+      return
+    }
     setBusy(true)
     setError(null)
     setNote(null)
     try {
-      const range = clampPageRange(fromPage, toPage, doc.pageCount)
-      const pages = slicePageRange(await extractPageTexts(doc.bytes), range.fromPage, range.toPage)
+      const pages = slicePageRange(
+        await extractPageTexts(doc.bytes),
+        parsed.fromPage,
+        parsed.toPage,
+      )
+      if (pages.length === 0) {
+        setError('Khoảng trang không có nội dung để xuất.')
+        return
+      }
       const title = doc.name.replace(/\.pdf$/i, '')
       if (format === 'txt') {
         downloadBlob(
@@ -146,7 +164,9 @@ export function Convert() {
           {doc.name} · {doc.pageCount} trang
         </p>
       ) : (
-        <p className="empty">Chưa có tài liệu.</p>
+        <p className="empty">
+          Chưa có tài liệu. Hãy tải một tệp PDF để chọn khoảng trang và định dạng xuất.
+        </p>
       )}
       {error ? (
         <p className="error" role="alert">
@@ -160,15 +180,17 @@ export function Convert() {
           <label>
             Từ trang
             <input
-              type="number"
-              min={1}
-              max={doc.pageCount}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={fromPage}
               aria-label="Từ trang"
+              aria-invalid={rangeError ? true : undefined}
+              aria-describedby="range-help range-error"
               onChange={(event) =>
                 setRange({
                   id: docId,
-                  fromPage: Number(event.target.value),
+                  fromPage: event.target.value,
                   toPage,
                 })
               }
@@ -177,20 +199,35 @@ export function Convert() {
           <label>
             Đến trang
             <input
-              type="number"
-              min={1}
-              max={doc.pageCount}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={toPage}
               aria-label="Đến trang"
+              aria-invalid={rangeError ? true : undefined}
+              aria-describedby="range-help range-error"
               onChange={(event) =>
                 setRange({
                   id: docId,
                   fromPage,
-                  toPage: Number(event.target.value),
+                  toPage: event.target.value,
                 })
               }
             />
           </label>
+          <p id="range-help" className="range-help">
+            Tài liệu có {doc.pageCount} trang. Để trống một ô sẽ không xuất được tệp.
+          </p>
+          {rangeError ? (
+            <p id="range-error" className="error range-error" role="alert">
+              {rangeError}
+            </p>
+          ) : (
+            <p id="range-error" className="range-ok">
+              Sẽ xuất từ trang {parsedRange && parsedRange.ok ? parsedRange.fromPage : 1} đến{' '}
+              {parsedRange && parsedRange.ok ? parsedRange.toPage : doc.pageCount}.
+            </p>
+          )}
         </div>
       ) : null}
 
@@ -213,8 +250,13 @@ export function Convert() {
         ))}
       </fieldset>
 
-      <button type="button" className="primary" disabled={busy || !doc} onClick={() => void convert()}>
-        {busy ? 'Đang chuyển…' : 'Tải tệp đã chuyển'}
+      <button
+        type="button"
+        className="primary"
+        disabled={busy || !doc || Boolean(rangeError)}
+        onClick={() => void convert()}
+      >
+        {busy ? 'Đang chuyển…' : !doc ? 'Tải PDF trước khi chuyển' : 'Tải tệp đã chuyển'}
       </button>
     </main>
   )

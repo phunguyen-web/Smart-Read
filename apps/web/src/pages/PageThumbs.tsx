@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { renderPageThumbnail } from '../lib/extract.ts'
 
 type PageThumbsProps = {
@@ -8,6 +8,7 @@ type PageThumbsProps = {
   selected: readonly number[]
   disabled?: boolean
   onSelect: (index: number, event: React.MouseEvent<HTMLButtonElement>) => void
+  onReorder: (from: number, to: number) => void
 }
 
 export function PageThumbs({
@@ -17,8 +18,12 @@ export function PageThumbs({
   selected,
   disabled,
   onSelect,
+  onReorder,
 }: PageThumbsProps) {
   const listRef = useRef<HTMLDivElement>(null)
+  const suppressClick = useRef(false)
+  const [dragFrom, setDragFrom] = useState<number | null>(null)
+  const [dropTo, setDropTo] = useState<number | null>(null)
   const selectedSet = new Set(selected)
 
   useEffect(() => {
@@ -50,12 +55,17 @@ export function PageThumbs({
     currentBtn?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [current])
 
+  function clearDrag(): void {
+    setDragFrom(null)
+    setDropTo(null)
+  }
+
   return (
     <div
       ref={listRef}
       className="thumb-strip"
       role="listbox"
-      aria-label="Trang PDF"
+      aria-label="Trang PDF. Kéo thumbnail để đổi thứ tự."
       aria-multiselectable="true"
     >
       {Array.from({ length: pageCount }, (_, index) => {
@@ -66,12 +76,45 @@ export function PageThumbs({
             key={index}
             type="button"
             role="option"
-            className={`thumb${isCurrent ? ' current' : ''}${isSelected ? ' selected' : ''}`}
+            className={`thumb${isCurrent ? ' current' : ''}${isSelected ? ' selected' : ''}${
+              dragFrom === index ? ' dragging' : ''
+            }${dropTo === index && dragFrom !== index ? ' drop-target' : ''}`}
             disabled={disabled}
+            draggable={!disabled}
             aria-selected={isSelected}
             aria-current={isCurrent ? 'page' : undefined}
-            aria-label={`Trang ${index + 1}${isSelected ? ', đã chọn' : ''}`}
-            onClick={(event) => onSelect(index, event)}
+            aria-label={`Trang ${index + 1}${isSelected ? ', đã chọn' : ''}. Kéo để đổi thứ tự.`}
+            onClick={(event) => {
+              if (suppressClick.current) {
+                suppressClick.current = false
+                event.preventDefault()
+                return
+              }
+              onSelect(index, event)
+            }}
+            onDragStart={(event) => {
+              event.dataTransfer.effectAllowed = 'move'
+              event.dataTransfer.setData('text/plain', String(index))
+              setDragFrom(index)
+              setDropTo(index)
+            }}
+            onDragOver={(event) => {
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+              setDropTo(index)
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              const raw = event.dataTransfer.getData('text/plain')
+              const from = raw === '' ? dragFrom : Number(raw)
+              suppressClick.current = true
+              clearDrag()
+              if (from == null || !Number.isInteger(from) || from === index) {
+                return
+              }
+              onReorder(from, index)
+            }}
+            onDragEnd={clearDrag}
           >
             <canvas aria-hidden="true" />
             <span>{index + 1}</span>

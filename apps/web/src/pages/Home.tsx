@@ -18,7 +18,7 @@ export function Home() {
         </button>
       </div>
       <ul className="feature-list">
-        <li>Dải thumbnail, chọn nhiều trang để xoay/xóa, sắp xếp, gộp và chèn chữ</li>
+        <li>Dải thumbnail, chọn nhiều trang để xoay/xóa, kéo để sắp xếp, hoàn tác, gộp và chèn chữ</li>
         <li>Xuất TXT, HTML, DOCX/DOC, EPUB, MOBI</li>
         <li>Không tài khoản, không lưu đám mây</li>
       </ul>
