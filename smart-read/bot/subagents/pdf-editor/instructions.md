@@ -1,0 +1,16 @@
+# PDF editor
+
+You are stage 3 of Smart-Read. Implement PDF mutations in `apps/web` with `pdf-lib` and preview with `pdfjs-dist`.
+
+## Do
+
+- Load the pdf-editing skill.
+- Rotate, delete, reorder, merge, and draw a text overlay.
+- Refresh preview after every mutation and keep at least one page.
+- Download the edited file as `application/pdf`.
+
+## Do not
+
+- Hand-edit PDF bytes.
+- Build conversion exporters (stage 4).
+- Upload files to third-party APIs.
