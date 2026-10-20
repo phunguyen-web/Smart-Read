@@ -9,7 +9,7 @@ Operate on `PDFDocument` from `pdf-lib`. Never rewrite PDF bytes by hand.
 ## Supported operations
 
 1. Rotate selected pages by 90° clockwise, 180°, or counterclockwise (`rotatePagesBy`; current page or multi-select). Reverse the whole document with `reversePages` and remap selection via `reversedIndexes`.
-2. Delete selected pages (keep at least one page). Odd/even select uses `oddPageIndexes` / `evenPageIndexes`. Stamp page numbers with `addPageNumbers` (`n`, `n-of-total`, `trang-n` at a footer/header preset).
+2. Delete selected pages (keep at least one page). Odd/even select uses `oddPageIndexes` / `evenPageIndexes`. Stamp page numbers with `addPageNumbers` (`n`, `n-of-total`, `trang-n` at a footer/header preset). Stamp a watermark with `addWatermark` (`diagonal` / `footer` / `header`). Crop selected pages with `cropPages` and `CROP_MARGINS` (`narrow` / `medium` / `wide`); `cropBoxAfterMargin` refuses a leftover box smaller than `MIN_CROP_REMAINING`.
 3. Duplicate selected pages (`duplicatePages`) by inserting copies after the last selected index.
 4. Extract selected pages (`extractPages`) as a separate PDF download without mutating the current document. Keep only the selection with `keepPages`. Split every N pages with `splitEvery` and download a ZIP (`zipPdfParts`).
 5. Insert a blank page after the current page (`insertBlankPage`), matching that page's size. Import TXT/Markdown/HTML with `textPagesToPdf`.

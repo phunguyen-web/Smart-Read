@@ -168,6 +168,16 @@ export function parsePageRange(
   return { ok: true, fromPage: from, toPage: to }
 }
 
+/** 0-based page indexes for a validated inclusive 1-based range. */
+export function indexesFromPageRange(fromPage: number, toPage: number): number[] {
+  const from = Math.trunc(fromPage)
+  const to = Math.trunc(toPage)
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from) {
+    throw new Error('Khoảng trang không hợp lệ.')
+  }
+  return Array.from({ length: to - from + 1 }, (_, offset) => from - 1 + offset)
+}
+
 export type SplitSizeParse = { ok: true; size: number } | { ok: false; message: string }
 
 export function parseSplitSize(raw: string, pageCount: number): SplitSizeParse {

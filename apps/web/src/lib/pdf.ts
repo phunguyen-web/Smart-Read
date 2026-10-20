@@ -472,6 +472,127 @@ export async function mergePdf(
   return new Uint8Array(await doc.save())
 }
 
+export type WatermarkStyle = 'diagonal' | 'footer' | 'header'
+
+export const WATERMARK_STYLES = ['diagonal', 'footer', 'header'] as const
+
+export const CROP_MARGINS = {
+  narrow: 12,
+  medium: 36,
+  wide: 72,
+} as const
+
+export type CropMarginId = keyof typeof CROP_MARGINS
+
+export const MIN_CROP_REMAINING = 36
+
+export type PageBox = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export function cropBoxAfterMargin(box: PageBox, margin: number): PageBox {
+  const inset = Math.max(0, margin)
+  const width = box.width - inset * 2
+  const height = box.height - inset * 2
+  if (width < MIN_CROP_REMAINING || height < MIN_CROP_REMAINING) {
+    throw new Error('Lề cắt quá lớn so với kích thước trang.')
+  }
+  return {
+    x: box.x + inset,
+    y: box.y + inset,
+    width,
+    height,
+  }
+}
+
+export async function addWatermark(
+  bytes: Uint8Array,
+  options: {
+    text: string
+    indexes?: readonly number[]
+    style?: WatermarkStyle
+    opacity?: number
+  },
+): Promise<Uint8Array> {
+  const trimmed = options.text.trim()
+  if (!trimmed) {
+    throw new Error('Nhập nội dung chữ mờ.')
+  }
+  const doc = await PDFDocument.load(bytes)
+  const total = doc.getPageCount()
+  if (total < 1) {
+    throw new Error('Không có trang để đóng watermark.')
+  }
+  const requested = options.indexes
+  const unique = uniqueSorted(
+    requested && requested.length > 0 ? [...requested] : Array.from({ length: total }, (_, index) => index),
+    false,
+  ).filter((index) => index >= 0 && index < total)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đóng watermark.')
+  }
+  const style = options.style ?? 'diagonal'
+  const opacity = clamp(options.opacity ?? 0.22, 0.08, 0.6)
+  const font = await embedOverlayFont(doc)
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    if (style === 'diagonal') {
+      const size = Math.max(18, Math.min(width, height) * 0.09)
+      const drawn = fitOverlayText(font, trimmed, size)
+      page.drawText(drawn.text, {
+        x: width / 2 - drawn.width / 2,
+        y: height / 2,
+        size,
+        font,
+        color: rgb(0.45, 0.28, 0.18),
+        rotate: degrees(-32),
+        opacity,
+      })
+      continue
+    }
+    const size = 13
+    const drawn = fitOverlayText(font, trimmed, size)
+    const x = Math.max(8, (width - drawn.width) / 2)
+    const y = style === 'header' ? height - size - 14 : 16
+    page.drawText(drawn.text, {
+      x,
+      y,
+      size,
+      font,
+      color: rgb(0.38, 0.24, 0.16),
+      opacity: Math.min(0.55, opacity + 0.12),
+    })
+  }
+  return new Uint8Array(await doc.save())
+}
+
+export async function cropPages(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  margin: number,
+): Promise<Uint8Array> {
+  const inset = Math.trunc(margin)
+  if (!Number.isInteger(inset) || inset < 1) {
+    throw new Error('Lề cắt phải là số nguyên từ 1.')
+  }
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để cắt lề.')
+  }
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const next = cropBoxAfterMargin(page.getCropBox(), inset)
+    page.setCropBox(next.x, next.y, next.width, next.height)
+  }
+  return new Uint8Array(await doc.save())
+}
+
 export async function addTextOverlay(
   bytes: Uint8Array,
   pageIndex: number,
@@ -510,6 +631,26 @@ async function embedOverlayFont(doc: PDFDocument) {
     return await doc.embedFont(bytes, { subset: true })
   } catch {
     return doc.embedFont(StandardFonts.Helvetica)
+  }
+}
+
+function fitOverlayText(
+  font: { widthOfTextAtSize: (text: string, size: number) => number },
+  text: string,
+  size: number,
+): { text: string; width: number } {
+  try {
+    return { text, width: font.widthOfTextAtSize(text, size) }
+  } catch {
+    const safe =
+      Array.from(text)
+        .filter((char) => {
+          const code = char.codePointAt(0) ?? 0
+          return code >= 32 && code <= 126
+        })
+        .join('')
+        .trim() || 'WM'
+    return { text: safe, width: font.widthOfTextAtSize(safe, size) }
   }
 }
 

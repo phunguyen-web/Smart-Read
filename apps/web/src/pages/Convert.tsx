@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   extensionFor,
+  isImageFormat,
   mimeFor,
   slicePageRange,
   slicePagesByIndexes,
@@ -8,16 +9,18 @@ import {
   toEpub,
   toHtml,
   toMarkdown,
+  toRtf,
   toTxt,
+  zipPdfParts,
   type ExportFormat,
 } from '../lib/convert.ts'
-import { extractPageTexts } from '../lib/extract.ts'
+import { extractPageTexts, renderPageToBlob } from '../lib/extract.ts'
 import { pagesFromImportedText } from '../lib/import-text.ts'
 import { convertEpubToMobi, getMobiStatus } from '../lib/mobi.ts'
-import { readSourceFile, swapExtension } from '../lib/limits.ts'
+import { imagePageName, imageZipName, readSourceFile, swapExtension } from '../lib/limits.ts'
 import { textPagesToPdf } from '../lib/pdf.ts'
 import { editorExportSelection, forgetHistory, formatPageList } from '../lib/persist.ts'
-import { parsePageRange } from '../lib/selection.ts'
+import { indexesFromPageRange, parsePageRange } from '../lib/selection.ts'
 import { downloadBlob, setDocument } from '../lib/document-store.ts'
 import { useDocument } from '../use-document.ts'
 
@@ -25,10 +28,13 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'txt', label: 'TXT', hint: 'Văn bản thuần' },
   { id: 'html', label: 'HTML', hint: 'Trang web' },
   { id: 'md', label: 'Markdown', hint: 'Tệp .md, một mục mỗi trang' },
+  { id: 'rtf', label: 'RTF', hint: 'Rich Text, mở được trong Word' },
   { id: 'docx', label: 'DOCX', hint: 'Microsoft Word' },
   { id: 'doc', label: 'DOC', hint: 'Word (cùng nội dung DOCX)' },
   { id: 'epub', label: 'EPUB', hint: 'Sách điện tử, có mục lục' },
   { id: 'mobi', label: 'MOBI', hint: 'Kindle — cần Calibre ebook-convert' },
+  { id: 'png', label: 'PNG', hint: 'Ảnh từng trang (ZIP nếu nhiều)' },
+  { id: 'jpg', label: 'JPEG', hint: 'Ảnh từng trang, nền trắng' },
 ]
 
 export function Convert() {
@@ -103,6 +109,34 @@ export function Convert() {
     setError(null)
     setNote(null)
     try {
+      const indexes =
+        exportFromSelection && editorSelection
+          ? [...editorSelection].sort((a, b) => a - b)
+          : parsed.ok
+            ? indexesFromPageRange(parsed.fromPage, parsed.toPage)
+            : []
+      if (indexes.length === 0) {
+        setError('Khoảng trang không có nội dung để xuất.')
+        return
+      }
+      if (isImageFormat(format)) {
+        const mime = mimeFor(format) as 'image/png' | 'image/jpeg'
+        if (indexes.length === 1) {
+          const blob = await renderPageToBlob(doc.bytes, indexes[0]! + 1, mime)
+          downloadBlob(blob, imagePageName(doc.name, indexes[0]!, format))
+          return
+        }
+        const parts = []
+        for (const index of indexes) {
+          const blob = await renderPageToBlob(doc.bytes, index + 1, mime)
+          parts.push({
+            name: imagePageName(doc.name, index, format),
+            bytes: new Uint8Array(await blob.arrayBuffer()),
+          })
+        }
+        downloadBlob(await zipPdfParts(parts), imageZipName(doc.name, format))
+        return
+      }
       const extracted = await extractPageTexts(doc.bytes)
       const pages = exportFromSelection && editorSelection
         ? slicePagesByIndexes(extracted, editorSelection)
@@ -127,6 +161,11 @@ export function Convert() {
       } else if (format === 'md') {
         downloadBlob(
           new Blob([toMarkdown(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'rtf') {
+        downloadBlob(
+          new Blob([toRtf(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
       } else if (format === 'docx' || format === 'doc') {
@@ -172,9 +211,9 @@ export function Convert() {
       <header className="page-head">
         <h1>Chuyển đổi định dạng</h1>
         <p>
-          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, DOCX/DOC, EPUB hoặc MOBI. Có thể mở
-          TXT/Markdown/HTML để tạo PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang chọn
-          trên Chỉnh sửa, kể cả khi chúng không liền nhau.
+          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, DOCX/DOC, EPUB hoặc MOBI; hoặc raster
+          từng trang thành PNG/JPEG. Có thể mở TXT/Markdown/HTML để tạo PDF trước, rồi xuất tiếp.
+          Có thể xuất đúng các trang đang chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau.
         </p>
       </header>
 

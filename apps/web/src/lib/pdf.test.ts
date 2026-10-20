@@ -3,11 +3,14 @@ import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import {
   escapeHtml,
+  escapeRtf,
+  isImageFormat,
   slicePageRange,
   slicePagesByIndexes,
   toEpub,
   toHtml,
   toMarkdown,
+  toRtf,
   toTxt,
   zipPdfParts,
 } from './convert.ts'
@@ -34,10 +37,21 @@ import {
   editorExportSelection,
   restoreEditorView,
 } from './persist.ts'
-import { extractedPdfName, splitPartName, splitZipName, swapExtension } from './limits.ts'
+import {
+  extractedPdfName,
+  imagePageName,
+  imageZipName,
+  splitPartName,
+  splitZipName,
+  swapExtension,
+} from './limits.ts'
 import {
   addPageNumbers,
   addTextOverlay,
+  addWatermark,
+  CROP_MARGINS,
+  cropBoxAfterMargin,
+  cropPages,
   deletePages,
   duplicatePages,
   duplicatedIndexes,
@@ -66,6 +80,7 @@ import {
   blockNudgeDropTo,
   clampPageRange,
   evenPageIndexes,
+  indexesFromPageRange,
   movingIndexesForDrag,
   nextPageAfterDelete,
   oddPageIndexes,
@@ -219,6 +234,34 @@ describe('pdf edits', () => {
     expect(wrapPdfText('one two three', (value) => value.length, 7)).toEqual(['one two', 'three'])
     await expect(textPagesToPdf([])).rejects.toThrow(/nội dung/)
   })
+
+  it('stamps a watermark and crops selected pages', async () => {
+    const bytes = await samplePdf(['A', 'B'])
+    expect(cropBoxAfterMargin({ x: 0, y: 0, width: 200, height: 280 }, 20)).toEqual({
+      x: 20,
+      y: 20,
+      width: 160,
+      height: 240,
+    })
+    expect(() => cropBoxAfterMargin({ x: 0, y: 0, width: 80, height: 80 }, 30)).toThrow(/Lề cắt/)
+    const marked = await addWatermark(bytes, {
+      text: 'DRAFT',
+      indexes: [0],
+      style: 'diagonal',
+    })
+    expect(await pageCount(marked)).toBe(2)
+    const markedVi = await addWatermark(bytes, { text: 'Bản nháp', indexes: [1], style: 'footer' })
+    expect(await pageCount(markedVi)).toBe(2)
+    await expect(addWatermark(bytes, { text: '   ' })).rejects.toThrow(/chữ mờ/)
+    const cropped = await cropPages(bytes, [1], CROP_MARGINS.medium)
+    const before = (await PDFDocument.load(bytes)).getPage(1).getCropBox()
+    const after = (await PDFDocument.load(cropped)).getPage(1).getCropBox()
+    expect(after.width).toBeCloseTo(before.width - CROP_MARGINS.medium * 2)
+    expect(after.height).toBeCloseTo(before.height - CROP_MARGINS.medium * 2)
+    expect((await PDFDocument.load(cropped)).getPage(0).getCropBox().width).toBe(before.width)
+    await expect(cropPages(bytes, [], 12)).rejects.toThrow(/cắt lề/)
+    await expect(cropPages(bytes, [0], 90)).rejects.toThrow(/Lề cắt/)
+  })
 })
 
 describe('conversion helpers', () => {
@@ -240,6 +283,17 @@ describe('conversion helpers', () => {
     expect(stripMarkup('<p>Hi<br/>there</p>')).toContain('Hi')
     expect(pagesFromImportedText('txt', 'Chỉ một đoạn.')).toEqual(['Chỉ một đoạn.'])
     expect(swapExtension('notes.md', 'pdf')).toBe('notes.pdf')
+    expect(toRtf('Demo', ['Xin chào', 'Hai'])).toContain('{\\rtf1')
+    expect(toRtf('Demo', ['Xin chào'])).toContain('Demo')
+    expect(escapeRtf('a{b}\\c')).toBe('a\\{b\\}\\\\c')
+    expect(escapeRtf('Xin chào')).toMatch(/\\u/)
+    expect(isImageFormat('png')).toBe(true)
+    expect(isImageFormat('jpg')).toBe(true)
+    expect(isImageFormat('docx')).toBe(false)
+    expect(imagePageName('demo.pdf', 2, 'png')).toBe('demo-trang-3.png')
+    expect(imageZipName('demo.pdf', 'jpg')).toBe('demo-anh-jpg.zip')
+    expect(indexesFromPageRange(2, 4)).toEqual([1, 2, 3])
+    expect(() => indexesFromPageRange(3, 1)).toThrow(/Khoảng trang/)
   })
 
   it('builds an EPUB 3 package with nav, ncx, and per-page documents', async () => {

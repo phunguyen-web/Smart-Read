@@ -227,3 +227,49 @@ export async function renderPageThumbnail(
   context.lineWidth = sparse ? 2 : 1
   context.strokeRect(0.5, 0.5, canvas.width - 1, canvas.height - 1)
 }
+
+export type PageImageType = 'image/png' | 'image/jpeg'
+
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  type: PageImageType,
+  quality = 0.86,
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error('Không xuất được ảnh trang.'))
+          return
+        }
+        resolve(blob)
+      },
+      type,
+      quality,
+    )
+  })
+}
+
+export async function renderPageToBlob(
+  bytes: Uint8Array,
+  pageNumber: number,
+  type: PageImageType,
+  quality = 0.86,
+): Promise<Blob> {
+  const canvas = document.createElement('canvas')
+  await renderPageToCanvas(bytes, pageNumber, canvas)
+  if (type === 'image/jpeg') {
+    const stamped = document.createElement('canvas')
+    stamped.width = canvas.width
+    stamped.height = canvas.height
+    const context = stamped.getContext('2d')
+    if (!context) {
+      throw new Error('Không xuất được ảnh JPEG.')
+    }
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, stamped.width, stamped.height)
+    context.drawImage(canvas, 0, 0)
+    return canvasToBlob(stamped, type, quality)
+  }
+  return canvasToBlob(canvas, type, quality)
+}

@@ -1,6 +1,22 @@
 import JSZip from 'jszip'
 
-export type ExportFormat = 'txt' | 'html' | 'md' | 'docx' | 'doc' | 'epub' | 'mobi'
+export type ExportFormat =
+  | 'txt'
+  | 'html'
+  | 'md'
+  | 'rtf'
+  | 'docx'
+  | 'doc'
+  | 'epub'
+  | 'mobi'
+  | 'png'
+  | 'jpg'
+
+export type ImageExportFormat = 'png' | 'jpg'
+
+export function isImageFormat(format: ExportFormat): format is ImageExportFormat {
+  return format === 'png' || format === 'jpg'
+}
 
 export type EpubOptions = {
   identifier?: string
@@ -43,6 +59,43 @@ export function toTxt(pages: string[]): string {
 
 function htmlParagraph(text: string): string {
   return `<p>${escapeHtml(text || '(không có chữ)').replaceAll('\n', '<br/>')}</p>`
+}
+
+export function escapeRtf(value: string): string {
+  let out = ''
+  for (const char of value) {
+    if (char === '\\' || char === '{' || char === '}') {
+      out += `\\${char}`
+      continue
+    }
+    if (char === '\r') {
+      continue
+    }
+    if (char === '\n') {
+      out += '\\par\n'
+      continue
+    }
+    const code = char.codePointAt(0) ?? 0
+    if (code < 128) {
+      out += char
+      continue
+    }
+    const signed = code > 32767 ? code - 65536 : code
+    out += `\\u${signed}?`
+  }
+  return out
+}
+
+export function toRtf(title: string, pages: string[]): string {
+  const heading = escapeRtf(title.trim() || 'Tài liệu')
+  const body = pages
+    .map((text, index) => {
+      const pageTitle = escapeRtf(`Trang ${index + 1}`)
+      const content = escapeRtf(text.trim() || '(không có chữ)')
+      return `\\b ${pageTitle}\\b0\\par\n${content}\\par\\par\n`
+    })
+    .join('')
+  return `{\\rtf1\\ansi\\ansicpg65001\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\uc1\\pard\\f0\\fs24\\b ${heading}\\b0\\par\\par\n${body}}`
 }
 
 export function toMarkdown(title: string, pages: string[]): string {
@@ -284,6 +337,12 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/html;charset=utf-8'
     case 'md':
       return 'text/markdown;charset=utf-8'
+    case 'rtf':
+      return 'application/rtf'
+    case 'png':
+      return 'image/png'
+    case 'jpg':
+      return 'image/jpeg'
     case 'docx':
     case 'doc':
       return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'

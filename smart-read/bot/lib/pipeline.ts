@@ -18,14 +18,14 @@ export const PIPELINE_STAGES = [
     subagent: "pdf-editor",
     title: "PDF editor",
     summary:
-      "Implement in-browser PDF page operations: rotate, reverse, page numbers, delete, duplicate, extract, keep, split, insert blank, reorder, merge, persist undo, and text overlay.",
+      "Implement in-browser PDF page operations: rotate, reverse, page numbers, watermark, crop, delete, duplicate, extract, keep, split, insert blank, reorder, merge, persist undo, and text overlay.",
   },
   {
     id: "format-converter",
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, Markdown, DOCX/DOC, EPUB, and MOBI; import TXT/MD/HTML as PDF.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, DOCX/DOC, EPUB, and MOBI; raster pages to PNG/JPEG; import TXT/MD/HTML as PDF.",
   },
   {
     id: "qa-reviewer",
@@ -106,7 +106,7 @@ export const SUPPORTED_FORMATS = [
     id: "pdf",
     label: "PDF",
     role: "edit",
-    notes: "Source format. Page rotate 90/180, reverse order, page numbers, delete, duplicate, extract, keep, split to ZIP, insert blank, reorder, merge, persist undo, and text overlay.",
+    notes: "Source format. Page rotate 90/180, reverse order, page numbers, watermark, crop, delete, duplicate, extract, keep, split to ZIP, insert blank, reorder, merge, persist undo, and text overlay.",
   },
   {
     id: "txt",
@@ -128,6 +128,12 @@ export const SUPPORTED_FORMATS = [
     notes: "Markdown document with one heading per page. Uploading Markdown builds a PDF first.",
   },
   {
+    id: "rtf",
+    label: "RTF",
+    role: "export",
+    notes: "Rich Text from extracted page text. Opens in Word and most editors.",
+  },
+  {
     id: "docx",
     label: "DOCX / DOC",
     role: "export",
@@ -145,5 +151,18 @@ export const SUPPORTED_FORMATS = [
     label: "MOBI",
     role: "export",
     notes: "Kindle-oriented export. POSTs EPUB to /api/mobi for Calibre ebook-convert when available; otherwise EPUB fallback.",
+  },
+  {
+    id: "png",
+    label: "PNG",
+    role: "export",
+    notes: "Raster of each selected page. One page downloads a PNG; several pages download a ZIP.",
+  },
+  {
+    id: "jpg",
+    label: "JPEG",
+    role: "export",
+    aliases: ["jpeg"],
+    notes: "Raster of each selected page with a white background. Several pages download a ZIP.",
   },
 ] as const;

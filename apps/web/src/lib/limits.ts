@@ -103,3 +103,18 @@ export function splitZipName(filename: string): string {
   const base = filename.replace(/\.pdf$/i, '') || 'document'
   return `${base}-tach.zip`
 }
+
+export function imagePageName(
+  filename: string,
+  pageIndex: number,
+  ext: 'png' | 'jpg',
+): string {
+  const base = filename.replace(/\.(pdf|txt|text|md|markdown|html|htm)$/i, '') || 'document'
+  const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
+  return `${base}-trang-${page}.${ext}`
+}
+
+export function imageZipName(filename: string, ext: 'png' | 'jpg'): string {
+  const base = filename.replace(/\.(pdf|txt|text|md|markdown|html|htm)$/i, '') || 'document'
+  return `${base}-anh-${ext}.zip`
+}

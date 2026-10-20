@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { renderPageToCanvas } from '../lib/extract.ts'
 import {
+  CROP_MARGINS,
   OVERLAY_PRESETS,
   addPageNumbers,
   addTextOverlay,
+  addWatermark,
+  cropPages,
   deletePages,
   duplicatePages,
   duplicatedIndexes,
@@ -22,11 +25,13 @@ import {
   rotatePagesBy,
   splitEvery,
   textPagesToPdf,
+  type CropMarginId,
   type MergeWhere,
   type OverlayPosition,
   type OverlayPresetId,
   type PageNumberPosition,
   type PageNumberStyle,
+  type WatermarkStyle,
 } from '../lib/pdf.ts'
 import { zipPdfParts } from '../lib/convert.ts'
 import { pagesFromImportedText } from '../lib/import-text.ts'
@@ -87,6 +92,18 @@ const PAGE_NUMBER_STYLES: { id: PageNumberStyle; label: string }[] = [
   { id: 'trang-n', label: 'Trang 1' },
 ]
 
+const WATERMARK_STYLES: { id: WatermarkStyle; label: string }[] = [
+  { id: 'diagonal', label: 'Chéo' },
+  { id: 'footer', label: 'Chân trang' },
+  { id: 'header', label: 'Đầu trang' },
+]
+
+const CROP_MARGIN_PRESETS: { id: CropMarginId; label: string }[] = [
+  { id: 'narrow', label: 'Hẹp' },
+  { id: 'medium', label: 'Vừa' },
+  { id: 'wide', label: 'Rộng' },
+]
+
 function initialEditorView() {
   const current = getDocument()
   return current ? restoreEditorView(current.pageCount) : { page: 0, selected: [0], anchor: 0 }
@@ -103,6 +120,9 @@ export function Editor() {
   const [overlayPos, setOverlayPos] = useState<OverlayPosition>(OVERLAY_PRESETS['top-left'])
   const [numberPos, setNumberPos] = useState<PageNumberPosition>('bottom-center')
   const [numberStyle, setNumberStyle] = useState<PageNumberStyle>('n-of-total')
+  const [watermark, setWatermark] = useState('')
+  const [watermarkStyle, setWatermarkStyle] = useState<WatermarkStyle>('diagonal')
+  const [cropMargin, setCropMargin] = useState<CropMarginId>('medium')
   const [mergePending, setMergePending] = useState<{
     name: string
     bytes: Uint8Array
@@ -445,9 +465,10 @@ export function Editor() {
       <header className="page-head">
         <h1>Chỉnh sửa PDF</h1>
         <p>
-          Xoay, đảo thứ tự, đánh số trang, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách thành
-          nhiều PDF, chèn trang trắng, kéo thumbnail để đổi thứ tự, hoàn tác (giữ khi tải lại
-          trang), gộp tệp và chèn chữ, rồi tải PDF mới. Có thể mở TXT/Markdown/HTML để tạo PDF.
+          Xoay, đảo thứ tự, đánh số trang, đóng chữ mờ, cắt lề, xóa, nhân bản, tách hoặc giữ trang
+          đã chọn, tách thành nhiều PDF, chèn trang trắng, kéo thumbnail để đổi thứ tự, hoàn tác
+          (giữ khi tải lại trang), gộp tệp và chèn chữ, rồi tải PDF mới. Có thể mở TXT/Markdown/HTML
+          để tạo PDF.
         </p>
       </header>
 
@@ -505,7 +526,7 @@ export function Editor() {
               Ctrl/Cmd chọn thêm, Shift chọn dải. Phím: ← →, R xoay 90°, Shift+R xoay 180°, Delete
               xóa, Alt+↑↓ dời nhóm, Ctrl+Z hoàn tác, Ctrl+Y làm lại. Nhân bản chèn bản sao sau trang
               đã chọn cuối; tách trang tải một PDF mới; giữ lại chỉ các trang đã chọn; tách mỗi N
-              trang thành ZIP.
+              trang thành ZIP; chữ mờ và cắt lề áp dụng cho trang đã chọn.
             </p>
           </div>
           <div className="tools" role="toolbar" aria-label="Công cụ chỉnh PDF">
@@ -873,6 +894,68 @@ export function Editor() {
                 }
               >
                 Đánh số {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+              </button>
+            </fieldset>
+            <fieldset className="watermark-pack">
+              <legend>Chữ mờ</legend>
+              <label className="overlay-field">
+                Nội dung
+                <input
+                  value={watermark}
+                  onChange={(event) => setWatermark(event.target.value)}
+                  aria-label="Nội dung chữ mờ"
+                />
+              </label>
+              <div className="preset-row" role="group" aria-label="Kiểu chữ mờ">
+                {WATERMARK_STYLES.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={watermarkStyle === item.id ? 'picked' : undefined}
+                    onClick={() => setWatermarkStyle(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void run((bytes) =>
+                    addWatermark(bytes, {
+                      text: watermark,
+                      indexes: targets,
+                      style: watermarkStyle,
+                    }),
+                  )
+                }
+              >
+                Đóng chữ mờ {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+              </button>
+            </fieldset>
+            <fieldset className="crop-pack">
+              <legend>Cắt lề trang</legend>
+              <div className="preset-row" role="group" aria-label="Độ rộng lề cắt">
+                {CROP_MARGIN_PRESETS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={cropMargin === item.id ? 'picked' : undefined}
+                    onClick={() => setCropMargin(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void run((bytes) => cropPages(bytes, targets, CROP_MARGINS[cropMargin]))
+                }
+              >
+                Cắt lề {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
               </button>
             </fieldset>
             <label className="file-btn secondary-file">

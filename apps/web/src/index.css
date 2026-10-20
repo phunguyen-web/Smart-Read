@@ -343,13 +343,17 @@ button:disabled {
 
 .merge-where legend,
 .number-stamp legend,
-.split-pack legend {
+.split-pack legend,
+.watermark-pack legend,
+.crop-pack legend {
   font-weight: 600;
   margin-bottom: 4px;
 }
 
 .number-stamp,
-.split-pack {
+.split-pack,
+.watermark-pack,
+.crop-pack {
   border: 1px dashed var(--line);
   border-radius: 12px;
   padding: 10px;
