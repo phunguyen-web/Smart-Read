@@ -266,7 +266,30 @@ export async function renderPageThumbnail(
   context.strokeRect(0.5, 0.5, canvas.width - 1, canvas.height - 1)
 }
 
-export type PageImageType = 'image/png' | 'image/jpeg'
+export type PageImageType = 'image/png' | 'image/jpeg' | 'image/webp'
+
+export async function rasterToPng(bytes: Uint8Array): Promise<Uint8Array> {
+  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') {
+    throw new Error('Không giải mã được ảnh WEBP trên môi trường này.')
+  }
+  const copy = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(copy).set(bytes)
+  const bitmap = await createImageBitmap(new Blob([copy]))
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, bitmap.width)
+    canvas.height = Math.max(1, bitmap.height)
+    const context = canvas.getContext('2d')
+    if (!context) {
+      throw new Error('Không chuyển được ảnh WEBP sang PNG.')
+    }
+    context.drawImage(bitmap, 0, 0)
+    const blob = await canvasToBlob(canvas, 'image/png')
+    return new Uint8Array(await blob.arrayBuffer())
+  } finally {
+    bitmap.close()
+  }
+}
 
 function canvasToBlob(
   canvas: HTMLCanvasElement,

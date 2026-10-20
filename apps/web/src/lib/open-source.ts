@@ -1,8 +1,10 @@
+import { rasterToPng } from './extract.ts'
 import {
   pagesFromDocx,
   pagesFromEpub,
   pagesFromImportedText,
   pagesFromOdt,
+  pagesFromXlsx,
 } from './import-text.ts'
 import { isImageSource, isZipImportSource, type LoadedSource } from './limits.ts'
 import { imagesToPdf, textPagesToPdf } from './pdf.ts'
@@ -14,9 +16,13 @@ export async function pdfFromLoadedSource(
     return { name: source.name, bytes: source.bytes }
   }
   if (isImageSource(source)) {
+    const image =
+      source.kind === 'webp'
+        ? { bytes: await rasterToPng(source.bytes), kind: 'png' as const }
+        : { bytes: source.bytes, kind: source.kind }
     return {
       name: source.pdfName,
-      bytes: await imagesToPdf([{ bytes: source.bytes, kind: source.kind }]),
+      bytes: await imagesToPdf([image]),
     }
   }
   if (isZipImportSource(source)) {
@@ -25,7 +31,9 @@ export async function pdfFromLoadedSource(
         ? await pagesFromDocx(source.bytes)
         : source.kind === 'odt'
           ? await pagesFromOdt(source.bytes)
-          : await pagesFromEpub(source.bytes)
+          : source.kind === 'xlsx'
+            ? await pagesFromXlsx(source.bytes)
+            : await pagesFromEpub(source.bytes)
     return { name: source.pdfName, bytes: await textPagesToPdf(pages) }
   }
   return {

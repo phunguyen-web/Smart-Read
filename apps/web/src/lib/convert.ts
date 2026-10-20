@@ -7,6 +7,7 @@ export type ExportFormat =
   | 'rtf'
   | 'json'
   | 'csv'
+  | 'xlsx'
   | 'docx'
   | 'doc'
   | 'odt'
@@ -15,11 +16,12 @@ export type ExportFormat =
   | 'mobi'
   | 'png'
   | 'jpg'
+  | 'webp'
 
-export type ImageExportFormat = 'png' | 'jpg'
+export type ImageExportFormat = 'png' | 'jpg' | 'webp'
 
 export function isImageFormat(format: ExportFormat): format is ImageExportFormat {
-  return format === 'png' || format === 'jpg'
+  return format === 'png' || format === 'jpg' || format === 'webp'
 }
 
 export type EpubOptions = {
@@ -229,6 +231,91 @@ ${sections.join('\n')}
 function odtParagraphs(text: string): string {
   const lines = (text.trim() || '(không có chữ)').split(/\n+/)
   return lines.map((line) => `      <text:p>${escapeXml(line)}</text:p>`).join('\n')
+}
+
+function xlsxInline(value: string): string {
+  return `<c t="inlineStr"><is><t xml:space="preserve">${escapeXml(value).replaceAll('\n', '&#10;')}</t></is></c>`
+}
+
+export async function toXlsx(title: string, pages: string[]): Promise<Blob> {
+  const heading = escapeXml(title.trim() || 'Tài liệu')
+  const rows = [
+    `<row r="1">${xlsxInline('page')}${xlsxInline('text')}</row>`,
+    ...(pages.length > 0 ? pages : ['']).map(
+      (text, index) =>
+        `<row r="${index + 2}">${xlsxInline(String(index + 1))}${xlsxInline(text)}</row>`,
+    ),
+  ]
+  const zip = new JSZip()
+  zip.file(
+    '[Content_Types].xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+</Types>`,
+  )
+  zip.file(
+    '_rels/.rels',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+</Relationships>`,
+  )
+  zip.file(
+    'docProps/core.xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <dc:title>${heading}</dc:title>
+  <dc:creator>Smart-Read</dc:creator>
+</cp:coreProperties>`,
+  )
+  zip.file(
+    'xl/_rels/workbook.xml.rels',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`,
+  )
+  zip.file(
+    'xl/workbook.xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Pages" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`,
+  )
+  zip.file(
+    'xl/styles.xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>
+  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+  <borders count="1"><border/></borders>
+  <cellStyleXfs count="1"><xf/></cellStyleXfs>
+  <cellXfs count="1"><xf/></cellXfs>
+</styleSheet>`,
+  )
+  zip.file(
+    'xl/worksheets/sheet1.xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+${rows.join('\n')}
+  </sheetData>
+</worksheet>`,
+  )
+  return zip.generateAsync({
+    type: 'blob',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
 }
 
 export async function toOdt(title: string, pages: string[]): Promise<Blob> {
@@ -469,10 +556,14 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/json;charset=utf-8'
     case 'csv':
       return 'text/csv;charset=utf-8'
+    case 'xlsx':
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
       return 'image/png'
     case 'jpg':
       return 'image/jpeg'
+    case 'webp':
+      return 'image/webp'
     case 'docx':
     case 'doc':
       return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'

@@ -570,6 +570,211 @@ export async function fitPagesToA4(
   return new Uint8Array(await dst.save())
 }
 
+export type NUpCount = 2 | 4
+
+export function nUpSheetCount(pageCount: number, n: NUpCount): number {
+  const total = Math.max(0, Math.trunc(pageCount) || 0)
+  return total === 0 ? 0 : Math.ceil(total / n)
+}
+
+export function nUpSheetSize(n: NUpCount): PageSize {
+  return n === 2 ? A4_LANDSCAPE : A4_PORTRAIT
+}
+
+/** Reading-order cells on an n-up sheet. Origin is bottom-left. */
+export function nUpCellRects(n: NUpCount, sheet: PageSize): PageBox[] {
+  if (n === 2) {
+    const half = sheet.width / 2
+    return [
+      { x: 0, y: 0, width: half, height: sheet.height },
+      { x: half, y: 0, width: half, height: sheet.height },
+    ]
+  }
+  const halfW = sheet.width / 2
+  const halfH = sheet.height / 2
+  return [
+    { x: 0, y: halfH, width: halfW, height: halfH },
+    { x: halfW, y: halfH, width: halfW, height: halfH },
+    { x: 0, y: 0, width: halfW, height: halfH },
+    { x: halfW, y: 0, width: halfW, height: halfH },
+  ]
+}
+
+function copyDocumentInfo(
+  src: PDFDocument,
+  dst: PDFDocument,
+): void {
+  const title = src.getTitle()
+  const author = src.getAuthor()
+  const subject = src.getSubject()
+  if (title) {
+    dst.setTitle(title)
+  }
+  if (author) {
+    dst.setAuthor(author)
+  }
+  if (subject) {
+    dst.setSubject(subject)
+  }
+  dst.setProducer('Smart-Read')
+  dst.setCreator('Smart-Read')
+}
+
+/** Pack selected (or all) pages onto 2-up or 4-up A4 sheets. Replaces the document. */
+export async function nUpPages(
+  bytes: Uint8Array,
+  n: NUpCount,
+  pageIndexes?: readonly number[],
+): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  if (count < 1) {
+    throw new Error('Không có trang để gộp.')
+  }
+  const unique = uniqueSorted(
+    pageIndexes == null
+      ? Array.from({ length: count }, (_, index) => index)
+      : [...pageIndexes],
+    false,
+  ).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gộp.')
+  }
+  const sheet = nUpSheetSize(n)
+  const cells = nUpCellRects(n, sheet)
+  const dst = await PDFDocument.create()
+  copyDocumentInfo(src, dst)
+  for (let start = 0; start < unique.length; start += n) {
+    const page = dst.addPage([sheet.width, sheet.height])
+    for (let cell = 0; cell < n; cell += 1) {
+      const sourceIndex = unique[start + cell]
+      if (sourceIndex == null) {
+        break
+      }
+      const [embedded] = await dst.embedPages([src.getPage(sourceIndex)])
+      const box = fittedPageRect(
+        { width: embedded.width, height: embedded.height },
+        cells[cell]!,
+      )
+      page.drawPage(embedded, {
+        x: cells[cell]!.x + box.x,
+        y: cells[cell]!.y + box.y,
+        width: box.width,
+        height: box.height,
+      })
+    }
+  }
+  return new Uint8Array(await dst.save())
+}
+
+/**
+ * Saddle-stitch booklet slots, padded to a multiple of 4.
+ * `null` is a blank pad page. For 4 pages: [3, 0, 1, 2].
+ */
+export function bookletSlotOrder(count: number): (number | null)[] {
+  const total = Math.max(0, Math.trunc(count) || 0)
+  const padded = Math.ceil(total / 4) * 4
+  if (padded === 0) {
+    return []
+  }
+  const order: (number | null)[] = []
+  const slot = (index: number): number | null =>
+    index >= 0 && index < total ? index : null
+  for (let sheet = 0; sheet < padded / 4; sheet += 1) {
+    order.push(
+      slot(padded - 1 - sheet * 2),
+      slot(sheet * 2),
+      slot(sheet * 2 + 1),
+      slot(padded - 2 - sheet * 2),
+    )
+  }
+  return order
+}
+
+export function bookletSheetCount(count: number): number {
+  return bookletSlotOrder(count).length / 2
+}
+
+/** 2-up A4 landscape sheets in saddle-stitch booklet order, with blank pads. */
+export async function imposeBooklet(bytes: Uint8Array): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  if (count < 1) {
+    throw new Error('Không có trang để xếp sách gấp.')
+  }
+  const slots = bookletSlotOrder(count)
+  const sheet = A4_LANDSCAPE
+  const cells = nUpCellRects(2, sheet)
+  const dst = await PDFDocument.create()
+  copyDocumentInfo(src, dst)
+  for (let start = 0; start < slots.length; start += 2) {
+    const page = dst.addPage([sheet.width, sheet.height])
+    for (let cell = 0; cell < 2; cell += 1) {
+      const sourceIndex = slots[start + cell]
+      if (sourceIndex == null) {
+        continue
+      }
+      const [embedded] = await dst.embedPages([src.getPage(sourceIndex)])
+      const box = fittedPageRect(
+        { width: embedded.width, height: embedded.height },
+        cells[cell]!,
+      )
+      page.drawPage(embedded, {
+        x: cells[cell]!.x + box.x,
+        y: cells[cell]!.y + box.y,
+        width: box.width,
+        height: box.height,
+      })
+    }
+  }
+  return new Uint8Array(await dst.save())
+}
+
+export type FlipAxis = 'horizontal' | 'vertical'
+
+/** Mirror selected pages horizontally (default) or vertically. */
+export async function flipPages(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  axis: FlipAxis = 'horizontal',
+): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  const unique = new Set(
+    uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count),
+  )
+  if (unique.size === 0) {
+    throw new Error('Chọn ít nhất một trang để lật.')
+  }
+  const dst = await PDFDocument.create()
+  copyDocumentInfo(src, dst)
+  for (let index = 0; index < count; index += 1) {
+    if (!unique.has(index)) {
+      const [copied] = await dst.copyPages(src, [index])
+      dst.addPage(copied)
+      continue
+    }
+    const [embedded] = await dst.embedPages([src.getPage(index)])
+    const page = dst.addPage([embedded.width, embedded.height])
+    if (axis === 'vertical') {
+      page.drawPage(embedded, {
+        x: 0,
+        y: embedded.height,
+        xScale: 1,
+        yScale: -1,
+      })
+    } else {
+      page.drawPage(embedded, {
+        x: embedded.width,
+        y: 0,
+        xScale: -1,
+        yScale: 1,
+      })
+    }
+  }
+  return new Uint8Array(await dst.save())
+}
+
 export async function insertBlankPage(
   bytes: Uint8Array,
   afterIndex: number,

@@ -4,6 +4,7 @@ import {
   extractPageTexts,
   findPagesWithText,
   grayscalePagePngs,
+  rasterToPng,
   renderPageToCanvas,
   repeatedPageIndexes,
 } from '../lib/extract.ts'
@@ -21,7 +22,9 @@ import {
   duplicatedIndexes,
   extractPages,
   fitPagesToA4,
+  flipPages,
   imagesToPdf,
+  imposeBooklet,
   insertBlankPage,
   insertImages,
   interleaveHalvesOrder,
@@ -30,6 +33,7 @@ import {
   mergeInsertIndex,
   mergePdf,
   movePages,
+  nUpPages,
   pageCount,
   readMetadata,
   remapAfterOrder,
@@ -685,7 +689,14 @@ export function Editor() {
     setError(null)
     try {
       const images = await readImageFiles(files)
-      const pages = images.map((image) => ({ bytes: image.bytes, kind: image.kind }))
+      const pages: { bytes: Uint8Array; kind: 'png' | 'jpg' }[] = []
+      for (const image of images) {
+        pages.push(
+          image.kind === 'webp'
+            ? { bytes: await rasterToPng(image.bytes), kind: 'png' as const }
+            : { bytes: image.bytes, kind: image.kind },
+        )
+      }
       if (!doc) {
         await forgetHistory()
         await setDocument(swapExtension(images[0]!.name, 'pdf'), await imagesToPdf(pages))
@@ -738,11 +749,12 @@ export function Editor() {
         <h1>Chỉnh sửa PDF</h1>
         <p>
           Xoay, đảo thứ tự, đan/tách trang lẻ-chẵn, đánh số trang, đóng chữ mờ, cắt lề, chuyển xám,
-          tìm chữ, xóa trang không chữ hoặc trùng chữ, vừa khổ A4, đảo chọn, xóa, nhân bản, tách hoặc
-          giữ trang đã chọn, tách thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG, kéo thumbnail
-          để đổi thứ tự, hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu và chèn
-          chữ, rồi tải PDF mới. Có thể mở TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, FB2, EPUB
-          hoặc PNG/JPEG để tạo PDF.
+          tìm chữ, xóa trang không chữ hoặc trùng chữ, vừa khổ A4, gộp 2/4 trang mỗi tờ, xếp sách
+          gấp, lật ngang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách thành nhiều PDF,
+          chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự, hoàn tác (giữ khi
+          tải lại trang), gộp tệp, sửa thông tin tài liệu và chèn chữ, rồi tải PDF mới. Có thể mở
+          TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, XLSX, FB2, EPUB hoặc PNG/JPEG/WEBP để tạo
+          PDF.
         </p>
       </header>
 
@@ -751,7 +763,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, FB2, EPUB, PNG hoặc JPEG để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, XLSX, FB2, EPUB, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -801,9 +813,9 @@ export function Editor() {
               xóa, Alt+↑↓ dời nhóm, Ctrl+Z hoàn tác, Ctrl+Y làm lại, Ctrl+F tìm chữ, Ctrl+G tới
               trang, Ctrl+I đảo chọn, F3 kết quả sau. Nhân bản chèn bản sao sau trang đã chọn cuối;
               tách trang tải một PDF mới; giữ lại chỉ các trang đã chọn; tách mỗi N trang thành ZIP;
-              đan hai nửa (mặt trước rồi mặt sau) hoặc tách lẻ/chẵn; chữ mờ, cắt lề, chuyển xám, vừa
-              A4 và xóa trùng chữ áp dụng cho trang đã chọn. Chèn PNG/JPEG thành trang mới; thông tin
-              tiêu đề/tác giả lưu vào PDF.
+              đan hai nửa (mặt trước rồi mặt sau) hoặc tách lẻ/chẵn; gộp 2/4 trang mỗi tờ, xếp sách
+              gấp, lật ngang; chữ mờ, cắt lề, chuyển xám, vừa A4 và xóa trùng chữ áp dụng cho trang
+              đã chọn. Chèn PNG/JPEG/WEBP thành trang mới; thông tin tiêu đề/tác giả lưu vào PDF.
             </p>
           </div>
           <div className="tools" role="toolbar" aria-label="Công cụ chỉnh PDF">
@@ -1228,6 +1240,65 @@ export function Editor() {
               >
                 Tách lẻ/chẵn
               </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-label="Gộp các trang đã chọn thành 2 trang mỗi tờ A4 ngang"
+                onClick={() => {
+                  const indexes = targets.length > 1 ? targets : undefined
+                  void run((bytes) => nUpPages(bytes, 2, indexes), () => {
+                    setPage(0)
+                    setSelected([0])
+                    setAnchor(0)
+                    setSearchRaw(null)
+                  })
+                }}
+              >
+                Gộp 2 trang/tờ
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-label="Gộp các trang đã chọn thành 4 trang mỗi tờ A4"
+                onClick={() => {
+                  const indexes = targets.length > 1 ? targets : undefined
+                  void run((bytes) => nUpPages(bytes, 4, indexes), () => {
+                    setPage(0)
+                    setSelected([0])
+                    setAnchor(0)
+                    setSearchRaw(null)
+                  })
+                }}
+              >
+                Gộp 4 trang/tờ
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-label="Xếp sách gấp (2 trang mỗi tờ, thứ tự in gáy)"
+                onClick={() => {
+                  void run((bytes) => imposeBooklet(bytes), () => {
+                    setPage(0)
+                    setSelected([0])
+                    setAnchor(0)
+                    setSearchRaw(null)
+                  })
+                }}
+              >
+                Sách gấp
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={
+                  targets.length > 1
+                    ? `Lật ngang ${targets.length} trang đã chọn`
+                    : 'Lật ngang trang hiện tại'
+                }
+                onClick={() => void run((bytes) => flipPages(bytes, targets, 'horizontal'))}
+              >
+                Lật ngang {targets.length > 1 ? `${targets.length} trang` : ''}
+              </button>
             </div>
             <fieldset className="number-stamp">
               <legend>Đánh số trang</legend>
@@ -1380,12 +1451,12 @@ export function Editor() {
               </button>
             </div>
             <label className="file-btn secondary-file">
-              Chèn ảnh PNG/JPEG
+              Chèn ảnh PNG/JPEG/WEBP
               <input
                 type="file"
-                accept="image/png,.png,image/jpeg,.jpg,.jpeg"
+                accept="image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp"
                 multiple
-                aria-label="Chèn một hoặc nhiều ảnh PNG hoặc JPEG thành trang PDF"
+                aria-label="Chèn một hoặc nhiều ảnh PNG, JPEG hoặc WEBP thành trang PDF"
                 onChange={(event) => {
                   void onInsertImages(event.target.files)
                   event.target.value = ''

@@ -5,7 +5,7 @@ export const MAX_IMPORT_PAGES = 80
 export const IMPORT_PAGE_CHARS = 1800
 
 export type ImportedTextKind = 'txt' | 'md' | 'html' | 'json' | 'csv' | 'rtf' | 'fb2'
-export type ZipImportKind = 'docx' | 'epub' | 'odt'
+export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'xlsx'
 
 function capPages(pages: string[]): string[] {
   const cleaned = pages.map((page) => page.replaceAll('\u0000', '').trimEnd())
@@ -316,6 +316,67 @@ function odtXmlToPlain(xml: string): string {
       .replace(/\n{3,}/g, '\n\n')
       .trim(),
   )
+}
+
+function xlsxSharedStrings(xml: string): string[] {
+  return [...xml.matchAll(/<si\b[\s\S]*?<\/si>/gi)].map((match) =>
+    unescapeXml(
+      [...match[0].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/gi)]
+        .map((part) => part[1] ?? '')
+        .join(''),
+    ),
+  )
+}
+
+function xlsxCellText(cell: string, shared: string[]): string {
+  if (/\bt="inlineStr"/i.test(cell)) {
+    const inner = [...cell.matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/gi)]
+      .map((part) => part[1] ?? '')
+      .join('')
+    return unescapeXml(inner)
+  }
+  const value = cell.match(/<v\b[^>]*>([\s\S]*?)<\/v>/i)?.[1] ?? ''
+  if (/\bt="s"/i.test(cell)) {
+    const index = Number(value)
+    return Number.isInteger(index) && index >= 0 ? (shared[index] ?? '') : ''
+  }
+  return unescapeXml(value)
+}
+
+export async function pagesFromXlsx(bytes: Uint8Array): Promise<string[]> {
+  let zip: JSZip
+  try {
+    zip = await JSZip.loadAsync(bytes)
+  } catch {
+    throw new Error('Tệp XLSX không phải bảng tính Office Open XML hợp lệ.')
+  }
+  const sheet =
+    zip.file('xl/worksheets/sheet1.xml') ??
+    zip.file(Object.keys(zip.files).find((name) => /xl\/worksheets\/sheet\d+\.xml$/i.test(name)) ?? '')
+  if (!sheet) {
+    throw new Error('Tệp XLSX thiếu worksheet.')
+  }
+  const sharedXml = zip.file('xl/sharedStrings.xml')
+    ? await zip.file('xl/sharedStrings.xml')!.async('string')
+    : ''
+  const shared = sharedXml ? xlsxSharedStrings(sharedXml) : []
+  const xml = await sheet.async('string')
+  const rows = [...xml.matchAll(/<row\b[\s\S]*?<\/row>/gi)].map((match) =>
+    [...match[0].matchAll(/<c\b[\s\S]*?<\/c>/gi)].map((cell) => xlsxCellText(cell[0], shared)),
+  )
+  const nonempty = rows.filter((row) => row.some((cell) => cell.trim()))
+  if (nonempty.length === 0) {
+    throw new Error('Tệp XLSX trống.')
+  }
+  const header = nonempty[0] ?? []
+  const start =
+    header.length >= 2 && /^page$/i.test(header[0]!.trim()) && /^text$/i.test(header[1]!.trim())
+      ? 1
+      : 0
+  const pages = nonempty
+    .slice(start)
+    .map((row) => (row.length >= 2 ? row.slice(1).join('\n') : row[0] ?? ''))
+  return capPages(pages)
 }
 
 export async function pagesFromOdt(bytes: Uint8Array): Promise<string[]> {

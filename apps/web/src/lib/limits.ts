@@ -3,9 +3,10 @@ import type { ImportedTextKind, ZipImportKind } from './import-text.ts'
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 export const ACCEPT_SOURCES =
-  'application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,application/json,.json,text/csv,.csv,application/rtf,.rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,application/msword,.doc,application/vnd.oasis.opendocument.text,.odt,application/x-fictionbook+xml,.fb2,application/epub+zip,.epub,image/png,.png,image/jpeg,.jpg,.jpeg'
+  'application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,application/json,.json,text/csv,.csv,application/rtf,.rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,application/msword,.doc,application/vnd.oasis.opendocument.text,.odt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/x-fictionbook+xml,.fb2,application/epub+zip,.epub,image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp'
 
-export type ImageKind = 'png' | 'jpg'
+export type ImageKind = 'png' | 'jpg' | 'webp'
+export type EmbedImageKind = 'png' | 'jpg'
 export type SourceKind = 'pdf' | ImportedTextKind | ImageKind | ZipImportKind
 
 export type LoadedSource =
@@ -15,19 +16,19 @@ export type LoadedSource =
   | { kind: ZipImportKind; name: string; bytes: Uint8Array; pdfName: string }
 
 export function isImageKind(kind: SourceKind): kind is ImageKind {
-  return kind === 'png' || kind === 'jpg'
+  return kind === 'png' || kind === 'jpg' || kind === 'webp'
 }
 
 export function isImageSource(
   source: LoadedSource,
 ): source is Extract<LoadedSource, { kind: ImageKind }> {
-  return source.kind === 'png' || source.kind === 'jpg'
+  return source.kind === 'png' || source.kind === 'jpg' || source.kind === 'webp'
 }
 
 export function isZipImportSource(
   source: LoadedSource,
 ): source is Extract<LoadedSource, { kind: ZipImportKind }> {
-  return source.kind === 'docx' || source.kind === 'epub' || source.kind === 'odt'
+  return source.kind === 'docx' || source.kind === 'epub' || source.kind === 'odt' || source.kind === 'xlsx'
 }
 
 export function imageKindFromFile(file: { name: string; type: string }): ImageKind {
@@ -44,7 +45,10 @@ export function imageKindFromFile(file: { name: string; type: string }): ImageKi
   ) {
     return 'jpg'
   }
-  throw new Error('Chỉ nhận ảnh PNG hoặc JPEG.')
+  if (type === 'image/webp' || name.endsWith('.webp')) {
+    return 'webp'
+  }
+  throw new Error('Chỉ nhận ảnh PNG, JPEG hoặc WEBP.')
 }
 
 export function assertPdfFile(file: File): void {
@@ -105,6 +109,15 @@ export function sourceKindFromFile(file: File): SourceKind {
   ) {
     return 'odt'
   }
+  if (
+    type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    name.endsWith('.xlsx')
+  ) {
+    return 'xlsx'
+  }
+  if (name.endsWith('.xls') || type === 'application/vnd.ms-excel') {
+    throw new Error('Chỉ mở được XLSX (Office Open XML), không phải XLS nhị phân.')
+  }
   if (type === 'application/epub+zip' || name.endsWith('.epub')) {
     return 'epub'
   }
@@ -118,7 +131,7 @@ export function sourceKindFromFile(file: File): SourceKind {
   try {
     return imageKindFromFile(file)
   } catch {
-    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, FB2, EPUB, PNG hoặc JPEG.')
+    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, XLSX, FB2, EPUB, PNG, JPEG hoặc WEBP.')
   }
 }
 
@@ -150,7 +163,7 @@ export async function readSourceFile(file: File): Promise<LoadedSource> {
       pdfName: swapExtension(file.name, 'pdf'),
     }
   }
-  if (kind === 'docx' || kind === 'epub' || kind === 'odt') {
+  if (kind === 'docx' || kind === 'epub' || kind === 'odt' || kind === 'xlsx') {
     return {
       kind,
       name: file.name,
@@ -171,7 +184,7 @@ export async function readImageFiles(
 ): Promise<{ kind: ImageKind; bytes: Uint8Array; name: string }[]> {
   const list = [...files]
   if (list.length === 0) {
-    throw new Error('Chọn ít nhất một ảnh PNG hoặc JPEG.')
+    throw new Error('Chọn ít nhất một ảnh PNG, JPEG hoặc WEBP.')
   }
   const images: { kind: ImageKind; bytes: Uint8Array; name: string }[] = []
   for (const file of list) {
@@ -192,7 +205,7 @@ export async function readImageFiles(
 
 export function swapExtension(filename: string, ext: string): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|json|csv|docx|doc|epub|odt|fb2|rtf)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|json|csv|xlsx|xls|docx|doc|epub|odt|fb2|rtf)$/i, '') ||
     'document'
   return `${base}.${ext}`
 }
@@ -229,18 +242,18 @@ export function splitZipName(filename: string): string {
 export function imagePageName(
   filename: string,
   pageIndex: number,
-  ext: 'png' | 'jpg',
+  ext: 'png' | 'jpg' | 'webp',
 ): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|json|csv|docx|doc|epub|odt|fb2|rtf)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|json|csv|xlsx|xls|docx|doc|epub|odt|fb2|rtf)$/i, '') ||
     'document'
   const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
   return `${base}-trang-${page}.${ext}`
 }
 
-export function imageZipName(filename: string, ext: 'png' | 'jpg'): string {
+export function imageZipName(filename: string, ext: 'png' | 'jpg' | 'webp'): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|json|csv|docx|doc|epub|odt|fb2|rtf)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|json|csv|xlsx|xls|docx|doc|epub|odt|fb2|rtf)$/i, '') ||
     'document'
   return `${base}-anh-${ext}.zip`
 }

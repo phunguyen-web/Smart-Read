@@ -17,6 +17,7 @@ import {
   toOdt,
   toRtf,
   toTxt,
+  toXlsx,
   zipPdfParts,
 } from './convert.ts'
 import {
@@ -31,6 +32,7 @@ import {
   pagesFromOdt,
   pagesFromPlainText,
   pagesFromRtf,
+  pagesFromXlsx,
   rtfToPlain,
   parseCsv,
   stripMarkup,
@@ -70,6 +72,8 @@ import {
 } from './limits.ts'
 import {
   A4_HEIGHT,
+  A4_LANDSCAPE,
+  A4_PORTRAIT,
   A4_WIDTH,
   addPageNumbers,
   addTextOverlay,
@@ -86,7 +90,9 @@ import {
   extractPages,
   fitPagesToA4,
   fittedPageRect,
+  flipPages,
   formatPageNumber,
+  imposeBooklet,
   IMAGE_PAGE_MAX_EDGE,
   imagePageSize,
   imagesToPdf,
@@ -96,9 +102,15 @@ import {
   interleaveHalvesOrder,
   isIdentityOrder,
   keepPages,
+  bookletSheetCount,
+  bookletSlotOrder,
   MAX_METADATA_LENGTH,
   mergeInsertIndex,
   mergePdf,
+  nUpCellRects,
+  nUpPages,
+  nUpSheetCount,
+  nUpSheetSize,
   movePage,
   movePages,
   pageCount,
@@ -382,6 +394,43 @@ describe('pdf edits', () => {
     const small = await samplePdf(['A', 'B'])
     expect(await interleaveHalves(small)).toBe(small)
   })
+
+  it('packs pages onto 2-up and 4-up A4 sheets', async () => {
+    expect(nUpSheetCount(5, 2)).toBe(3)
+    expect(nUpSheetCount(5, 4)).toBe(2)
+    expect(nUpSheetCount(0, 2)).toBe(0)
+    expect(nUpSheetSize(2)).toEqual({ width: A4_HEIGHT, height: A4_WIDTH })
+    expect(nUpSheetSize(4)).toEqual({ width: A4_WIDTH, height: A4_HEIGHT })
+    expect(nUpCellRects(2, A4_LANDSCAPE)).toHaveLength(2)
+    expect(nUpCellRects(4, A4_PORTRAIT)).toHaveLength(4)
+    const bytes = await samplePdf(['A', 'B', 'C'])
+    const twoUp = await nUpPages(bytes, 2)
+    const twoDoc = await PDFDocument.load(twoUp)
+    expect(twoDoc.getPageCount()).toBe(2)
+    expect(twoDoc.getPage(0).getSize().width).toBeCloseTo(A4_HEIGHT)
+    const selected = await nUpPages(bytes, 2, [0, 2])
+    expect(await pageCount(selected)).toBe(1)
+    const fourUp = await nUpPages(bytes, 4)
+    expect(await pageCount(fourUp)).toBe(1)
+    await expect(nUpPages(bytes, 2, [])).rejects.toThrow(/gộp/)
+  })
+
+  it('imposes a saddle-stitch booklet and mirrors selected pages', async () => {
+    expect(bookletSlotOrder(4)).toEqual([3, 0, 1, 2])
+    expect(bookletSlotOrder(8)).toEqual([7, 0, 1, 6, 5, 2, 3, 4])
+    expect(bookletSlotOrder(5)).toEqual([null, 0, 1, null, null, 2, 3, 4])
+    expect(bookletSheetCount(5)).toBe(4)
+    const bytes = await samplePdf(['A', 'B', 'C', 'D'])
+    const booklet = await imposeBooklet(bytes)
+    const bookletDoc = await PDFDocument.load(booklet)
+    expect(bookletDoc.getPageCount()).toBe(2)
+    expect(bookletDoc.getPage(0).getSize().width).toBeCloseTo(A4_HEIGHT)
+    const flipped = await flipPages(bytes, [0], 'horizontal')
+    expect(await pageCount(flipped)).toBe(4)
+    const flippedAll = await flipPages(bytes, [1, 3], 'vertical')
+    expect(await pageCount(flippedAll)).toBe(4)
+    await expect(flipPages(bytes, [])).rejects.toThrow(/lật/)
+  })
 })
 
 describe('conversion helpers', () => {
@@ -409,7 +458,10 @@ describe('conversion helpers', () => {
     expect(escapeRtf('Xin chào')).toMatch(/\\u/)
     expect(isImageFormat('png')).toBe(true)
     expect(isImageFormat('jpg')).toBe(true)
+    expect(isImageFormat('webp')).toBe(true)
     expect(isImageFormat('docx')).toBe(false)
+    expect(imagePageName('demo.pdf', 0, 'webp')).toBe('demo-trang-1.webp')
+    expect(imageZipName('demo.pdf', 'webp')).toBe('demo-anh-webp.zip')
     expect(toJson('Demo', ['Một', 'Hai'])).toContain('"page": 2')
     expect(JSON.parse(toJson('Demo', ['Một'])).pages[0].text).toBe('Một')
     expect(toCsv(['Một', 'Hai,ba'])).toContain('page,text')
@@ -457,7 +509,20 @@ describe('conversion helpers', () => {
     )
     expect(sourceKindFromFile(new File(['<FictionBook/>'], 'book.fb2', { type: '' }))).toBe('fb2')
     expect(sourceKindFromFile(new File(['x'], 'paper.odt', { type: '' }))).toBe('odt')
+    expect(sourceKindFromFile(new File(['x'], 'table.xlsx', { type: '' }))).toBe('xlsx')
+    expect(sourceKindFromFile(new File(['x'], 'scan.webp', { type: 'image/webp' }))).toBe('webp')
     expect(swapExtension('paper.odt', 'pdf')).toBe('paper.pdf')
+    expect(swapExtension('table.xlsx', 'pdf')).toBe('table.pdf')
+    expect(swapExtension('scan.webp', 'pdf')).toBe('scan.pdf')
+    expect(() => sourceKindFromFile(new File(['x'], 'old.xls', { type: '' }))).toThrow(/XLSX/)
+  })
+
+  it('round-trips XLSX workbooks', async () => {
+    const xlsx = await toXlsx('Demo', ['Một', 'Hai,ba'])
+    expect(xlsx.type).toContain('spreadsheetml')
+    const zip = await JSZip.loadAsync(await xlsx.arrayBuffer())
+    expect(zip.file('xl/worksheets/sheet1.xml')).toBeTruthy()
+    expect(await pagesFromXlsx(new Uint8Array(await xlsx.arrayBuffer()))).toEqual(['Một', 'Hai,ba'])
   })
 
   it('round-trips ODT packages', async () => {
