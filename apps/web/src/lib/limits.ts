@@ -3,7 +3,7 @@ import type { ImportedTextKind, ZipImportKind } from './import-text.ts'
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 export const ACCEPT_SOURCES =
-  'application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,application/json,.json,text/csv,.csv,application/rtf,.rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,application/msword,.doc,application/vnd.oasis.opendocument.text,.odt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/x-fictionbook+xml,.fb2,application/epub+zip,.epub,image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp'
+  'application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,application/json,.json,text/csv,.csv,application/rtf,.rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,application/msword,.doc,application/vnd.oasis.opendocument.text,.odt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pptx,application/x-fictionbook+xml,.fb2,application/epub+zip,.epub,image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp'
 
 export type ImageKind = 'png' | 'jpg' | 'webp'
 export type EmbedImageKind = 'png' | 'jpg'
@@ -28,7 +28,13 @@ export function isImageSource(
 export function isZipImportSource(
   source: LoadedSource,
 ): source is Extract<LoadedSource, { kind: ZipImportKind }> {
-  return source.kind === 'docx' || source.kind === 'epub' || source.kind === 'odt' || source.kind === 'xlsx'
+  return (
+    source.kind === 'docx' ||
+    source.kind === 'epub' ||
+    source.kind === 'odt' ||
+    source.kind === 'xlsx' ||
+    source.kind === 'pptx'
+  )
 }
 
 export function imageKindFromFile(file: { name: string; type: string }): ImageKind {
@@ -118,6 +124,18 @@ export function sourceKindFromFile(file: File): SourceKind {
   if (name.endsWith('.xls') || type === 'application/vnd.ms-excel') {
     throw new Error('Chỉ mở được XLSX (Office Open XML), không phải XLS nhị phân.')
   }
+  if (
+    type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+    name.endsWith('.pptx')
+  ) {
+    return 'pptx'
+  }
+  if (
+    name.endsWith('.ppt') ||
+    type === 'application/vnd.ms-powerpoint'
+  ) {
+    throw new Error('Chỉ mở được PPTX (Office Open XML), không phải PPT nhị phân.')
+  }
   if (type === 'application/epub+zip' || name.endsWith('.epub')) {
     return 'epub'
   }
@@ -131,7 +149,7 @@ export function sourceKindFromFile(file: File): SourceKind {
   try {
     return imageKindFromFile(file)
   } catch {
-    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, XLSX, FB2, EPUB, PNG, JPEG hoặc WEBP.')
+    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, XLSX, PPTX, FB2, EPUB, PNG, JPEG hoặc WEBP.')
   }
 }
 
@@ -163,7 +181,7 @@ export async function readSourceFile(file: File): Promise<LoadedSource> {
       pdfName: swapExtension(file.name, 'pdf'),
     }
   }
-  if (kind === 'docx' || kind === 'epub' || kind === 'odt' || kind === 'xlsx') {
+  if (kind === 'docx' || kind === 'epub' || kind === 'odt' || kind === 'xlsx' || kind === 'pptx') {
     return {
       kind,
       name: file.name,
@@ -205,7 +223,7 @@ export async function readImageFiles(
 
 export function swapExtension(filename: string, ext: string): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|json|csv|xlsx|xls|docx|doc|epub|odt|fb2|rtf)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|json|csv|xlsx|xls|docx|doc|pptx|ppt|epub|odt|fb2|rtf)$/i, '') ||
     'document'
   return `${base}.${ext}`
 }
@@ -245,7 +263,7 @@ export function imagePageName(
   ext: 'png' | 'jpg' | 'webp',
 ): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|json|csv|xlsx|xls|docx|doc|epub|odt|fb2|rtf)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|json|csv|xlsx|xls|docx|doc|pptx|ppt|epub|odt|fb2|rtf)$/i, '') ||
     'document'
   const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
   return `${base}-trang-${page}.${ext}`
@@ -253,7 +271,7 @@ export function imagePageName(
 
 export function imageZipName(filename: string, ext: 'png' | 'jpg' | 'webp'): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|json|csv|xlsx|xls|docx|doc|epub|odt|fb2|rtf)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|json|csv|xlsx|xls|docx|doc|pptx|ppt|epub|odt|fb2|rtf)$/i, '') ||
     'document'
   return `${base}-anh-${ext}.zip`
 }

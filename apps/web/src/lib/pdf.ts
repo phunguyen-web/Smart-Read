@@ -775,6 +775,105 @@ export async function flipPages(
   return new Uint8Array(await dst.save())
 }
 
+export type SplitHalfAxis = 'horizontal' | 'vertical'
+
+/**
+ * After each split index becomes two pages, map `selected` onto the new
+ * document. Split pages that were selected keep both halves selected.
+ */
+export function remapAfterSplitHalf(
+  count: number,
+  selected: readonly number[],
+  splitIndexes: readonly number[],
+): number[] {
+  const split = new Set(
+    uniqueSorted([...splitIndexes], false).filter((index) => index >= 0 && index < count),
+  )
+  const chosen = [
+    ...new Set(selected.filter((index) => Number.isInteger(index) && index >= 0 && index < count)),
+  ].sort((a, b) => a - b)
+  const next: number[] = []
+  let offset = 0
+  for (let index = 0; index < count; index += 1) {
+    if (chosen.includes(index)) {
+      next.push(index + offset)
+      if (split.has(index)) {
+        next.push(index + offset + 1)
+      }
+    }
+    if (split.has(index)) {
+      offset += 1
+    }
+  }
+  return next
+}
+
+/** Cut selected pages into two: top then bottom, or left then right. */
+export async function splitPagesInHalf(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  axis: SplitHalfAxis,
+): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để cắt đôi.')
+  }
+  for (const index of unique) {
+    const { width, height } = src.getPage(index).getSize()
+    const half = axis === 'horizontal' ? height / 2 : width / 2
+    if (half < MIN_CROP_REMAINING) {
+      throw new Error('Trang quá nhỏ để cắt đôi.')
+    }
+  }
+  const dst = await PDFDocument.create()
+  copyDocumentInfo(src, dst)
+  const selected = new Set(unique)
+  for (let index = 0; index < count; index += 1) {
+    if (!selected.has(index)) {
+      const [copied] = await dst.copyPages(src, [index])
+      dst.addPage(copied)
+      continue
+    }
+    const [embedded] = await dst.embedPages([src.getPage(index)])
+    if (axis === 'horizontal') {
+      const half = embedded.height / 2
+      const top = dst.addPage([embedded.width, half])
+      top.drawPage(embedded, {
+        x: 0,
+        y: -half,
+        width: embedded.width,
+        height: embedded.height,
+      })
+      const bottom = dst.addPage([embedded.width, half])
+      bottom.drawPage(embedded, {
+        x: 0,
+        y: 0,
+        width: embedded.width,
+        height: embedded.height,
+      })
+      continue
+    }
+    const half = embedded.width / 2
+    const left = dst.addPage([half, embedded.height])
+    left.drawPage(embedded, {
+      x: 0,
+      y: 0,
+      width: embedded.width,
+      height: embedded.height,
+    })
+    const right = dst.addPage([half, embedded.height])
+    right.drawPage(embedded, {
+      x: -half,
+      y: 0,
+      width: embedded.width,
+      height: embedded.height,
+    })
+  }
+  return new Uint8Array(await dst.save())
+}
+
 export async function insertBlankPage(
   bytes: Uint8Array,
   afterIndex: number,

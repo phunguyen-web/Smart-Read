@@ -15,6 +15,7 @@ import {
   toJson,
   toMarkdown,
   toOdt,
+  toPptx,
   toRtf,
   toTxt,
   toXlsx,
@@ -30,6 +31,7 @@ import {
   pagesFromJson,
   pagesFromMarkdown,
   pagesFromOdt,
+  pagesFromPptx,
   pagesFromPlainText,
   pagesFromRtf,
   pagesFromXlsx,
@@ -118,12 +120,14 @@ import {
   remapAfterOrder,
   reorderPageBlock,
   replacePagesWithPngs,
+  remapAfterSplitHalf,
   reversePages,
   reversedIndexes,
   rotatePages,
   rotatePagesBy,
   setMetadata,
   splitEvery,
+  splitPagesInHalf,
   textPagesToPdf,
   trimMetadataField,
   wrapPdfText,
@@ -431,6 +435,29 @@ describe('pdf edits', () => {
     expect(await pageCount(flippedAll)).toBe(4)
     await expect(flipPages(bytes, [])).rejects.toThrow(/lật/)
   })
+
+  it('splits selected pages in half and remaps the selection', async () => {
+    expect(remapAfterSplitHalf(3, [1], [1])).toEqual([1, 2])
+    expect(remapAfterSplitHalf(3, [0, 2], [0, 2])).toEqual([0, 1, 3, 4])
+    expect(remapAfterSplitHalf(3, [1], [0])).toEqual([2])
+    const bytes = await samplePdf(['A', 'B', 'C'])
+    const splitH = await splitPagesInHalf(bytes, [0], 'horizontal')
+    const splitHDoc = await PDFDocument.load(splitH)
+    expect(splitHDoc.getPageCount()).toBe(4)
+    expect(splitHDoc.getPage(0).getSize().height).toBeCloseTo(140)
+    expect(splitHDoc.getPage(1).getSize().height).toBeCloseTo(140)
+    expect(splitHDoc.getPage(2).getSize().height).toBeCloseTo(280)
+    const splitV = await splitPagesInHalf(bytes, [1, 2], 'vertical')
+    expect(await pageCount(splitV)).toBe(5)
+    const splitVDoc = await PDFDocument.load(splitV)
+    expect(splitVDoc.getPage(1).getSize().width).toBeCloseTo(100)
+    await expect(splitPagesInHalf(bytes, [], 'horizontal')).rejects.toThrow(/cắt đôi/)
+    const tiny = await PDFDocument.create()
+    tiny.addPage([40, 40])
+    await expect(
+      splitPagesInHalf(new Uint8Array(await tiny.save()), [0], 'horizontal'),
+    ).rejects.toThrow(/quá nhỏ/)
+  })
 })
 
 describe('conversion helpers', () => {
@@ -510,11 +537,14 @@ describe('conversion helpers', () => {
     expect(sourceKindFromFile(new File(['<FictionBook/>'], 'book.fb2', { type: '' }))).toBe('fb2')
     expect(sourceKindFromFile(new File(['x'], 'paper.odt', { type: '' }))).toBe('odt')
     expect(sourceKindFromFile(new File(['x'], 'table.xlsx', { type: '' }))).toBe('xlsx')
+    expect(sourceKindFromFile(new File(['x'], 'deck.pptx', { type: '' }))).toBe('pptx')
     expect(sourceKindFromFile(new File(['x'], 'scan.webp', { type: 'image/webp' }))).toBe('webp')
     expect(swapExtension('paper.odt', 'pdf')).toBe('paper.pdf')
     expect(swapExtension('table.xlsx', 'pdf')).toBe('table.pdf')
+    expect(swapExtension('deck.pptx', 'pdf')).toBe('deck.pdf')
     expect(swapExtension('scan.webp', 'pdf')).toBe('scan.pdf')
     expect(() => sourceKindFromFile(new File(['x'], 'old.xls', { type: '' }))).toThrow(/XLSX/)
+    expect(() => sourceKindFromFile(new File(['x'], 'old.ppt', { type: '' }))).toThrow(/PPTX/)
   })
 
   it('round-trips XLSX workbooks', async () => {
@@ -523,6 +553,16 @@ describe('conversion helpers', () => {
     const zip = await JSZip.loadAsync(await xlsx.arrayBuffer())
     expect(zip.file('xl/worksheets/sheet1.xml')).toBeTruthy()
     expect(await pagesFromXlsx(new Uint8Array(await xlsx.arrayBuffer()))).toEqual(['Một', 'Hai,ba'])
+  })
+
+  it('round-trips PPTX decks', async () => {
+    const pptx = await toPptx('Demo', ['Một', 'Hai\ndòng'])
+    expect(pptx.type).toContain('presentationml')
+    const zip = await JSZip.loadAsync(await pptx.arrayBuffer())
+    expect(zip.file('ppt/presentation.xml')).toBeTruthy()
+    expect(zip.file('ppt/slides/slide1.xml')).toBeTruthy()
+    expect(zip.file('ppt/slides/slide2.xml')).toBeTruthy()
+    expect(await pagesFromPptx(new Uint8Array(await pptx.arrayBuffer()))).toEqual(['Một', 'Hai\ndòng'])
   })
 
   it('round-trips ODT packages', async () => {

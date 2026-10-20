@@ -10,7 +10,7 @@ When invoked:
 1. Work only in `apps/web` unless a shared type must move.
 2. Keep hash routes `#/`, `#/edit`, `#/convert` and Vietnamese UI copy.
 3. Store the current PDF in memory (filename + bytes + page count) and mirror it plus a bounded undo/redo stack to IndexedDB so a reload in this browser restores them. Offer a control to forget that local copy. Reject files over 20 MB. Do not add accounts or a cloud store.
-4. Do not implement conversion exporters (that is `format-converter`) beyond wiring the Convert page. Accept PNG/JPEG/WEBP/DOCX/ODT/XLSX/EPUB/FB2/JSON/CSV/RTF on the same upload control as PDF/text so the later specialists can turn those files into pages.
+4. Do not implement conversion exporters (that is `format-converter`) beyond wiring the Convert page. Accept PNG/JPEG/WEBP/DOCX/ODT/XLSX/PPTX/EPUB/FB2/JSON/CSV/RTF on the same upload control as PDF/text so the later specialists can turn those files into pages.
 5. Leave PDF mutation details to `pdf-editor` if they are still incomplete, but keep the editor layout usable (thumbnail strip + tools).
 
 Hand off to `pdf-editor` when the shell, navigation, and upload flow work.

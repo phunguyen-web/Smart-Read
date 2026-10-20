@@ -1,5 +1,5 @@
 ---
-description: Use when implementing or changing PDF export to TXT, HTML, Markdown, RTF, JSON, CSV, XLSX, DOCX/DOC, ODT, FB2, EPUB, MOBI, PNG, JPEG, or WEBP.
+description: Use when implementing or changing PDF export to TXT, HTML, Markdown, RTF, JSON, CSV, XLSX, DOCX/DOC, ODT, PPTX, FB2, EPUB, MOBI, PNG, JPEG, or WEBP.
 ---
 
 # Format conversion
@@ -20,6 +20,7 @@ Extract text with `pdfjs-dist` (`getTextContent` per page), then build the targe
 | PNG / JPEG / WEBP | Raster each selected page with `renderPageToBlob`. One page is a single image; several pages are a ZIP (`imagePageName` / `imageZipName`). JPEG paints a white background. Uploading PNG/JPEG builds a PDF via `imagesToPdf`. WEBP import is decoded to PNG with `rasterToPng` first. |
 | DOCX / DOC | Dynamic `import('docx')` `Document` / `Packer`. Same bytes for `.doc` download name if the user picked DOC. Uploading DOCX uses `pagesFromDocx` (binary `.doc` is rejected). |
 | ODT | `toOdt` — OpenDocument ZIP (`mimetype` STORE, `content.xml`, `styles.xml`, `meta.xml`, manifest). Uploading ODT uses `pagesFromOdt`. |
+| PPTX | `toPptx` — PowerPoint Office Open XML, one slide per page (`Trang n` title + body). Uploading PPTX uses `pagesFromPptx`. Binary `.ppt` is rejected. |
 | FB2 | `toFb2` — FictionBook XML with one `<section>` per page. Uploading FB2 uses `pagesFromFb2`. |
 | EPUB | EPUB 3 ZIP: uncompressed `mimetype`, `container.xml`, CSS, `nav.xhtml` (toc + landmarks), `toc.ncx`, one XHTML file per page, OPF with `dc:creator`, `dc:date`, `dcterms:modified`. Uploading EPUB uses `pagesFromEpub` (spine XHTML, skip nav). |
 | MOBI | POST the EPUB to `/api/mobi`. The Vite plugin runs Calibre `ebook-convert` when present. If it is missing or fails, download EPUB and explain the fallback. |
@@ -27,7 +28,7 @@ Extract text with `pdfjs-dist` (`getTextContent` per page), then build the targe
 ## Rules
 
 - Preserve page order. Validate the from–to range with `parsePageRange` (empty, non-integer, inverted, or out of bounds must show an error and block export). Slice extracted pages with `slicePageRange` only after the range is valid. If the editor has a multi-page subset selected, `slicePagesByIndexes` may export those pages instead (including a non-contiguous set).
-- TXT, Markdown, HTML, JSON, CSV, RTF, and FB2 uploads become a PDF via `pagesFromImportedText` + `textPagesToPdf` so they can then export to the other formats. DOCX, ODT, XLSX, and EPUB uploads use `pagesFromDocx` / `pagesFromOdt` / `pagesFromXlsx` / `pagesFromEpub`. PNG and JPEG uploads become a PDF via `imagesToPdf`. WEBP uploads use `rasterToPng` then `imagesToPdf`. `pdfFromLoadedSource` is the shared entry. RTF import uses `rtfToPlain` / `pagesFromRtf`.
+- TXT, Markdown, HTML, JSON, CSV, RTF, and FB2 uploads become a PDF via `pagesFromImportedText` + `textPagesToPdf` so they can then export to the other formats. DOCX, ODT, XLSX, PPTX, and EPUB uploads use `pagesFromDocx` / `pagesFromOdt` / `pagesFromXlsx` / `pagesFromPptx` / `pagesFromEpub`. PNG and JPEG uploads become a PDF via `imagesToPdf`. WEBP uploads use `rasterToPng` then `imagesToPdf`. `pdfFromLoadedSource` is the shared entry. RTF import uses `rtfToPlain` / `pagesFromRtf`.
 - Strip NULs and cap extracted text so a huge PDF cannot freeze the tab.
 - Name downloads from the source filename plus the new extension.
 - Never upload the file to a third-party conversion API.

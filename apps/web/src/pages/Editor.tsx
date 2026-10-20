@@ -37,6 +37,7 @@ import {
   pageCount,
   readMetadata,
   remapAfterOrder,
+  remapAfterSplitHalf,
   reorderPageBlock,
   replacePagesWithPngs,
   reversePages,
@@ -45,6 +46,7 @@ import {
   rotatePagesBy,
   setMetadata,
   splitEvery,
+  splitPagesInHalf,
   type CropMarginId,
   type MergeWhere,
   type OverlayPosition,
@@ -750,11 +752,11 @@ export function Editor() {
         <p>
           Xoay, đảo thứ tự, đan/tách trang lẻ-chẵn, đánh số trang, đóng chữ mờ, cắt lề, chuyển xám,
           tìm chữ, xóa trang không chữ hoặc trùng chữ, vừa khổ A4, gộp 2/4 trang mỗi tờ, xếp sách
-          gấp, lật ngang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách thành nhiều PDF,
-          chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự, hoàn tác (giữ khi
-          tải lại trang), gộp tệp, sửa thông tin tài liệu và chèn chữ, rồi tải PDF mới. Có thể mở
-          TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, XLSX, FB2, EPUB hoặc PNG/JPEG/WEBP để tạo
-          PDF.
+          gấp, lật ngang/dọc, cắt đôi trên/dưới hoặc trái/phải, đảo chọn, xóa, nhân bản, tách hoặc
+          giữ trang đã chọn, tách thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo
+          thumbnail để đổi thứ tự, hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu
+          và chèn chữ, rồi tải PDF mới. Có thể mở TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT,
+          XLSX, PPTX, FB2, EPUB hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
 
@@ -763,7 +765,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, XLSX, FB2, EPUB, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, XLSX, PPTX, FB2, EPUB, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -814,8 +816,9 @@ export function Editor() {
               trang, Ctrl+I đảo chọn, F3 kết quả sau. Nhân bản chèn bản sao sau trang đã chọn cuối;
               tách trang tải một PDF mới; giữ lại chỉ các trang đã chọn; tách mỗi N trang thành ZIP;
               đan hai nửa (mặt trước rồi mặt sau) hoặc tách lẻ/chẵn; gộp 2/4 trang mỗi tờ, xếp sách
-              gấp, lật ngang; chữ mờ, cắt lề, chuyển xám, vừa A4 và xóa trùng chữ áp dụng cho trang
-              đã chọn. Chèn PNG/JPEG/WEBP thành trang mới; thông tin tiêu đề/tác giả lưu vào PDF.
+              gấp, lật ngang/dọc, cắt đôi trên/dưới hoặc trái/phải; chữ mờ, cắt lề, chuyển xám, vừa A4
+              và xóa trùng chữ áp dụng cho trang đã chọn. Chèn PNG/JPEG/WEBP thành trang mới; thông
+              tin tiêu đề/tác giả lưu vào PDF.
             </p>
           </div>
           <div className="tools" role="toolbar" aria-label="Công cụ chỉnh PDF">
@@ -1298,6 +1301,66 @@ export function Editor() {
                 onClick={() => void run((bytes) => flipPages(bytes, targets, 'horizontal'))}
               >
                 Lật ngang {targets.length > 1 ? `${targets.length} trang` : ''}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={
+                  targets.length > 1
+                    ? `Lật dọc ${targets.length} trang đã chọn`
+                    : 'Lật dọc trang hiện tại'
+                }
+                onClick={() => void run((bytes) => flipPages(bytes, targets, 'vertical'))}
+              >
+                Lật dọc {targets.length > 1 ? `${targets.length} trang` : ''}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={
+                  targets.length > 1
+                    ? `Cắt đôi trên/dưới ${targets.length} trang đã chọn`
+                    : 'Cắt đôi trên/dưới trang hiện tại'
+                }
+                onClick={() => {
+                  const beforeCount = doc.pageCount
+                  void run((bytes) => splitPagesInHalf(bytes, targets, 'horizontal'), (count) => {
+                    const nextSelected = remapAfterSplitHalf(beforeCount, targets, targets).filter(
+                      (index) => index < count,
+                    )
+                    const first = nextSelected[0] ?? 0
+                    setPage(first)
+                    setSelected(nextSelected.length > 0 ? nextSelected : [first])
+                    setAnchor(first)
+                    setSearchRaw(null)
+                  })
+                }}
+              >
+                Cắt đôi trên/dưới
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={
+                  targets.length > 1
+                    ? `Cắt đôi trái/phải ${targets.length} trang đã chọn`
+                    : 'Cắt đôi trái/phải trang hiện tại'
+                }
+                onClick={() => {
+                  const beforeCount = doc.pageCount
+                  void run((bytes) => splitPagesInHalf(bytes, targets, 'vertical'), (count) => {
+                    const nextSelected = remapAfterSplitHalf(beforeCount, targets, targets).filter(
+                      (index) => index < count,
+                    )
+                    const first = nextSelected[0] ?? 0
+                    setPage(first)
+                    setSelected(nextSelected.length > 0 ? nextSelected : [first])
+                    setAnchor(first)
+                    setSearchRaw(null)
+                  })
+                }}
+              >
+                Cắt đôi trái/phải
               </button>
             </div>
             <fieldset className="number-stamp">

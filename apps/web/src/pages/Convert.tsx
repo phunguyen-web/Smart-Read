@@ -13,6 +13,7 @@ import {
   toJson,
   toMarkdown,
   toOdt,
+  toPptx,
   toRtf,
   toTxt,
   toXlsx,
@@ -45,6 +46,7 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'docx', label: 'DOCX', hint: 'Microsoft Word' },
   { id: 'doc', label: 'DOC', hint: 'Word (cùng nội dung DOCX)' },
   { id: 'odt', label: 'ODT', hint: 'OpenDocument, LibreOffice' },
+  { id: 'pptx', label: 'PPTX', hint: 'PowerPoint, một slide mỗi trang' },
   { id: 'fb2', label: 'FB2', hint: 'FictionBook ebook' },
   { id: 'epub', label: 'EPUB', hint: 'Sách điện tử, có mục lục' },
   { id: 'mobi', label: 'MOBI', hint: 'Kindle — cần Calibre ebook-convert' },
@@ -198,6 +200,8 @@ export function Convert() {
         downloadBlob(await toXlsx(title, pages), swapExtension(doc.name, 'xlsx'))
       } else if (format === 'odt') {
         downloadBlob(await toOdt(title, pages), swapExtension(doc.name, 'odt'))
+      } else if (format === 'pptx') {
+        downloadBlob(await toPptx(title, pages), swapExtension(doc.name, 'pptx'))
       } else if (format === 'fb2') {
         downloadBlob(
           new Blob([toFb2(title, pages)], { type: mimeFor(format) }),
@@ -243,9 +247,9 @@ export function Convert() {
       <header className="page-head">
         <h1>Chuyển đổi định dạng</h1>
         <p>
-          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, CSV, XLSX, DOCX/DOC, ODT, FB2,
-          EPUB hoặc MOBI; hoặc raster từng trang thành PNG/JPEG/WEBP. Có thể mở TXT/Markdown/HTML/
-          JSON/CSV, RTF, DOCX, ODT, XLSX, FB2, EPUB hoặc PNG/JPEG/WEBP để tạo PDF trước, rồi xuất
+          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, CSV, XLSX, DOCX/DOC, ODT, PPTX,
+          FB2, EPUB hoặc MOBI; hoặc raster từng trang thành PNG/JPEG/WEBP. Có thể mở TXT/Markdown/HTML/
+          JSON/CSV, RTF, DOCX, ODT, XLSX, PPTX, FB2, EPUB hoặc PNG/JPEG/WEBP để tạo PDF trước, rồi xuất
           tiếp. Có thể xuất đúng các trang đang chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau.
         </p>
       </header>
@@ -255,7 +259,7 @@ export function Convert() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, XLSX, FB2, EPUB, PNG, JPEG hoặc WEBP để chuyển đổi"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, XLSX, PPTX, FB2, EPUB, PNG, JPEG hoặc WEBP để chuyển đổi"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -266,7 +270,7 @@ export function Convert() {
         </p>
       ) : (
         <p className="empty">
-          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, XLSX, FB2, EPUB, PNG, JPEG hoặc WEBP để chọn khoảng trang và định dạng xuất.
+          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, XLSX, PPTX, FB2, EPUB, PNG, JPEG hoặc WEBP để chọn khoảng trang và định dạng xuất.
         </p>
       )}
       {error ? (

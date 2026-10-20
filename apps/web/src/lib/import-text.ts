@@ -5,7 +5,7 @@ export const MAX_IMPORT_PAGES = 80
 export const IMPORT_PAGE_CHARS = 1800
 
 export type ImportedTextKind = 'txt' | 'md' | 'html' | 'json' | 'csv' | 'rtf' | 'fb2'
-export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'xlsx'
+export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'xlsx' | 'pptx'
 
 function capPages(pages: string[]): string[] {
   const cleaned = pages.map((page) => page.replaceAll('\u0000', '').trimEnd())
@@ -300,6 +300,76 @@ export async function pagesFromDocx(bytes: Uint8Array): Promise<string[]> {
     throw new Error('Chỉ mở được DOCX (Office Open XML), không phải DOC nhị phân.')
   }
   return pagesFromOfficeHeadings(xmlToPlain(await file.async('string')))
+}
+
+function pptxSlidePlain(xml: string): string {
+  const texts = [...xml.matchAll(/<a:t\b[^>]*>([\s\S]*?)<\/a:t>/gi)].map((match) =>
+    unescapeXml(match[1] ?? ''),
+  )
+  if (texts.length === 0) {
+    return ''
+  }
+  if (/^Trang\s+\d+$/i.test(texts[0]!.trim())) {
+    return texts.slice(1).join('\n').trim()
+  }
+  return texts.join('\n').trim()
+}
+
+function pptxSlideOrder(presentationXml: string, relsXml: string): string[] {
+  const rels = new Map(
+    [...relsXml.matchAll(/<Relationship\b[^>]*>/gi)].flatMap((match) => {
+      const id = match[0].match(/\bId="([^"]+)"/i)?.[1]
+      const target = match[0].match(/\bTarget="([^"]+)"/i)?.[1]
+      const type = match[0].match(/\bType="([^"]+)"/i)?.[1] ?? ''
+      if (!id || !target || !/\/slide$/i.test(type)) {
+        return []
+      }
+      const path = target.replace(/^\.\//, '')
+      return [[id, path.startsWith('ppt/') ? path : `ppt/${path}`] as const]
+    }),
+  )
+  const listed = [...presentationXml.matchAll(/<p:sldId\b[^>]*>/gi)].flatMap((match) => {
+    const rid = match[0].match(/\br:id="([^"]+)"/i)?.[1]
+    const target = rid ? rels.get(rid) : undefined
+    return target ? [target] : []
+  })
+  return listed
+}
+
+export async function pagesFromPptx(bytes: Uint8Array): Promise<string[]> {
+  let zip: JSZip
+  try {
+    zip = await JSZip.loadAsync(bytes)
+  } catch {
+    throw new Error('Chỉ mở được PPTX (Office Open XML), không phải PPT nhị phân.')
+  }
+  const presentation = zip.file('ppt/presentation.xml')
+  if (!presentation) {
+    throw new Error('Chỉ mở được PPTX (Office Open XML), không phải PPT nhị phân.')
+  }
+  const relsFile = zip.file('ppt/_rels/presentation.xml.rels')
+  const ordered = relsFile
+    ? pptxSlideOrder(await presentation.async('string'), await relsFile.async('string'))
+    : []
+  const fallback = Object.keys(zip.files)
+    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+  const paths = ordered.length > 0 ? ordered : fallback
+  if (paths.length === 0) {
+    throw new Error('Tệp PPTX không có slide.')
+  }
+  const pages: string[] = []
+  for (const path of paths) {
+    const file = zip.file(path)
+    if (!file) {
+      continue
+    }
+    pages.push(pptxSlidePlain(await file.async('string')))
+  }
+  if (pages.length === 0) {
+    throw new Error('Tệp PPTX không có slide.')
+  }
+  return capPages(pages)
 }
 
 function odtXmlToPlain(xml: string): string {

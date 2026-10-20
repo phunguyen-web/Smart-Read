@@ -18,14 +18,14 @@ export const PIPELINE_STAGES = [
     subagent: "pdf-editor",
     title: "PDF editor",
     summary:
-      "Implement in-browser PDF page operations: rotate, reverse, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal, page numbers, watermark, crop, grayscale, find text, go to page, remove blank or duplicate-text pages, fit to A4, invert selection, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, and text overlay.",
+      "Implement in-browser PDF page operations: rotate, reverse, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal/vertical, split pages in half, page numbers, watermark, crop, grayscale, find text, go to page, remove blank or duplicate-text pages, fit to A4, invert selection, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, and text overlay.",
   },
   {
     id: "format-converter",
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, CSV, XLSX, DOCX/DOC, ODT, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP; import TXT/MD/HTML/JSON/CSV/RTF/DOCX/ODT/XLSX/FB2/EPUB/PNG/JPEG/WEBP as PDF.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, CSV, XLSX, DOCX/DOC, ODT, PPTX, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP; import TXT/MD/HTML/JSON/CSV/RTF/DOCX/ODT/XLSX/PPTX/FB2/EPUB/PNG/JPEG/WEBP as PDF.",
   },
   {
     id: "qa-reviewer",
@@ -106,13 +106,13 @@ export const SUPPORTED_FORMATS = [
     id: "pdf",
     label: "PDF",
     role: "edit",
-    notes: "Source format. Page rotate 90/180, reverse order, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal, page numbers, watermark, crop, grayscale, find text, go to page, remove no-text or duplicate-text pages, fit to A4, invert selection, delete, duplicate, extract, keep, split to ZIP, insert blank or PNG/JPEG/WEBP, reorder, merge, metadata, persist undo, and text overlay.",
+    notes: "Source format. Page rotate 90/180, reverse order, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal/vertical, split pages in half, page numbers, watermark, crop, grayscale, find text, go to page, remove no-text or duplicate-text pages, fit to A4, invert selection, delete, duplicate, extract, keep, split to ZIP, insert blank or PNG/JPEG/WEBP, reorder, merge, metadata, persist undo, and text overlay.",
   },
   {
     id: "txt",
     label: "Plain text",
     role: "export",
-    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats. PNG/JPEG/WEBP, DOCX, ODT, XLSX, EPUB, FB2, RTF, JSON, and CSV uploads also become PDF pages.",
+    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats. PNG/JPEG/WEBP, DOCX, ODT, XLSX, PPTX, EPUB, FB2, RTF, JSON, and CSV uploads also become PDF pages.",
   },
   {
     id: "html",
@@ -163,6 +163,12 @@ export const SUPPORTED_FORMATS = [
     label: "ODT",
     role: "export",
     notes: "OpenDocument Text ZIP. Uploading ODT builds a PDF from content.xml.",
+  },
+  {
+    id: "pptx",
+    label: "PPTX",
+    role: "export",
+    notes: "PowerPoint Office Open XML, one slide per page. Uploading PPTX builds a PDF from slide text. Binary .ppt is rejected.",
   },
   {
     id: "fb2",

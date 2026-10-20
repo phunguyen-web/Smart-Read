@@ -4,6 +4,7 @@ import {
   pagesFromEpub,
   pagesFromImportedText,
   pagesFromOdt,
+  pagesFromPptx,
   pagesFromXlsx,
 } from './import-text.ts'
 import { isImageSource, isZipImportSource, type LoadedSource } from './limits.ts'
@@ -33,7 +34,9 @@ export async function pdfFromLoadedSource(
           ? await pagesFromOdt(source.bytes)
           : source.kind === 'xlsx'
             ? await pagesFromXlsx(source.bytes)
-            : await pagesFromEpub(source.bytes)
+            : source.kind === 'pptx'
+              ? await pagesFromPptx(source.bytes)
+              : await pagesFromEpub(source.bytes)
     return { name: source.pdfName, bytes: await textPagesToPdf(pages) }
   }
   return {
