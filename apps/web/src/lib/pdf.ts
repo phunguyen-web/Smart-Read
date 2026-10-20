@@ -593,6 +593,130 @@ export async function cropPages(
   return new Uint8Array(await doc.save())
 }
 
+export const MAX_METADATA_LENGTH = 200
+export const IMAGE_PAGE_MAX_EDGE = 792
+
+export type PdfMetadata = {
+  title: string
+  author: string
+  subject: string
+}
+
+export type ImagePage = {
+  bytes: Uint8Array
+  kind: 'png' | 'jpg'
+}
+
+export function trimMetadataField(value: string | undefined | null): string {
+  return (value ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_METADATA_LENGTH)
+}
+
+export async function readMetadata(bytes: Uint8Array): Promise<PdfMetadata> {
+  const doc = await PDFDocument.load(bytes)
+  return {
+    title: trimMetadataField(doc.getTitle()),
+    author: trimMetadataField(doc.getAuthor()),
+    subject: trimMetadataField(doc.getSubject()),
+  }
+}
+
+export async function setMetadata(
+  bytes: Uint8Array,
+  meta: Partial<PdfMetadata>,
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  if (meta.title !== undefined) {
+    doc.setTitle(trimMetadataField(meta.title))
+  }
+  if (meta.author !== undefined) {
+    doc.setAuthor(trimMetadataField(meta.author))
+  }
+  if (meta.subject !== undefined) {
+    doc.setSubject(trimMetadataField(meta.subject))
+  }
+  doc.setProducer('Smart-Read')
+  doc.setCreator('Smart-Read')
+  doc.setModificationDate(new Date())
+  return new Uint8Array(await doc.save())
+}
+
+export function imagePageSize(
+  width: number,
+  height: number,
+  maxEdge = IMAGE_PAGE_MAX_EDGE,
+): { width: number; height: number } {
+  const safeWidth = Math.max(1, width)
+  const safeHeight = Math.max(1, height)
+  const scale = Math.min(1, maxEdge / Math.max(safeWidth, safeHeight))
+  return { width: safeWidth * scale, height: safeHeight * scale }
+}
+
+async function embedImageOnNewPage(
+  doc: PDFDocument,
+  image: ImagePage,
+  insertAt?: number,
+): Promise<void> {
+  const embedded =
+    image.kind === 'png' ? await doc.embedPng(image.bytes) : await doc.embedJpg(image.bytes)
+  const size = imagePageSize(embedded.width, embedded.height)
+  const page =
+    insertAt == null ? doc.addPage([size.width, size.height]) : doc.insertPage(insertAt, [size.width, size.height])
+  page.drawImage(embedded, { x: 0, y: 0, width: size.width, height: size.height })
+}
+
+export async function imagesToPdf(images: readonly ImagePage[]): Promise<Uint8Array> {
+  if (images.length === 0) {
+    throw new Error('Chọn ít nhất một ảnh PNG hoặc JPEG.')
+  }
+  const doc = await PDFDocument.create()
+  for (const image of images) {
+    await embedImageOnNewPage(doc, image)
+  }
+  return new Uint8Array(await doc.save())
+}
+
+export async function insertImages(
+  bytes: Uint8Array,
+  images: readonly ImagePage[],
+  insertAt: number,
+): Promise<Uint8Array> {
+  if (images.length === 0) {
+    throw new Error('Chọn ít nhất một ảnh PNG hoặc JPEG.')
+  }
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const at = Math.max(0, Math.min(count, Math.trunc(insertAt)))
+  for (let index = 0; index < images.length; index += 1) {
+    await embedImageOnNewPage(doc, images[index]!, at + index)
+  }
+  return new Uint8Array(await doc.save())
+}
+
+export async function replacePagesWithPngs(
+  bytes: Uint8Array,
+  replacements: readonly { index: number; png: Uint8Array }[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = new Map<number, Uint8Array>()
+  for (const item of replacements) {
+    if (!Number.isInteger(item.index) || item.index < 0 || item.index >= count) {
+      continue
+    }
+    unique.set(item.index, item.png)
+  }
+  if (unique.size === 0) {
+    throw new Error('Chọn ít nhất một trang để thay bằng ảnh.')
+  }
+  for (const [index, png] of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const image = await doc.embedPng(png)
+    page.drawImage(image, { x: 0, y: 0, width, height })
+  }
+  return new Uint8Array(await doc.save())
+}
+
 export async function addTextOverlay(
   bytes: Uint8Array,
   pageIndex: number,

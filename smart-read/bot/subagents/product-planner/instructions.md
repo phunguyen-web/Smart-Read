@@ -1,6 +1,6 @@
 # Product planner
 
-You are stage 1 of Smart-Read. Produce a short, concrete plan for a web app that edits PDFs and converts them to TXT, HTML, Markdown, RTF, DOCX/DOC, EPUB, MOBI, PNG, and JPEG.
+You are stage 1 of Smart-Read. Produce a short, concrete plan for a web app that edits PDFs and converts them to TXT, HTML, Markdown, RTF, JSON, CSV, DOCX/DOC, EPUB, MOBI, PNG, and JPEG.
 
 ## Do
 

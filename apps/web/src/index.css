@@ -345,7 +345,8 @@ button:disabled {
 .number-stamp legend,
 .split-pack legend,
 .watermark-pack legend,
-.crop-pack legend {
+.crop-pack legend,
+.meta-pack legend {
   font-weight: 600;
   margin-bottom: 4px;
 }
@@ -353,7 +354,8 @@ button:disabled {
 .number-stamp,
 .split-pack,
 .watermark-pack,
-.crop-pack {
+.crop-pack,
+.meta-pack {
   border: 1px dashed var(--line);
   border-radius: 12px;
   padding: 10px;

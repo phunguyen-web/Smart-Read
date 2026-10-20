@@ -2,13 +2,16 @@ import { PDFDocument, degrees } from 'pdf-lib'
 import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import {
+  escapeCsv,
   escapeHtml,
   escapeRtf,
   isImageFormat,
   slicePageRange,
   slicePagesByIndexes,
+  toCsv,
   toEpub,
   toHtml,
+  toJson,
   toMarkdown,
   toRtf,
   toTxt,
@@ -26,6 +29,8 @@ import {
   BASE_THUMB_CONTRAST,
   MAX_PREVIEW_SCALE,
   SPARSE_THUMB_CONTRAST,
+  grayscaleRgba,
+  luma,
   previewScaleForPage,
   thumbnailContrastForPage,
   thumbnailScaleForPage,
@@ -39,8 +44,10 @@ import {
 } from './persist.ts'
 import {
   extractedPdfName,
+  imageKindFromFile,
   imagePageName,
   imageZipName,
+  isImageKind,
   splitPartName,
   splitZipName,
   swapExtension,
@@ -57,21 +64,30 @@ import {
   duplicatedIndexes,
   extractPages,
   formatPageNumber,
+  IMAGE_PAGE_MAX_EDGE,
+  imagePageSize,
+  imagesToPdf,
   insertBlankPage,
+  insertImages,
   isIdentityOrder,
   keepPages,
+  MAX_METADATA_LENGTH,
   mergeInsertIndex,
   mergePdf,
   movePage,
   movePages,
   pageCount,
+  readMetadata,
   reorderPageBlock,
+  replacePagesWithPngs,
   reversePages,
   reversedIndexes,
   rotatePages,
   rotatePagesBy,
+  setMetadata,
   splitEvery,
   textPagesToPdf,
+  trimMetadataField,
   wrapPdfText,
 } from './pdf.ts'
 import { MAX_EDITOR_HISTORY, popSnapshot, pushSnapshot, snapshotOf } from './history.ts'
@@ -262,6 +278,36 @@ describe('pdf edits', () => {
     await expect(cropPages(bytes, [], 12)).rejects.toThrow(/cắt lề/)
     await expect(cropPages(bytes, [0], 90)).rejects.toThrow(/Lề cắt/)
   })
+
+  it('writes metadata and builds pages from PNG images', async () => {
+    const bytes = await samplePdf(['A', 'B'])
+    expect(trimMetadataField('  Xin   chào  ')).toBe('Xin chào')
+    expect(trimMetadataField('x'.repeat(MAX_METADATA_LENGTH + 8))).toHaveLength(MAX_METADATA_LENGTH)
+    const labeled = await setMetadata(bytes, {
+      title: 'Báo cáo',
+      author: 'Phú',
+      subject: 'PDF',
+    })
+    await expect(readMetadata(labeled)).resolves.toEqual({
+      title: 'Báo cáo',
+      author: 'Phú',
+      subject: 'PDF',
+    })
+    expect(imagePageSize(100, 50)).toEqual({ width: 100, height: 50 })
+    expect(imagePageSize(2000, 1000)).toEqual({
+      width: IMAGE_PAGE_MAX_EDGE,
+      height: IMAGE_PAGE_MAX_EDGE / 2,
+    })
+    const png = tinyPng()
+    const fromImage = await imagesToPdf([{ bytes: png, kind: 'png' }])
+    expect(await pageCount(fromImage)).toBe(1)
+    await expect(imagesToPdf([])).rejects.toThrow(/ảnh PNG/)
+    const inserted = await insertImages(bytes, [{ bytes: png, kind: 'png' }], 1)
+    expect(await pageCount(inserted)).toBe(3)
+    const covered = await replacePagesWithPngs(bytes, [{ index: 0, png }])
+    expect(await pageCount(covered)).toBe(2)
+    await expect(replacePagesWithPngs(bytes, [])).rejects.toThrow(/ảnh/)
+  })
 })
 
 describe('conversion helpers', () => {
@@ -290,6 +336,15 @@ describe('conversion helpers', () => {
     expect(isImageFormat('png')).toBe(true)
     expect(isImageFormat('jpg')).toBe(true)
     expect(isImageFormat('docx')).toBe(false)
+    expect(toJson('Demo', ['Một', 'Hai'])).toContain('"page": 2')
+    expect(JSON.parse(toJson('Demo', ['Một'])).pages[0].text).toBe('Một')
+    expect(toCsv(['Một', 'Hai,ba'])).toContain('page,text')
+    expect(toCsv(['a"b'])).toContain('"a""b"')
+    expect(escapeCsv('a,b')).toBe('"a,b"')
+    expect(isImageKind('png')).toBe(true)
+    expect(imageKindFromFile({ name: 'scan.JPEG', type: '' })).toBe('jpg')
+    expect(imageKindFromFile({ name: 'x.png', type: 'image/png' })).toBe('png')
+    expect(swapExtension('photo.png', 'pdf')).toBe('photo.pdf')
     expect(imagePageName('demo.pdf', 2, 'png')).toBe('demo-trang-3.png')
     expect(imageZipName('demo.pdf', 'jpg')).toBe('demo-anh-jpg.zip')
     expect(indexesFromPageRange(2, 4)).toEqual([1, 2, 3])
@@ -396,6 +451,17 @@ describe('page selection', () => {
     expect(decodeSnapshots(null)).toEqual([])
   })
 
+  it('converts pixels to grayscale luminance', () => {
+    expect(luma(255, 0, 0)).toBeGreaterThan(0)
+    const pixels = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255])
+    grayscaleRgba(pixels)
+    expect(pixels[0]).toBe(pixels[1])
+    expect(pixels[1]).toBe(pixels[2])
+    expect(pixels[3]).toBe(255)
+    expect(pixels[4]).toBe(pixels[5])
+    expect(pixels[5]).toBe(pixels[6])
+  })
+
   it('scales sparse pages more strongly than letter-size pages', () => {
     const letter = previewScaleForPage(612, 792)
     const sparse = previewScaleForPage(200, 280)
@@ -423,3 +489,12 @@ describe('pdf-lib degrees helper', () => {
     expect(degrees(90).angle).toBe(90)
   })
 })
+
+function tinyPng(): Uint8Array {
+  return Uint8Array.from(
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    ),
+  )
+}

@@ -18,14 +18,14 @@ export const PIPELINE_STAGES = [
     subagent: "pdf-editor",
     title: "PDF editor",
     summary:
-      "Implement in-browser PDF page operations: rotate, reverse, page numbers, watermark, crop, delete, duplicate, extract, keep, split, insert blank, reorder, merge, persist undo, and text overlay.",
+      "Implement in-browser PDF page operations: rotate, reverse, page numbers, watermark, crop, grayscale, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, and text overlay.",
   },
   {
     id: "format-converter",
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, DOCX/DOC, EPUB, and MOBI; raster pages to PNG/JPEG; import TXT/MD/HTML as PDF.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, CSV, DOCX/DOC, EPUB, and MOBI; raster pages to PNG/JPEG; import TXT/MD/HTML/PNG/JPEG as PDF.",
   },
   {
     id: "qa-reviewer",
@@ -106,13 +106,13 @@ export const SUPPORTED_FORMATS = [
     id: "pdf",
     label: "PDF",
     role: "edit",
-    notes: "Source format. Page rotate 90/180, reverse order, page numbers, watermark, crop, delete, duplicate, extract, keep, split to ZIP, insert blank, reorder, merge, persist undo, and text overlay.",
+    notes: "Source format. Page rotate 90/180, reverse order, page numbers, watermark, crop, grayscale, delete, duplicate, extract, keep, split to ZIP, insert blank or PNG/JPEG, reorder, merge, metadata, persist undo, and text overlay.",
   },
   {
     id: "txt",
     label: "Plain text",
     role: "export",
-    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats.",
+    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats. PNG/JPEG uploads also become PDF pages.",
   },
   {
     id: "html",
@@ -132,6 +132,18 @@ export const SUPPORTED_FORMATS = [
     label: "RTF",
     role: "export",
     notes: "Rich Text from extracted page text. Opens in Word and most editors.",
+  },
+  {
+    id: "json",
+    label: "JSON",
+    role: "export",
+    notes: "Structured { title, pages: [{ page, text }] } from extracted page text.",
+  },
+  {
+    id: "csv",
+    label: "CSV",
+    role: "export",
+    notes: "page,text rows from extracted page text. Fields with commas are quoted.",
   },
   {
     id: "docx",
@@ -156,13 +168,13 @@ export const SUPPORTED_FORMATS = [
     id: "png",
     label: "PNG",
     role: "export",
-    notes: "Raster of each selected page. One page downloads a PNG; several pages download a ZIP.",
+    notes: "Raster of each selected page. One page downloads a PNG; several pages download a ZIP. Uploading PNG builds a PDF page first.",
   },
   {
     id: "jpg",
     label: "JPEG",
     role: "export",
     aliases: ["jpeg"],
-    notes: "Raster of each selected page with a white background. Several pages download a ZIP.",
+    notes: "Raster of each selected page with a white background. Several pages download a ZIP. Uploading JPEG builds a PDF page first.",
   },
 ] as const;

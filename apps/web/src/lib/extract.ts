@@ -273,3 +273,65 @@ export async function renderPageToBlob(
   }
   return canvasToBlob(canvas, type, quality)
 }
+
+export function luma(r: number, g: number, b: number): number {
+  return Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)
+}
+
+export function grayscaleRgba(data: Uint8Array | Uint8ClampedArray): void {
+  for (let index = 0; index + 3 < data.length; index += 4) {
+    const gray = luma(data[index]!, data[index + 1]!, data[index + 2]!)
+    data[index] = gray
+    data[index + 1] = gray
+    data[index + 2] = gray
+  }
+}
+
+async function renderPageToScratch(
+  bytes: Uint8Array,
+  pageNumber: number,
+): Promise<HTMLCanvasElement> {
+  const pdf = await openPdf(bytes)
+  const page = await pdf.getPage(pageNumber)
+  const base = page.getViewport({ scale: 1 })
+  const viewport = page.getViewport({
+    scale: previewScaleForPage(base.width, base.height),
+  })
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d')
+  if (!context) {
+    throw new Error('Không vẽ được trang PDF.')
+  }
+  canvas.width = viewport.width
+  canvas.height = viewport.height
+  await page.render({ canvasContext: context, viewport, canvas }).promise
+  return canvas
+}
+
+export async function grayscalePagePngs(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<{ index: number; png: Uint8Array }[]> {
+  const unique = [
+    ...new Set(
+      pageIndexes.filter((index) => Number.isInteger(index) && index >= 0),
+    ),
+  ].sort((a, b) => a - b)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để chuyển xám.')
+  }
+  const replacements: { index: number; png: Uint8Array }[] = []
+  for (const index of unique) {
+    const canvas = await renderPageToScratch(bytes, index + 1)
+    const context = canvas.getContext('2d')
+    if (!context) {
+      throw new Error('Không chuyển xám được trang.')
+    }
+    const image = context.getImageData(0, 0, canvas.width, canvas.height)
+    grayscaleRgba(image.data)
+    context.putImageData(image, 0, 0)
+    const blob = await canvasToBlob(canvas, 'image/png')
+    replacements.push({ index, png: new Uint8Array(await blob.arrayBuffer()) })
+  }
+  return replacements
+}

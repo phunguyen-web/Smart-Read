@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { renderPageToCanvas } from '../lib/extract.ts'
+import { grayscalePagePngs, renderPageToCanvas } from '../lib/extract.ts'
 import {
   CROP_MARGINS,
   OVERLAY_PRESETS,
@@ -11,18 +11,23 @@ import {
   duplicatePages,
   duplicatedIndexes,
   extractPages,
+  imagesToPdf,
   insertBlankPage,
+  insertImages,
   isIdentityOrder,
   keepPages,
   mergeInsertIndex,
   mergePdf,
   movePages,
   pageCount,
+  readMetadata,
   reorderPageBlock,
+  replacePagesWithPngs,
   reversePages,
   reversedIndexes,
   rotatePages,
   rotatePagesBy,
+  setMetadata,
   splitEvery,
   textPagesToPdf,
   type CropMarginId,
@@ -37,10 +42,13 @@ import { zipPdfParts } from '../lib/convert.ts'
 import { pagesFromImportedText } from '../lib/import-text.ts'
 import {
   extractedPdfName,
+  isImageSource,
+  readImageFiles,
   readPdfFile,
   readSourceFile,
   splitPartName,
   splitZipName,
+  swapExtension,
 } from '../lib/limits.ts'
 import { popSnapshot, pushSnapshot, snapshotOf, type EditorSnapshot } from '../lib/history.ts'
 import {
@@ -123,6 +131,9 @@ export function Editor() {
   const [watermark, setWatermark] = useState('')
   const [watermarkStyle, setWatermarkStyle] = useState<WatermarkStyle>('diagonal')
   const [cropMargin, setCropMargin] = useState<CropMarginId>('medium')
+  const [metaTitle, setMetaTitle] = useState('')
+  const [metaAuthor, setMetaAuthor] = useState('')
+  const [metaSubject, setMetaSubject] = useState('')
   const [mergePending, setMergePending] = useState<{
     name: string
     bytes: Uint8Array
@@ -269,6 +280,33 @@ export function Editor() {
     void persistHistory(past, future)
   }, [past, future])
 
+  useEffect(() => {
+    if (!doc) {
+      return
+    }
+    const bytes = doc.bytes
+    let cancelled = false
+    void readMetadata(bytes)
+      .then((meta) => {
+        if (cancelled) {
+          return
+        }
+        setMetaTitle(meta.title)
+        setMetaAuthor(meta.author)
+        setMetaSubject(meta.subject)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMetaTitle('')
+          setMetaAuthor('')
+          setMetaSubject('')
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [doc, docId])
+
   const goToPage = useCallback(
     (index: number, mode: 'replace' | 'toggle' | 'range'): void => {
       if (!doc) {
@@ -391,13 +429,20 @@ export function Editor() {
     setMergePending(null)
     try {
       const source = await readSourceFile(file)
-      const next =
-        source.kind === 'pdf'
-          ? { name: source.name, bytes: source.bytes }
-          : {
-              name: source.pdfName,
-              bytes: await textPagesToPdf(pagesFromImportedText(source.kind, source.text)),
-            }
+      let next: { name: string; bytes: Uint8Array }
+      if (source.kind === 'pdf') {
+        next = { name: source.name, bytes: source.bytes }
+      } else if (isImageSource(source)) {
+        next = {
+          name: source.pdfName,
+          bytes: await imagesToPdf([{ bytes: source.bytes, kind: source.kind }]),
+        }
+      } else {
+        next = {
+          name: source.pdfName,
+          bytes: await textPagesToPdf(pagesFromImportedText(source.kind, source.text)),
+        }
+      }
       await forgetHistory()
       await setDocument(next.name, next.bytes)
       clearEditorView()
@@ -436,6 +481,36 @@ export function Editor() {
     setMergePending(null)
   }
 
+  async function onInsertImages(files: FileList | null): Promise<void> {
+    if (!files || files.length === 0) {
+      return
+    }
+    setError(null)
+    try {
+      const images = await readImageFiles(files)
+      const pages = images.map((image) => ({ bytes: image.bytes, kind: image.kind }))
+      if (!doc) {
+        await forgetHistory()
+        await setDocument(swapExtension(images[0]!.name, 'pdf'), await imagesToPdf(pages))
+        clearEditorView()
+        setPage(0)
+        setSelected(pages.map((_, index) => index))
+        setAnchor(0)
+        setPast([])
+        setFuture([])
+        return
+      }
+      const at = page + 1
+      await run((bytes) => insertImages(bytes, pages, at), () => {
+        setPage(at)
+        setSelected(pages.map((_, index) => at + index))
+        setAnchor(at)
+      })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không chèn được ảnh.')
+    }
+  }
+
   function onPreviewClick(event: React.MouseEvent<HTMLCanvasElement>): void {
     const canvas = canvasRef.current
     if (!canvas) {
@@ -465,19 +540,19 @@ export function Editor() {
       <header className="page-head">
         <h1>Chỉnh sửa PDF</h1>
         <p>
-          Xoay, đảo thứ tự, đánh số trang, đóng chữ mờ, cắt lề, xóa, nhân bản, tách hoặc giữ trang
-          đã chọn, tách thành nhiều PDF, chèn trang trắng, kéo thumbnail để đổi thứ tự, hoàn tác
-          (giữ khi tải lại trang), gộp tệp và chèn chữ, rồi tải PDF mới. Có thể mở TXT/Markdown/HTML
-          để tạo PDF.
+          Xoay, đảo thứ tự, đánh số trang, đóng chữ mờ, cắt lề, chuyển xám, xóa, nhân bản, tách
+          hoặc giữ trang đã chọn, tách thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG, kéo
+          thumbnail để đổi thứ tự, hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu
+          và chèn chữ, rồi tải PDF mới. Có thể mở TXT/Markdown/HTML hoặc PNG/JPEG để tạo PDF.
         </p>
       </header>
 
       <label className="file-btn">
-        Tải PDF / chữ
+        Tải PDF / chữ / ảnh
         <input
           type="file"
-          accept="application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm"
-          aria-label="Tải tệp PDF, TXT, Markdown hoặc HTML để chỉnh sửa"
+          accept="application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,image/png,.png,image/jpeg,.jpg,.jpeg"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, PNG hoặc JPEG để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -524,9 +599,10 @@ export function Editor() {
             <p className="kbd-hint">
               Nhấn thumbnail để xem trang, kéo để đổi thứ tự — các trang đã chọn đi cùng nhau.
               Ctrl/Cmd chọn thêm, Shift chọn dải. Phím: ← →, R xoay 90°, Shift+R xoay 180°, Delete
-              xóa, Alt+↑↓ dời nhóm, Ctrl+Z hoàn tác, Ctrl+Y làm lại. Nhân bản chèn bản sao sau trang
+              xóa, Alt+↑↓ dời nhóm, Ctrl+Z hoàn tác, Ctrl+Y làm lại.               Nhân bản chèn bản sao sau trang
               đã chọn cuối; tách trang tải một PDF mới; giữ lại chỉ các trang đã chọn; tách mỗi N
-              trang thành ZIP; chữ mờ và cắt lề áp dụng cho trang đã chọn.
+              trang thành ZIP; chữ mờ, cắt lề và chuyển xám áp dụng cho trang đã chọn. Chèn PNG/JPEG
+              thành trang mới; thông tin tiêu đề/tác giả lưu vào PDF.
             </p>
           </div>
           <div className="tools" role="toolbar" aria-label="Công cụ chỉnh PDF">
@@ -956,6 +1032,79 @@ export function Editor() {
                 }
               >
                 Cắt lề {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+              </button>
+            </fieldset>
+            <div className="tool-row">
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={
+                  targets.length > 1
+                    ? `Chuyển ${targets.length} trang đã chọn sang xám`
+                    : 'Chuyển trang hiện tại sang xám'
+                }
+                onClick={() =>
+                  void run(async (bytes) =>
+                    replacePagesWithPngs(bytes, await grayscalePagePngs(bytes, targets)),
+                  )
+                }
+              >
+                Chuyển xám {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+              </button>
+            </div>
+            <label className="file-btn secondary-file">
+              Chèn ảnh PNG/JPEG
+              <input
+                type="file"
+                accept="image/png,.png,image/jpeg,.jpg,.jpeg"
+                multiple
+                aria-label="Chèn một hoặc nhiều ảnh PNG hoặc JPEG thành trang PDF"
+                onChange={(event) => {
+                  void onInsertImages(event.target.files)
+                  event.target.value = ''
+                }}
+              />
+            </label>
+            <fieldset className="meta-pack">
+              <legend>Thông tin tài liệu</legend>
+              <label className="overlay-field">
+                Tiêu đề
+                <input
+                  value={metaTitle}
+                  onChange={(event) => setMetaTitle(event.target.value)}
+                  aria-label="Tiêu đề PDF"
+                />
+              </label>
+              <label className="overlay-field">
+                Tác giả
+                <input
+                  value={metaAuthor}
+                  onChange={(event) => setMetaAuthor(event.target.value)}
+                  aria-label="Tác giả PDF"
+                />
+              </label>
+              <label className="overlay-field">
+                Chủ đề
+                <input
+                  value={metaSubject}
+                  onChange={(event) => setMetaSubject(event.target.value)}
+                  aria-label="Chủ đề PDF"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void run((bytes) =>
+                    setMetadata(bytes, {
+                      title: metaTitle,
+                      author: metaAuthor,
+                      subject: metaSubject,
+                    }),
+                  )
+                }
+              >
+                Lưu thông tin
               </button>
             </fieldset>
             <label className="file-btn secondary-file">

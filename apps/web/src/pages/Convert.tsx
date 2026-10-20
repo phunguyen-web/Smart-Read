@@ -5,9 +5,11 @@ import {
   mimeFor,
   slicePageRange,
   slicePagesByIndexes,
+  toCsv,
   toDocx,
   toEpub,
   toHtml,
+  toJson,
   toMarkdown,
   toRtf,
   toTxt,
@@ -17,8 +19,14 @@ import {
 import { extractPageTexts, renderPageToBlob } from '../lib/extract.ts'
 import { pagesFromImportedText } from '../lib/import-text.ts'
 import { convertEpubToMobi, getMobiStatus } from '../lib/mobi.ts'
-import { imagePageName, imageZipName, readSourceFile, swapExtension } from '../lib/limits.ts'
-import { textPagesToPdf } from '../lib/pdf.ts'
+import {
+  imagePageName,
+  imageZipName,
+  isImageSource,
+  readSourceFile,
+  swapExtension,
+} from '../lib/limits.ts'
+import { imagesToPdf, textPagesToPdf } from '../lib/pdf.ts'
 import { editorExportSelection, forgetHistory, formatPageList } from '../lib/persist.ts'
 import { indexesFromPageRange, parsePageRange } from '../lib/selection.ts'
 import { downloadBlob, setDocument } from '../lib/document-store.ts'
@@ -29,6 +37,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'html', label: 'HTML', hint: 'Trang web' },
   { id: 'md', label: 'Markdown', hint: 'Tệp .md, một mục mỗi trang' },
   { id: 'rtf', label: 'RTF', hint: 'Rich Text, mở được trong Word' },
+  { id: 'json', label: 'JSON', hint: 'Trang + chữ, cấu trúc' },
+  { id: 'csv', label: 'CSV', hint: 'Bảng trang, chữ' },
   { id: 'docx', label: 'DOCX', hint: 'Microsoft Word' },
   { id: 'doc', label: 'DOC', hint: 'Word (cùng nội dung DOCX)' },
   { id: 'epub', label: 'EPUB', hint: 'Sách điện tử, có mục lục' },
@@ -83,6 +93,13 @@ export function Convert() {
       if (source.kind === 'pdf') {
         await forgetHistory()
         await setDocument(source.name, source.bytes)
+        return
+      }
+      if (isImageSource(source)) {
+        const bytes = await imagesToPdf([{ bytes: source.bytes, kind: source.kind }])
+        await forgetHistory()
+        await setDocument(source.pdfName, bytes)
+        setNote(`Đã tạo PDF 1 trang từ ${source.kind.toUpperCase()}. Có thể xuất sang định dạng khác.`)
         return
       }
       const pages = pagesFromImportedText(source.kind, source.text)
@@ -168,6 +185,16 @@ export function Convert() {
           new Blob([toRtf(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
+      } else if (format === 'json') {
+        downloadBlob(
+          new Blob([toJson(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'csv') {
+        downloadBlob(
+          new Blob([toCsv(pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
       } else if (format === 'docx' || format === 'doc') {
         const blob = await toDocx(title, pages)
         downloadBlob(blob, swapExtension(doc.name, extensionFor(format)))
@@ -211,18 +238,19 @@ export function Convert() {
       <header className="page-head">
         <h1>Chuyển đổi định dạng</h1>
         <p>
-          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, DOCX/DOC, EPUB hoặc MOBI; hoặc raster
-          từng trang thành PNG/JPEG. Có thể mở TXT/Markdown/HTML để tạo PDF trước, rồi xuất tiếp.
-          Có thể xuất đúng các trang đang chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau.
+          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, CSV, DOCX/DOC, EPUB hoặc MOBI;
+          hoặc raster từng trang thành PNG/JPEG. Có thể mở TXT/Markdown/HTML hoặc PNG/JPEG để tạo
+          PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang chọn trên Chỉnh sửa, kể cả khi
+          chúng không liền nhau.
         </p>
       </header>
 
       <label className="file-btn">
-        Tải PDF / chữ
+        Tải PDF / chữ / ảnh
         <input
           type="file"
-          accept="application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm"
-          aria-label="Tải tệp PDF, TXT, Markdown hoặc HTML để chuyển đổi"
+          accept="application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,image/png,.png,image/jpeg,.jpg,.jpeg"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, PNG hoặc JPEG để chuyển đổi"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -233,7 +261,7 @@ export function Convert() {
         </p>
       ) : (
         <p className="empty">
-          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown hoặc HTML để chọn khoảng trang và định dạng xuất.
+          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, PNG hoặc JPEG để chọn khoảng trang và định dạng xuất.
         </p>
       )}
       {error ? (

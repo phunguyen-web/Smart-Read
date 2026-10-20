@@ -5,6 +5,8 @@ export type ExportFormat =
   | 'html'
   | 'md'
   | 'rtf'
+  | 'json'
+  | 'csv'
   | 'docx'
   | 'doc'
   | 'epub'
@@ -96,6 +98,35 @@ export function toRtf(title: string, pages: string[]): string {
     })
     .join('')
   return `{\\rtf1\\ansi\\ansicpg65001\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\uc1\\pard\\f0\\fs24\\b ${heading}\\b0\\par\\par\n${body}}`
+}
+
+export function escapeCsv(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replaceAll('"', '""')}"`
+  }
+  return value
+}
+
+export function toCsv(pages: string[]): string {
+  return ['page,text', ...pages.map((text, index) => `${index + 1},${escapeCsv(text)}`)].join('\n')
+}
+
+export type JsonPage = {
+  page: number
+  text: string
+}
+
+export type JsonDocument = {
+  title: string
+  pages: JsonPage[]
+}
+
+export function toJson(title: string, pages: string[]): string {
+  const payload: JsonDocument = {
+    title,
+    pages: pages.map((text, index) => ({ page: index + 1, text })),
+  }
+  return `${JSON.stringify(payload, null, 2)}\n`
 }
 
 export function toMarkdown(title: string, pages: string[]): string {
@@ -339,6 +370,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/markdown;charset=utf-8'
     case 'rtf':
       return 'application/rtf'
+    case 'json':
+      return 'application/json;charset=utf-8'
+    case 'csv':
+      return 'text/csv;charset=utf-8'
     case 'png':
       return 'image/png'
     case 'jpg':
