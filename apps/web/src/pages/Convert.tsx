@@ -17,16 +17,15 @@ import {
   type ExportFormat,
 } from '../lib/convert.ts'
 import { extractPageTexts, renderPageToBlob } from '../lib/extract.ts'
-import { pagesFromImportedText } from '../lib/import-text.ts'
 import { convertEpubToMobi, getMobiStatus } from '../lib/mobi.ts'
 import {
+  ACCEPT_SOURCES,
   imagePageName,
   imageZipName,
-  isImageSource,
   readSourceFile,
   swapExtension,
 } from '../lib/limits.ts'
-import { imagesToPdf, textPagesToPdf } from '../lib/pdf.ts'
+import { importNoteFor, pdfFromLoadedSource } from '../lib/open-source.ts'
 import { editorExportSelection, forgetHistory, formatPageList } from '../lib/persist.ts'
 import { indexesFromPageRange, parsePageRange } from '../lib/selection.ts'
 import { downloadBlob, setDocument } from '../lib/document-store.ts'
@@ -90,23 +89,13 @@ export function Convert() {
     setNote(null)
     try {
       const source = await readSourceFile(file)
-      if (source.kind === 'pdf') {
-        await forgetHistory()
-        await setDocument(source.name, source.bytes)
-        return
-      }
-      if (isImageSource(source)) {
-        const bytes = await imagesToPdf([{ bytes: source.bytes, kind: source.kind }])
-        await forgetHistory()
-        await setDocument(source.pdfName, bytes)
-        setNote(`Đã tạo PDF 1 trang từ ${source.kind.toUpperCase()}. Có thể xuất sang định dạng khác.`)
-        return
-      }
-      const pages = pagesFromImportedText(source.kind, source.text)
-      const bytes = await textPagesToPdf(pages)
+      const next = await pdfFromLoadedSource(source)
       await forgetHistory()
-      await setDocument(source.pdfName, bytes)
-      setNote(`Đã tạo PDF ${pages.length} trang từ ${source.kind.toUpperCase()}. Có thể xuất sang định dạng khác.`)
+      const loaded = await setDocument(next.name, next.bytes)
+      const note = importNoteFor(source, loaded.pageCount)
+      if (note) {
+        setNote(note)
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Không đọc được tệp.')
     }
@@ -239,9 +228,9 @@ export function Convert() {
         <h1>Chuyển đổi định dạng</h1>
         <p>
           Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, CSV, DOCX/DOC, EPUB hoặc MOBI;
-          hoặc raster từng trang thành PNG/JPEG. Có thể mở TXT/Markdown/HTML hoặc PNG/JPEG để tạo
-          PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang chọn trên Chỉnh sửa, kể cả khi
-          chúng không liền nhau.
+          hoặc raster từng trang thành PNG/JPEG. Có thể mở TXT/Markdown/HTML/JSON/CSV, DOCX, EPUB
+          hoặc PNG/JPEG để tạo PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang chọn trên
+          Chỉnh sửa, kể cả khi chúng không liền nhau.
         </p>
       </header>
 
@@ -249,8 +238,8 @@ export function Convert() {
         Tải PDF / chữ / ảnh
         <input
           type="file"
-          accept="application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,image/png,.png,image/jpeg,.jpg,.jpeg"
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, PNG hoặc JPEG để chuyển đổi"
+          accept={ACCEPT_SOURCES}
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, DOCX, EPUB, PNG hoặc JPEG để chuyển đổi"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -261,7 +250,7 @@ export function Convert() {
         </p>
       ) : (
         <p className="empty">
-          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, PNG hoặc JPEG để chọn khoảng trang và định dạng xuất.
+          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, CSV, DOCX, EPUB, PNG hoặc JPEG để chọn khoảng trang và định dạng xuất.
         </p>
       )}
       {error ? (

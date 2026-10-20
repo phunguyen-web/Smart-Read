@@ -346,7 +346,8 @@ button:disabled {
 .split-pack legend,
 .watermark-pack legend,
 .crop-pack legend,
-.meta-pack legend {
+.meta-pack legend,
+.search-pack legend {
   font-weight: 600;
   margin-bottom: 4px;
 }
@@ -355,7 +356,8 @@ button:disabled {
 .split-pack,
 .watermark-pack,
 .crop-pack,
-.meta-pack {
+.meta-pack,
+.search-pack {
   border: 1px dashed var(--line);
   border-radius: 12px;
   padding: 10px;

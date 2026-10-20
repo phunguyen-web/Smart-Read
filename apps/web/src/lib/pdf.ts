@@ -342,8 +342,10 @@ export async function splitEvery(bytes: Uint8Array, size: number): Promise<Uint8
   return parts
 }
 
-const A4_WIDTH = 595.28
-const A4_HEIGHT = 841.89
+export const A4_WIDTH = 595.28
+export const A4_HEIGHT = 841.89
+export const A4_PORTRAIT = { width: A4_WIDTH, height: A4_HEIGHT } as const
+export const A4_LANDSCAPE = { width: A4_HEIGHT, height: A4_WIDTH } as const
 const TEXT_MARGIN = 50
 const TEXT_SIZE = 11
 const TEXT_LEADING = 15
@@ -425,6 +427,82 @@ export async function textPagesToPdf(pages: readonly string[]): Promise<Uint8Arr
     }
   }
   return new Uint8Array(await doc.save())
+}
+
+export type PageSize = {
+  width: number
+  height: number
+}
+
+/** Scale `src` to fit inside `dest`, centered. */
+export function fittedPageRect(src: PageSize, dest: PageSize): PageBox {
+  const scale = Math.min(
+    dest.width / Math.max(src.width, 1),
+    dest.height / Math.max(src.height, 1),
+  )
+  const width = src.width * scale
+  const height = src.height * scale
+  return {
+    x: (dest.width - width) / 2,
+    y: (dest.height - height) / 2,
+    width,
+    height,
+  }
+}
+
+export function a4SizeForPage(size: PageSize): PageSize {
+  return size.width > size.height ? A4_LANDSCAPE : A4_PORTRAIT
+}
+
+/** Draw selected pages onto A4 (portrait or landscape to match each page). */
+export async function fitPagesToA4(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  const unique = new Set(
+    uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count),
+  )
+  if (unique.size === 0) {
+    throw new Error('Chọn ít nhất một trang để vừa khổ A4.')
+  }
+  const dst = await PDFDocument.create()
+  const title = src.getTitle()
+  const author = src.getAuthor()
+  const subject = src.getSubject()
+  if (title) {
+    dst.setTitle(title)
+  }
+  if (author) {
+    dst.setAuthor(author)
+  }
+  if (subject) {
+    dst.setSubject(subject)
+  }
+  dst.setProducer('Smart-Read')
+  dst.setCreator('Smart-Read')
+  for (let index = 0; index < count; index += 1) {
+    if (!unique.has(index)) {
+      const [copied] = await dst.copyPages(src, [index])
+      dst.addPage(copied)
+      continue
+    }
+    const [embedded] = await dst.embedPages([src.getPage(index)])
+    const destSize = a4SizeForPage({ width: embedded.width, height: embedded.height })
+    const page = dst.addPage([destSize.width, destSize.height])
+    const box = fittedPageRect(
+      { width: embedded.width, height: embedded.height },
+      destSize,
+    )
+    page.drawPage(embedded, {
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+    })
+  }
+  return new Uint8Array(await dst.save())
 }
 
 export async function insertBlankPage(

@@ -178,6 +178,30 @@ export function indexesFromPageRange(fromPage: number, toPage: number): number[]
   return Array.from({ length: to - from + 1 }, (_, offset) => from - 1 + offset)
 }
 
+export type GotoPageParse = { ok: true; index: number } | { ok: false; message: string }
+
+/** Validate a 1-based page number for jumping in the editor. */
+export function parseGotoPage(raw: string, pageCount: number): GotoPageParse {
+  if (pageCount < 1) {
+    return { ok: false, message: 'Tài liệu không có trang để tới.' }
+  }
+  const trimmed = raw.trim()
+  if (trimmed === '') {
+    return { ok: false, message: 'Nhập số trang cần tới.' }
+  }
+  if (!/^\d+$/.test(trimmed)) {
+    return { ok: false, message: 'Số trang phải là số nguyên.' }
+  }
+  const page = Number(trimmed)
+  if (page < 1) {
+    return { ok: false, message: 'Số trang phải từ 1.' }
+  }
+  if (page > pageCount) {
+    return { ok: false, message: `Số trang không được vượt quá ${pageCount}.` }
+  }
+  return { ok: true, index: page - 1 }
+}
+
 export type SplitSizeParse = { ok: true; size: number } | { ok: false; message: string }
 
 export function parseSplitSize(raw: string, pageCount: number): SplitSizeParse {

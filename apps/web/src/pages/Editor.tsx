@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { grayscalePagePngs, renderPageToCanvas } from '../lib/extract.ts'
+import {
+  blankPageIndexes,
+  extractPageTexts,
+  findPagesWithText,
+  grayscalePagePngs,
+  renderPageToCanvas,
+} from '../lib/extract.ts'
 import {
   CROP_MARGINS,
   OVERLAY_PRESETS,
@@ -11,6 +17,7 @@ import {
   duplicatePages,
   duplicatedIndexes,
   extractPages,
+  fitPagesToA4,
   imagesToPdf,
   insertBlankPage,
   insertImages,
@@ -29,7 +36,6 @@ import {
   rotatePagesBy,
   setMetadata,
   splitEvery,
-  textPagesToPdf,
   type CropMarginId,
   type MergeWhere,
   type OverlayPosition,
@@ -39,10 +45,9 @@ import {
   type WatermarkStyle,
 } from '../lib/pdf.ts'
 import { zipPdfParts } from '../lib/convert.ts'
-import { pagesFromImportedText } from '../lib/import-text.ts'
 import {
+  ACCEPT_SOURCES,
   extractedPdfName,
-  isImageSource,
   readImageFiles,
   readPdfFile,
   readSourceFile,
@@ -50,6 +55,7 @@ import {
   splitZipName,
   swapExtension,
 } from '../lib/limits.ts'
+import { pdfFromLoadedSource } from '../lib/open-source.ts'
 import { popSnapshot, pushSnapshot, snapshotOf, type EditorSnapshot } from '../lib/history.ts'
 import {
   clearEditorView,
@@ -67,6 +73,7 @@ import {
   nextPageAfterDelete,
   oddPageIndexes,
   pageRange,
+  parseGotoPage,
   parseSplitSize,
   togglePage,
 } from '../lib/selection.ts'
@@ -120,6 +127,8 @@ function initialEditorView() {
 export function Editor() {
   const doc = useDocument()
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+  const gotoRef = useRef<HTMLInputElement>(null)
   const started = useMemo(() => initialEditorView(), [])
   const [page, setPage] = useState(started.page)
   const [selected, setSelected] = useState<number[]>(started.selected)
@@ -147,6 +156,20 @@ export function Editor() {
   const [future, setFuture] = useState<EditorSnapshot[]>(startedHistory.future)
   const docId = doc ? `${doc.name}:${doc.bytes.byteLength}:${doc.pageCount}` : ''
   const [splitRaw, setSplitRaw] = useState<{ id: string; value: string } | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchRaw, setSearchRaw] = useState<{
+    id: string
+    hits: number[]
+    at: number
+    note: string | null
+  } | null>(null)
+  const [gotoRaw, setGotoRaw] = useState('')
+  const searchHits = useMemo(
+    () => (searchRaw?.id === docId ? searchRaw.hits : []),
+    [searchRaw, docId],
+  )
+  const searchAt = searchRaw?.id === docId ? searchRaw.at : 0
+  const searchNote = searchRaw?.id === docId ? searchRaw.note : null
   const splitValue = splitRaw?.id === docId ? splitRaw.value : doc ? String(Math.min(10, doc.pageCount)) : '1'
   const parsedSplit = doc ? parseSplitSize(splitValue, doc.pageCount) : null
   const splitError = parsedSplit && !parsedSplit.ok ? parsedSplit.message : null
@@ -331,6 +354,90 @@ export function Editor() {
     [doc, anchor],
   )
 
+  const jumpSearchHit = useCallback(
+    (hits: number[], at: number): void => {
+      if (!doc || hits.length === 0) {
+        return
+      }
+      const index = ((at % hits.length) + hits.length) % hits.length
+      setSearchRaw({
+        id: `${doc.name}:${doc.bytes.byteLength}:${doc.pageCount}`,
+        hits,
+        at: index,
+        note: `Trang ${hits[index]! + 1} · ${index + 1}/${hits.length} kết quả`,
+      })
+      goToPage(hits[index]!, 'replace')
+    },
+    [doc, goToPage],
+  )
+
+  const runSearch = useCallback(async (): Promise<void> => {
+    if (!doc) {
+      return
+    }
+    const query = searchQuery.trim()
+    if (!query) {
+      setSearchRaw({ id: docId, hits: [], at: 0, note: 'Nhập từ khóa để tìm.' })
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const hits = findPagesWithText(await extractPageTexts(doc.bytes), query)
+      if (hits.length === 0) {
+        setSearchRaw({ id: docId, hits: [], at: 0, note: 'Không tìm thấy trang chứa từ khóa.' })
+        return
+      }
+      jumpSearchHit(hits, 0)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không tìm được chữ.')
+    } finally {
+      setBusy(false)
+    }
+  }, [doc, docId, searchQuery, jumpSearchHit])
+
+  const applyGoto = useCallback((): void => {
+    if (!doc) {
+      return
+    }
+    const parsed = parseGotoPage(gotoRaw, doc.pageCount)
+    if (!parsed.ok) {
+      setError(parsed.message)
+      return
+    }
+    setError(null)
+    goToPage(parsed.index, 'replace')
+  }, [doc, gotoRaw, goToPage])
+
+  const removeBlankPages = useCallback(async (): Promise<void> => {
+    if (!doc) {
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const blanks = blankPageIndexes(await extractPageTexts(doc.bytes))
+      if (blanks.length === 0) {
+        setError('Không có trang trống (theo chữ trích được) để xóa.')
+        return
+      }
+      if (blanks.length >= doc.pageCount) {
+        setError('Mọi trang đều không có chữ (có thể là PDF ảnh). Không xóa hết tài liệu.')
+        return
+      }
+      await run((bytes) => deletePages(bytes, blanks), () => {
+        setPage(0)
+        setSelected([0])
+        setAnchor(0)
+        setSearchRaw(null)
+      })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không xóa được trang trống.')
+    } finally {
+      setBusy(false)
+    }
+  }, [doc, run])
+
   const applyReorder = useCallback(
     (fromIndexes: readonly number[], dropTo: number, focusFrom?: number): void => {
       if (!doc) {
@@ -369,6 +476,23 @@ export function Editor() {
   useEffect(() => {
     function onKey(event: KeyboardEvent): void {
       if (!doc || busy) {
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        searchRef.current?.focus()
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'g') {
+        event.preventDefault()
+        gotoRef.current?.focus()
+        return
+      }
+      if (event.key === 'F3') {
+        event.preventDefault()
+        if (searchHits.length > 0) {
+          jumpSearchHit(searchHits, searchAt + (event.shiftKey ? -1 : 1))
+        }
         return
       }
       const target = event.target
@@ -419,7 +543,21 @@ export function Editor() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [doc, busy, page, run, targets, goToPage, deleteSelected, undo, redo, applyReorder])
+  }, [
+    doc,
+    busy,
+    page,
+    run,
+    targets,
+    goToPage,
+    deleteSelected,
+    undo,
+    redo,
+    applyReorder,
+    searchHits,
+    searchAt,
+    jumpSearchHit,
+  ])
 
   async function onUpload(file: File | undefined): Promise<void> {
     if (!file) {
@@ -428,21 +566,7 @@ export function Editor() {
     setError(null)
     setMergePending(null)
     try {
-      const source = await readSourceFile(file)
-      let next: { name: string; bytes: Uint8Array }
-      if (source.kind === 'pdf') {
-        next = { name: source.name, bytes: source.bytes }
-      } else if (isImageSource(source)) {
-        next = {
-          name: source.pdfName,
-          bytes: await imagesToPdf([{ bytes: source.bytes, kind: source.kind }]),
-        }
-      } else {
-        next = {
-          name: source.pdfName,
-          bytes: await textPagesToPdf(pagesFromImportedText(source.kind, source.text)),
-        }
-      }
+      const next = await pdfFromLoadedSource(await readSourceFile(file))
       await forgetHistory()
       await setDocument(next.name, next.bytes)
       clearEditorView()
@@ -540,10 +664,11 @@ export function Editor() {
       <header className="page-head">
         <h1>Chỉnh sửa PDF</h1>
         <p>
-          Xoay, đảo thứ tự, đánh số trang, đóng chữ mờ, cắt lề, chuyển xám, xóa, nhân bản, tách
-          hoặc giữ trang đã chọn, tách thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG, kéo
-          thumbnail để đổi thứ tự, hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu
-          và chèn chữ, rồi tải PDF mới. Có thể mở TXT/Markdown/HTML hoặc PNG/JPEG để tạo PDF.
+          Xoay, đảo thứ tự, đánh số trang, đóng chữ mờ, cắt lề, chuyển xám, tìm chữ, xóa trang
+          không chữ, vừa khổ A4, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách thành nhiều PDF,
+          chèn trang trắng hoặc ảnh PNG/JPEG, kéo thumbnail để đổi thứ tự, hoàn tác (giữ khi tải
+          lại trang), gộp tệp, sửa thông tin tài liệu và chèn chữ, rồi tải PDF mới. Có thể mở TXT,
+          Markdown, HTML, JSON, CSV, DOCX, EPUB hoặc PNG/JPEG để tạo PDF.
         </p>
       </header>
 
@@ -551,8 +676,8 @@ export function Editor() {
         Tải PDF / chữ / ảnh
         <input
           type="file"
-          accept="application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,image/png,.png,image/jpeg,.jpg,.jpeg"
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, PNG hoặc JPEG để chỉnh sửa"
+          accept={ACCEPT_SOURCES}
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, DOCX, EPUB, PNG hoặc JPEG để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -599,10 +724,11 @@ export function Editor() {
             <p className="kbd-hint">
               Nhấn thumbnail để xem trang, kéo để đổi thứ tự — các trang đã chọn đi cùng nhau.
               Ctrl/Cmd chọn thêm, Shift chọn dải. Phím: ← →, R xoay 90°, Shift+R xoay 180°, Delete
-              xóa, Alt+↑↓ dời nhóm, Ctrl+Z hoàn tác, Ctrl+Y làm lại.               Nhân bản chèn bản sao sau trang
-              đã chọn cuối; tách trang tải một PDF mới; giữ lại chỉ các trang đã chọn; tách mỗi N
-              trang thành ZIP; chữ mờ, cắt lề và chuyển xám áp dụng cho trang đã chọn. Chèn PNG/JPEG
-              thành trang mới; thông tin tiêu đề/tác giả lưu vào PDF.
+              xóa, Alt+↑↓ dời nhóm, Ctrl+Z hoàn tác, Ctrl+Y làm lại, Ctrl+F tìm chữ, Ctrl+G tới
+              trang, F3 kết quả sau. Nhân bản chèn bản sao sau trang đã chọn cuối; tách trang tải một
+              PDF mới; giữ lại chỉ các trang đã chọn; tách mỗi N trang thành ZIP; chữ mờ, cắt lề,
+              chuyển xám và vừa A4 áp dụng cho trang đã chọn. Chèn PNG/JPEG thành trang mới; thông
+              tin tiêu đề/tác giả lưu vào PDF.
             </p>
           </div>
           <div className="tools" role="toolbar" aria-label="Công cụ chỉnh PDF">
@@ -642,6 +768,80 @@ export function Editor() {
                 Trang sau
               </button>
             </div>
+            <fieldset className="search-pack">
+              <legend>Tìm chữ / tới trang</legend>
+              <label className="overlay-field">
+                Tới trang
+                <input
+                  ref={gotoRef}
+                  value={gotoRaw}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder={String(page + 1)}
+                  aria-label="Tới số trang"
+                  aria-keyshortcuts="Control+G"
+                  onChange={(event) => setGotoRaw(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      applyGoto()
+                    }
+                  }}
+                />
+              </label>
+              <button type="button" disabled={busy} onClick={applyGoto}>
+                Tới trang
+              </button>
+              <label className="overlay-field">
+                Từ khóa
+                <input
+                  ref={searchRef}
+                  value={searchQuery}
+                  aria-label="Từ khóa tìm trong PDF"
+                  aria-keyshortcuts="Control+F"
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void runSearch()
+                    }
+                  }}
+                />
+              </label>
+              {searchNote ? <p className="range-ok">{searchNote}</p> : null}
+              <div className="tool-row">
+                <button type="button" disabled={busy} onClick={() => void runSearch()}>
+                  Tìm
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || searchHits.length === 0}
+                  aria-keyshortcuts="Shift+F3"
+                  onClick={() => jumpSearchHit(searchHits, searchAt - 1)}
+                >
+                  Trước
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || searchHits.length === 0}
+                  aria-keyshortcuts="F3"
+                  onClick={() => jumpSearchHit(searchHits, searchAt + 1)}
+                >
+                  Sau
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || searchHits.length === 0}
+                  onClick={() => {
+                    setSelected(searchHits)
+                    setPage(searchHits[0]!)
+                    setAnchor(searchHits[0]!)
+                  }}
+                >
+                  Chọn các trang khớp
+                </button>
+              </div>
+            </fieldset>
             <div className="tool-row">
               <button type="button" disabled={busy} onClick={() => setSelected(pageRange(0, doc.pageCount - 1))}>
                 Chọn tất cả
@@ -1050,6 +1250,26 @@ export function Editor() {
                 }
               >
                 Chuyển xám {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={
+                  targets.length > 1
+                    ? `Vừa khổ A4 cho ${targets.length} trang đã chọn`
+                    : 'Vừa khổ A4 cho trang hiện tại'
+                }
+                onClick={() => void run((bytes) => fitPagesToA4(bytes, targets))}
+              >
+                Vừa A4 {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+              </button>
+              <button
+                type="button"
+                disabled={busy || doc.pageCount < 2}
+                aria-label="Xóa các trang không có chữ"
+                onClick={() => void removeBlankPages()}
+              >
+                Xóa trang không chữ
               </button>
             </div>
             <label className="file-btn secondary-file">

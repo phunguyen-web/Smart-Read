@@ -18,14 +18,14 @@ export const PIPELINE_STAGES = [
     subagent: "pdf-editor",
     title: "PDF editor",
     summary:
-      "Implement in-browser PDF page operations: rotate, reverse, page numbers, watermark, crop, grayscale, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, and text overlay.",
+      "Implement in-browser PDF page operations: rotate, reverse, page numbers, watermark, crop, grayscale, find text, go to page, remove blank (no-text) pages, fit to A4, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, and text overlay.",
   },
   {
     id: "format-converter",
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, CSV, DOCX/DOC, EPUB, and MOBI; raster pages to PNG/JPEG; import TXT/MD/HTML/PNG/JPEG as PDF.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, CSV, DOCX/DOC, EPUB, and MOBI; raster pages to PNG/JPEG; import TXT/MD/HTML/JSON/CSV/DOCX/EPUB/PNG/JPEG as PDF.",
   },
   {
     id: "qa-reviewer",
@@ -106,13 +106,13 @@ export const SUPPORTED_FORMATS = [
     id: "pdf",
     label: "PDF",
     role: "edit",
-    notes: "Source format. Page rotate 90/180, reverse order, page numbers, watermark, crop, grayscale, delete, duplicate, extract, keep, split to ZIP, insert blank or PNG/JPEG, reorder, merge, metadata, persist undo, and text overlay.",
+    notes: "Source format. Page rotate 90/180, reverse order, page numbers, watermark, crop, grayscale, find text, go to page, remove no-text pages, fit to A4, delete, duplicate, extract, keep, split to ZIP, insert blank or PNG/JPEG, reorder, merge, metadata, persist undo, and text overlay.",
   },
   {
     id: "txt",
     label: "Plain text",
     role: "export",
-    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats. PNG/JPEG uploads also become PDF pages.",
+    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats. PNG/JPEG, DOCX, EPUB, JSON, and CSV uploads also become PDF pages.",
   },
   {
     id: "html",
@@ -137,26 +137,26 @@ export const SUPPORTED_FORMATS = [
     id: "json",
     label: "JSON",
     role: "export",
-    notes: "Structured { title, pages: [{ page, text }] } from extracted page text.",
+    notes: "Structured { title, pages: [{ page, text }] } from extracted page text. Uploading JSON builds a PDF first.",
   },
   {
     id: "csv",
     label: "CSV",
     role: "export",
-    notes: "page,text rows from extracted page text. Fields with commas are quoted.",
+    notes: "page,text rows from extracted page text. Fields with commas are quoted. Uploading CSV builds a PDF first.",
   },
   {
     id: "docx",
     label: "DOCX / DOC",
     role: "export",
     aliases: ["doc"],
-    notes: "Word document generated from extracted text.",
+    notes: "Word document generated from extracted text. Uploading DOCX (Office Open XML) builds a PDF first; binary .doc is rejected.",
   },
   {
     id: "epub",
     label: "EPUB",
     role: "export",
-    notes: "Reflowable ebook from extracted text.",
+    notes: "Reflowable ebook from extracted text. Uploading EPUB builds a PDF from the spine XHTML.",
   },
   {
     id: "mobi",

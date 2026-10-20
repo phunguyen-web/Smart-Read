@@ -1,8 +1,11 @@
+import JSZip from 'jszip'
+
 export const MAX_IMPORT_CHARS = 200_000
 export const MAX_IMPORT_PAGES = 80
 export const IMPORT_PAGE_CHARS = 1800
 
-export type ImportedTextKind = 'txt' | 'md' | 'html'
+export type ImportedTextKind = 'txt' | 'md' | 'html' | 'json' | 'csv'
+export type ZipImportKind = 'docx' | 'epub'
 
 function capPages(pages: string[]): string[] {
   const cleaned = pages.map((page) => page.replaceAll('\u0000', '').trimEnd())
@@ -155,5 +158,217 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   if (kind === 'html') {
     return pagesFromHtml(text)
   }
+  if (kind === 'json') {
+    return pagesFromJson(text)
+  }
+  if (kind === 'csv') {
+    return pagesFromCsv(text)
+  }
   return pagesFromPlainText(text)
+}
+
+export function unescapeXml(value: string): string {
+  return unescapeHtmlEntities(
+    value.replace(/&#(\d+);/g, (_match, digits: string) => {
+      const code = Number(digits)
+      return Number.isInteger(code) && code > 0 ? String.fromCodePoint(code) : ''
+    }),
+  )
+}
+
+export function parseCsv(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let field = ''
+  let quoted = false
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]!
+    if (quoted) {
+      if (char === '"') {
+        if (text[index + 1] === '"') {
+          field += '"'
+          index += 1
+        } else {
+          quoted = false
+        }
+        continue
+      }
+      field += char
+      continue
+    }
+    if (char === '"') {
+      quoted = true
+      continue
+    }
+    if (char === ',') {
+      row.push(field)
+      field = ''
+      continue
+    }
+    if (char === '\n') {
+      row.push(field.endsWith('\r') ? field.slice(0, -1) : field)
+      rows.push(row)
+      row = []
+      field = ''
+      continue
+    }
+    field += char
+  }
+  if (quoted) {
+    throw new Error('CSV thiếu dấu ngoặc đóng.')
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field)
+    rows.push(row)
+  }
+  return rows
+}
+
+export function pagesFromJson(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  let data: unknown
+  try {
+    data = JSON.parse(trimmed)
+  } catch {
+    throw new Error('Tệp JSON không hợp lệ.')
+  }
+  if (Array.isArray(data) && data.every((item) => typeof item === 'string')) {
+    return capPages(data)
+  }
+  if (data && typeof data === 'object' && Array.isArray((data as { pages?: unknown }).pages)) {
+    const pages = (data as { pages: unknown[] }).pages.map((item) => {
+      if (typeof item === 'string') {
+        return item
+      }
+      if (item && typeof item === 'object' && typeof (item as { text?: unknown }).text === 'string') {
+        return (item as { text: string }).text
+      }
+      return ''
+    })
+    return capPages(pages)
+  }
+  throw new Error('JSON cần { pages: [{ text }] } hoặc một mảng chuỗi.')
+}
+
+export function pagesFromCsv(text: string): string[] {
+  const rows = parseCsv(assertImportBudget(text)).filter((row) => row.some((cell) => cell.trim()))
+  if (rows.length === 0) {
+    throw new Error('Tệp CSV trống.')
+  }
+  const header = rows[0] ?? []
+  const start =
+    header.length >= 2 && /^page$/i.test(header[0]!.trim()) && /^text$/i.test(header[1]!.trim())
+      ? 1
+      : 0
+  const pages = rows.slice(start).map((row) => (row.length >= 2 ? row.slice(1).join(',') : row[0] ?? ''))
+  return capPages(pages)
+}
+
+function pagesFromOfficeHeadings(text: string): string[] {
+  if (!/^Trang\s+\d+\s*$/m.test(text)) {
+    return pagesFromPlainText(text)
+  }
+  const parts = text
+    .split(/^Trang\s+\d+\s*$/m)
+    .map((page) => page.trim())
+    .filter((page) => page.length > 0)
+  return capPages(parts)
+}
+
+function xmlToPlain(xml: string): string {
+  return unescapeXml(
+    xml
+      .replace(/<w:lastRenderedPageBreak\b[^>]*\/?>/gi, '\f')
+      .replace(/<w:br\b[^>]*w:type="page"[^>]*\/?>/gi, '\f')
+      .replace(/<w:tab\b[^>]*\/?>/gi, '\t')
+      .replace(/<w:br\b[^>]*\/?>/gi, '\n')
+      .replace(/<\/w:p>/gi, '\n\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim(),
+  )
+}
+
+export async function pagesFromDocx(bytes: Uint8Array): Promise<string[]> {
+  const zip = await JSZip.loadAsync(bytes)
+  const file = zip.file('word/document.xml')
+  if (!file) {
+    throw new Error('Chỉ mở được DOCX (Office Open XML), không phải DOC nhị phân.')
+  }
+  return pagesFromOfficeHeadings(xmlToPlain(await file.async('string')))
+}
+
+function attr(tag: string, name: string): string | null {
+  const match = tag.match(new RegExp(`${name}="([^"]+)"`))
+  return match ? match[1]! : null
+}
+
+function resolveZipPath(from: string, href: string): string {
+  const cleaned = href.split('#')[0] ?? href
+  const dir = from.includes('/') ? from.slice(0, from.lastIndexOf('/') + 1) : ''
+  const parts: string[] = []
+  for (const part of `${dir}${cleaned}`.replaceAll('\\', '/').split('/')) {
+    if (!part || part === '.') {
+      continue
+    }
+    if (part === '..') {
+      parts.pop()
+      continue
+    }
+    parts.push(part)
+  }
+  return parts.join('/')
+}
+
+export async function pagesFromEpub(bytes: Uint8Array): Promise<string[]> {
+  const zip = await JSZip.loadAsync(bytes)
+  const container = await zip.file('META-INF/container.xml')?.async('string')
+  if (!container) {
+    throw new Error('Tệp EPUB thiếu META-INF/container.xml.')
+  }
+  const root = container.match(/full-path="([^"]+)"/)?.[1]
+  if (!root) {
+    throw new Error('Tệp EPUB không có gói nội dung OPF.')
+  }
+  const opfFile = zip.file(root)
+  if (!opfFile) {
+    throw new Error('Không đọc được content.opf trong EPUB.')
+  }
+  const opf = await opfFile.async('string')
+  const manifest = new Map<string, string>()
+  for (const match of opf.matchAll(/<item\b[^>]*>/gi)) {
+    const tag = match[0]
+    const id = attr(tag, 'id')
+    const href = attr(tag, 'href')
+    if (id && href && !/\bproperties="[^"]*\bnav\b/i.test(tag)) {
+      manifest.set(id, href)
+    }
+  }
+  const spine = [...opf.matchAll(/<itemref\b[^>]*>/gi)]
+    .map((match) => attr(match[0], 'idref'))
+    .filter((id): id is string => Boolean(id))
+  const hrefs = spine
+    .map((id) => manifest.get(id))
+    .filter((href): href is string => Boolean(href))
+    .filter((href) => !/nav\.xhtml$/i.test(href) && !/toc\.ncx$/i.test(href))
+  const pages: string[] = []
+  for (const href of hrefs) {
+    const path = resolveZipPath(root, href)
+    const file = zip.file(path)
+    if (!file) {
+      continue
+    }
+    const xhtml = await file.async('string')
+    const body = xhtml.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? xhtml
+    const text = stripMarkup(body)
+      .replace(/^Trang\s+\d+\s*/i, '')
+      .trim()
+    if (text) {
+      pages.push(text)
+    }
+  }
+  if (pages.length === 0) {
+    throw new Error('EPUB không có nội dung chữ để mở.')
+  }
+  return capPages(pages)
 }

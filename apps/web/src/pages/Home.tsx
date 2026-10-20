@@ -20,12 +20,13 @@ export function Home() {
       <ul className="feature-list">
         <li>
           Dải thumbnail rõ nét, chọn lẻ/chẵn, xoay 90/180, đảo thứ tự, đánh số trang, chữ mờ, cắt lề,
-          chuyển xám, nhân bản, tách hoặc giữ trang, tách nhiều PDF, chèn trang trắng hoặc PNG/JPEG,
-          kéo cả nhóm để sắp xếp, hoàn tác (giữ khi tải lại), thông tin tài liệu, gộp và chèn chữ
+          chuyển xám, tìm chữ, xóa trang không chữ, vừa khổ A4, nhân bản, tách hoặc giữ trang, tách
+          nhiều PDF, chèn trang trắng hoặc PNG/JPEG, kéo cả nhóm để sắp xếp, hoàn tác (giữ khi tải
+          lại), thông tin tài liệu, gộp và chèn chữ
         </li>
         <li>
           Xuất TXT, HTML, Markdown, RTF, JSON, CSV, DOCX/DOC, EPUB, MOBI, PNG/JPEG — và mở
-          TXT/Markdown/HTML hoặc PNG/JPEG thành PDF
+          TXT/Markdown/HTML/JSON/CSV, DOCX, EPUB hoặc PNG/JPEG thành PDF
         </li>
         <li>Không tài khoản, không lưu đám mây — tệp gần nhất và lịch sử hoàn tác được giữ trên trình duyệt này</li>
       </ul>

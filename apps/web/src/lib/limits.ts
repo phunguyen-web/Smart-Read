@@ -1,14 +1,18 @@
-import type { ImportedTextKind } from './import-text.ts'
+import type { ImportedTextKind, ZipImportKind } from './import-text.ts'
 
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
+export const ACCEPT_SOURCES =
+  'application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,application/json,.json,text/csv,.csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,application/msword,.doc,application/epub+zip,.epub,image/png,.png,image/jpeg,.jpg,.jpeg'
+
 export type ImageKind = 'png' | 'jpg'
-export type SourceKind = 'pdf' | ImportedTextKind | ImageKind
+export type SourceKind = 'pdf' | ImportedTextKind | ImageKind | ZipImportKind
 
 export type LoadedSource =
   | { kind: 'pdf'; name: string; bytes: Uint8Array }
   | { kind: ImportedTextKind; name: string; text: string; pdfName: string }
   | { kind: ImageKind; name: string; bytes: Uint8Array; pdfName: string }
+  | { kind: ZipImportKind; name: string; bytes: Uint8Array; pdfName: string }
 
 export function isImageKind(kind: SourceKind): kind is ImageKind {
   return kind === 'png' || kind === 'jpg'
@@ -18,6 +22,12 @@ export function isImageSource(
   source: LoadedSource,
 ): source is Extract<LoadedSource, { kind: ImageKind }> {
   return source.kind === 'png' || source.kind === 'jpg'
+}
+
+export function isZipImportSource(
+  source: LoadedSource,
+): source is Extract<LoadedSource, { kind: ZipImportKind }> {
+  return source.kind === 'docx' || source.kind === 'epub'
 }
 
 export function imageKindFromFile(file: { name: string; type: string }): ImageKind {
@@ -61,6 +71,23 @@ export function sourceKindFromFile(file: File): SourceKind {
   if (type === 'text/html' || name.endsWith('.html') || name.endsWith('.htm')) {
     return 'html'
   }
+  if (type === 'application/json' || name.endsWith('.json')) {
+    return 'json'
+  }
+  if (type === 'text/csv' || type === 'application/csv' || name.endsWith('.csv')) {
+    return 'csv'
+  }
+  if (
+    type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    name.endsWith('.docx') ||
+    type === 'application/msword' ||
+    name.endsWith('.doc')
+  ) {
+    return 'docx'
+  }
+  if (type === 'application/epub+zip' || name.endsWith('.epub')) {
+    return 'epub'
+  }
   if (
     type === 'text/plain' ||
     name.endsWith('.txt') ||
@@ -71,7 +98,7 @@ export function sourceKindFromFile(file: File): SourceKind {
   try {
     return imageKindFromFile(file)
   } catch {
-    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, PNG hoặc JPEG.')
+    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, JSON, CSV, DOCX, EPUB, PNG hoặc JPEG.')
   }
 }
 
@@ -96,6 +123,14 @@ export async function readSourceFile(file: File): Promise<LoadedSource> {
     return { kind, name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) }
   }
   if (isImageKind(kind)) {
+    return {
+      kind,
+      name: file.name,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      pdfName: swapExtension(file.name, 'pdf'),
+    }
+  }
+  if (kind === 'docx' || kind === 'epub') {
     return {
       kind,
       name: file.name,
@@ -137,7 +172,7 @@ export async function readImageFiles(
 
 export function swapExtension(filename: string, ext: string): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|json|csv)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|json|csv|docx|doc|epub)$/i, '') ||
     'document'
   return `${base}.${ext}`
 }
@@ -177,13 +212,15 @@ export function imagePageName(
   ext: 'png' | 'jpg',
 ): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|json|csv)$/i, '') || 'document'
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|json|csv|docx|doc|epub)$/i, '') ||
+    'document'
   const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
   return `${base}-trang-${page}.${ext}`
 }
 
 export function imageZipName(filename: string, ext: 'png' | 'jpg'): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|json|csv)$/i, '') || 'document'
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|json|csv|docx|doc|epub)$/i, '') ||
+    'document'
   return `${base}-anh-${ext}.zip`
 }

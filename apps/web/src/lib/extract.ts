@@ -129,6 +129,27 @@ async function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
   }
 }
 
+export const BLANK_PAGE_MIN_CHARS = 1
+
+export function foldSearch(value: string): string {
+  return value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+}
+
+export function findPagesWithText(pages: readonly string[], query: string): number[] {
+  const needle = foldSearch(query).trim()
+  if (!needle) {
+    return []
+  }
+  return pages.flatMap((text, index) => (foldSearch(text).includes(needle) ? [index] : []))
+}
+
+export function blankPageIndexes(
+  pages: readonly string[],
+  minChars = BLANK_PAGE_MIN_CHARS,
+): number[] {
+  return pages.flatMap((text, index) => (text.trim().length < minChars ? [index] : []))
+}
+
 export async function extractPageTexts(bytes: Uint8Array): Promise<string[]> {
   const pdfjs = await loadPdfJs()
   const loadingTask = pdfjs.getDocument({ data: bytes.slice() })

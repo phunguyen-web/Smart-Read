@@ -18,10 +18,15 @@ import {
   zipPdfParts,
 } from './convert.ts'
 import {
+  pagesFromCsv,
+  pagesFromDocx,
+  pagesFromEpub,
   pagesFromHtml,
   pagesFromImportedText,
+  pagesFromJson,
   pagesFromMarkdown,
   pagesFromPlainText,
+  parseCsv,
   stripMarkup,
 } from './import-text.ts'
 import {
@@ -29,6 +34,9 @@ import {
   BASE_THUMB_CONTRAST,
   MAX_PREVIEW_SCALE,
   SPARSE_THUMB_CONTRAST,
+  blankPageIndexes,
+  findPagesWithText,
+  foldSearch,
   grayscaleRgba,
   luma,
   previewScaleForPage,
@@ -48,21 +56,27 @@ import {
   imagePageName,
   imageZipName,
   isImageKind,
+  sourceKindFromFile,
   splitPartName,
   splitZipName,
   swapExtension,
 } from './limits.ts'
 import {
+  A4_HEIGHT,
+  A4_WIDTH,
   addPageNumbers,
   addTextOverlay,
   addWatermark,
   CROP_MARGINS,
+  a4SizeForPage,
   cropBoxAfterMargin,
   cropPages,
   deletePages,
   duplicatePages,
   duplicatedIndexes,
   extractPages,
+  fitPagesToA4,
+  fittedPageRect,
   formatPageNumber,
   IMAGE_PAGE_MAX_EDGE,
   imagePageSize,
@@ -101,6 +115,7 @@ import {
   nextPageAfterDelete,
   oddPageIndexes,
   pageRange,
+  parseGotoPage,
   parsePageRange,
   parseSplitSize,
   togglePage,
@@ -308,6 +323,34 @@ describe('pdf edits', () => {
     expect(await pageCount(covered)).toBe(2)
     await expect(replacePagesWithPngs(bytes, [])).rejects.toThrow(/ảnh/)
   })
+
+  it('fits selected pages onto A4 while leaving others', async () => {
+    expect(fittedPageRect({ width: 200, height: 100 }, { width: 400, height: 400 })).toEqual({
+      x: 0,
+      y: 100,
+      width: 400,
+      height: 200,
+    })
+    expect(a4SizeForPage({ width: 800, height: 400 })).toEqual({
+      width: A4_HEIGHT,
+      height: A4_WIDTH,
+    })
+    expect(a4SizeForPage({ width: 400, height: 800 })).toEqual({
+      width: A4_WIDTH,
+      height: A4_HEIGHT,
+    })
+    const bytes = await samplePdf(['A', 'B'])
+    const fitted = await fitPagesToA4(bytes, [0])
+    const doc = await PDFDocument.load(fitted)
+    expect(doc.getPageCount()).toBe(2)
+    const first = doc.getPage(0).getSize()
+    expect(first.width).toBeCloseTo(A4_WIDTH)
+    expect(first.height).toBeCloseTo(A4_HEIGHT)
+    const second = doc.getPage(1).getSize()
+    expect(second.width).toBe(200)
+    expect(second.height).toBe(280)
+    await expect(fitPagesToA4(bytes, [])).rejects.toThrow(/A4/)
+  })
 })
 
 describe('conversion helpers', () => {
@@ -349,6 +392,40 @@ describe('conversion helpers', () => {
     expect(imageZipName('demo.pdf', 'jpg')).toBe('demo-anh-jpg.zip')
     expect(indexesFromPageRange(2, 4)).toEqual([1, 2, 3])
     expect(() => indexesFromPageRange(3, 1)).toThrow(/Khoảng trang/)
+    expect(pagesFromJson(toJson('Demo', ['Một', 'Hai']))).toEqual(['Một', 'Hai'])
+    expect(pagesFromJson('["A","B"]')).toEqual(['A', 'B'])
+    expect(() => pagesFromJson('{')).toThrow(/JSON không hợp lệ/)
+    expect(parseCsv('page,text\n1,"a,b"')).toEqual([
+      ['page', 'text'],
+      ['1', 'a,b'],
+    ])
+    expect(pagesFromCsv(toCsv(['Một', 'Hai,ba']))).toEqual(['Một', 'Hai,ba'])
+    expect(pagesFromImportedText('json', '{"pages":[{"page":1,"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['{}'], 'notes.json', { type: 'application/json' }))).toBe(
+      'json',
+    )
+    expect(sourceKindFromFile(new File(['x'], 'book.epub', { type: '' }))).toBe('epub')
+    expect(sourceKindFromFile(new File(['x'], 'paper.docx', { type: '' }))).toBe('docx')
+    expect(swapExtension('paper.docx', 'pdf')).toBe('paper.pdf')
+    expect(foldSearch('Xin chào')).toBe(foldSearch('xin chao'))
+    expect(findPagesWithText(['Xin chào', 'Trang hai'], 'chao')).toEqual([0])
+    expect(findPagesWithText(['A', 'B'], '   ')).toEqual([])
+    expect(blankPageIndexes(['Hello', '  ', ''])).toEqual([1, 2])
+  })
+
+  it('rebuilds pages from a DOCX zip and from an EPUB package', async () => {
+    const docxZip = new JSZip()
+    docxZip.file(
+      'word/document.xml',
+      `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Trang 1</w:t></w:r></w:p><w:p><w:r><w:t>Một</w:t></w:r></w:p><w:p><w:r><w:t>Trang 2</w:t></w:r></w:p><w:p><w:r><w:t>Hai</w:t></w:r></w:p></w:body></w:document>`,
+    )
+    const docxBytes = new Uint8Array(await docxZip.generateAsync({ type: 'uint8array' }))
+    expect(await pagesFromDocx(docxBytes)).toEqual(['Một', 'Hai'])
+    const epub = await toEpub('Demo', ['Một', 'Hai'], {
+      identifier: 'urn:uuid:import-book',
+      modified: '2026-10-20T00:00:00Z',
+    })
+    expect(await pagesFromEpub(new Uint8Array(await epub.arrayBuffer()))).toEqual(['Một', 'Hai'])
   })
 
   it('builds an EPUB 3 package with nav, ncx, and per-page documents', async () => {
@@ -427,6 +504,11 @@ describe('page selection', () => {
     expect(parseSplitSize('0', 4).ok).toBe(false)
     expect(parseSplitSize('9', 4).ok).toBe(false)
     expect(parseSplitSize('2', 4)).toEqual({ ok: true, size: 2 })
+    expect(parseGotoPage('', 4)).toEqual({ ok: false, message: 'Nhập số trang cần tới.' })
+    expect(parseGotoPage('1.5', 4).ok).toBe(false)
+    expect(parseGotoPage('0', 4).ok).toBe(false)
+    expect(parseGotoPage('9', 4).ok).toBe(false)
+    expect(parseGotoPage('3', 4)).toEqual({ ok: true, index: 2 })
   })
 
   it('caps undo snapshots and pops the latest first', () => {
