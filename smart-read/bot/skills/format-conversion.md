@@ -1,0 +1,30 @@
+---
+description: Use when implementing or changing PDF export to TXT, HTML, Markdown, RTF, JSON, CSV, DOCX/DOC, EPUB, or MOBI.
+---
+
+# Format conversion
+
+Extract text with `pdfjs-dist` (`getTextContent` per page), then build the target format from that text. Do not rasterize pages into a fake Word file. Import `docx` only inside `toDocx` so the Convert route can code-split it.
+
+## Targets
+
+| Format | How |
+| --- | --- |
+| TXT | Join page text with form-feed or blank lines between pages. |
+| HTML | Semantic document: title, one `<section>` per page. |
+| Markdown | `# title` plus `## Trang n` sections (`toMarkdown`). |
+| RTF | `toRtf` / `escapeRtf` from extracted text (Unicode as `\\uN?`). |
+| JSON | `toJson` — `{ title, pages: [{ page, text }] }`. Uploading JSON rebuilds a PDF via `pagesFromJson`. |
+| CSV | `toCsv` / `escapeCsv` — `page,text` rows. Uploading CSV rebuilds a PDF via `pagesFromCsv`. |
+| PNG / JPEG | Raster each selected page with `renderPageToBlob`. One page is a single image; several pages are a ZIP (`imagePageName` / `imageZipName`). JPEG paints a white background. Uploading PNG/JPEG builds a PDF via `imagesToPdf`. |
+| DOCX / DOC | Dynamic `import('docx')` `Document` / `Packer`. Same bytes for `.doc` download name if the user picked DOC. Uploading DOCX uses `pagesFromDocx` (binary `.doc` is rejected). |
+| EPUB | EPUB 3 ZIP: uncompressed `mimetype`, `container.xml`, CSS, `nav.xhtml` (toc + landmarks), `toc.ncx`, one XHTML file per page, OPF with `dc:creator`, `dc:date`, `dcterms:modified`. Uploading EPUB uses `pagesFromEpub` (spine XHTML, skip nav). |
+| MOBI | POST the EPUB to `/api/mobi`. The Vite plugin runs Calibre `ebook-convert` when present. If it is missing or fails, download EPUB and explain the fallback. |
+
+## Rules
+
+- Preserve page order. Validate the from–to range with `parsePageRange` (empty, non-integer, inverted, or out of bounds must show an error and block export). Slice extracted pages with `slicePageRange` only after the range is valid. If the editor has a multi-page subset selected, `slicePagesByIndexes` may export those pages instead (including a non-contiguous set).
+- TXT, Markdown, HTML, JSON, and CSV uploads become a PDF via `pagesFromImportedText` + `textPagesToPdf` so they can then export to the other formats. DOCX and EPUB uploads use `pagesFromDocx` / `pagesFromEpub`. PNG and JPEG uploads become a PDF via `imagesToPdf`. `pdfFromLoadedSource` is the shared entry.
+- Strip NULs and cap extracted text so a huge PDF cannot freeze the tab.
+- Name downloads from the source filename plus the new extension.
+- Never upload the file to a third-party conversion API.
