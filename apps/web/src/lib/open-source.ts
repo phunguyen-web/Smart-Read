@@ -2,6 +2,7 @@ import {
   pagesFromDocx,
   pagesFromEpub,
   pagesFromImportedText,
+  pagesFromOdt,
 } from './import-text.ts'
 import { isImageSource, isZipImportSource, type LoadedSource } from './limits.ts'
 import { imagesToPdf, textPagesToPdf } from './pdf.ts'
@@ -20,7 +21,11 @@ export async function pdfFromLoadedSource(
   }
   if (isZipImportSource(source)) {
     const pages =
-      source.kind === 'docx' ? await pagesFromDocx(source.bytes) : await pagesFromEpub(source.bytes)
+      source.kind === 'docx'
+        ? await pagesFromDocx(source.bytes)
+        : source.kind === 'odt'
+          ? await pagesFromOdt(source.bytes)
+          : await pagesFromEpub(source.bytes)
     return { name: source.pdfName, bytes: await textPagesToPdf(pages) }
   }
   return {

@@ -8,9 +8,11 @@ import {
   toCsv,
   toDocx,
   toEpub,
+  toFb2,
   toHtml,
   toJson,
   toMarkdown,
+  toOdt,
   toRtf,
   toTxt,
   zipPdfParts,
@@ -40,6 +42,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'csv', label: 'CSV', hint: 'Bảng trang, chữ' },
   { id: 'docx', label: 'DOCX', hint: 'Microsoft Word' },
   { id: 'doc', label: 'DOC', hint: 'Word (cùng nội dung DOCX)' },
+  { id: 'odt', label: 'ODT', hint: 'OpenDocument, LibreOffice' },
+  { id: 'fb2', label: 'FB2', hint: 'FictionBook ebook' },
   { id: 'epub', label: 'EPUB', hint: 'Sách điện tử, có mục lục' },
   { id: 'mobi', label: 'MOBI', hint: 'Kindle — cần Calibre ebook-convert' },
   { id: 'png', label: 'PNG', hint: 'Ảnh từng trang (ZIP nếu nhiều)' },
@@ -187,6 +191,13 @@ export function Convert() {
       } else if (format === 'docx' || format === 'doc') {
         const blob = await toDocx(title, pages)
         downloadBlob(blob, swapExtension(doc.name, extensionFor(format)))
+      } else if (format === 'odt') {
+        downloadBlob(await toOdt(title, pages), swapExtension(doc.name, 'odt'))
+      } else if (format === 'fb2') {
+        downloadBlob(
+          new Blob([toFb2(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, 'fb2'),
+        )
       } else {
         const epub = await toEpub(title, pages)
         if (format === 'epub') {
@@ -227,10 +238,10 @@ export function Convert() {
       <header className="page-head">
         <h1>Chuyển đổi định dạng</h1>
         <p>
-          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, CSV, DOCX/DOC, EPUB hoặc MOBI;
-          hoặc raster từng trang thành PNG/JPEG. Có thể mở TXT/Markdown/HTML/JSON/CSV, DOCX, EPUB
-          hoặc PNG/JPEG để tạo PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang chọn trên
-          Chỉnh sửa, kể cả khi chúng không liền nhau.
+          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, CSV, DOCX/DOC, ODT, FB2, EPUB
+          hoặc MOBI; hoặc raster từng trang thành PNG/JPEG. Có thể mở TXT/Markdown/HTML/JSON/CSV,
+          RTF, DOCX, ODT, FB2, EPUB hoặc PNG/JPEG để tạo PDF trước, rồi xuất tiếp. Có thể xuất đúng
+          các trang đang chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau.
         </p>
       </header>
 
@@ -239,7 +250,7 @@ export function Convert() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, DOCX, EPUB, PNG hoặc JPEG để chuyển đổi"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, FB2, EPUB, PNG hoặc JPEG để chuyển đổi"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -250,7 +261,7 @@ export function Convert() {
         </p>
       ) : (
         <p className="empty">
-          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, CSV, DOCX, EPUB, PNG hoặc JPEG để chọn khoảng trang và định dạng xuất.
+          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, FB2, EPUB, PNG hoặc JPEG để chọn khoảng trang và định dạng xuất.
         </p>
       )}
       {error ? (

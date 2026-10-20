@@ -232,6 +232,71 @@ export async function applyPageOrder(
   return new Uint8Array(await dst.save())
 }
 
+export function identityPageOrder(count: number): number[] {
+  return Array.from({ length: Math.max(0, Math.trunc(count) || 0) }, (_, index) => index)
+}
+
+/**
+ * Collate two halves (fronts then backs from a duplex scan) into
+ * front, back, front, back…
+ */
+export function interleaveHalvesOrder(count: number): number[] {
+  if (count < 3) {
+    return identityPageOrder(count)
+  }
+  const mid = Math.ceil(count / 2)
+  const order: number[] = []
+  for (let index = 0; index < mid; index += 1) {
+    order.push(index)
+    const back = mid + index
+    if (back < count) {
+      order.push(back)
+    }
+  }
+  return order
+}
+
+/** Odds then evens: [0, 2, 4, …, 1, 3, 5, …]. */
+export function deinterleaveOddEvenOrder(count: number): number[] {
+  if (count < 3) {
+    return identityPageOrder(count)
+  }
+  const odds: number[] = []
+  const evens: number[] = []
+  for (let index = 0; index < count; index += 1) {
+    if (index % 2 === 0) {
+      odds.push(index)
+    } else {
+      evens.push(index)
+    }
+  }
+  return [...odds, ...evens]
+}
+
+/** Map old 0-based indexes onto their positions in `order`. */
+export function remapAfterOrder(
+  order: readonly number[],
+  selected: readonly number[],
+): number[] {
+  return [
+    ...new Set(
+      selected
+        .map((oldIndex) => order.indexOf(oldIndex))
+        .filter((index) => index >= 0),
+    ),
+  ].sort((a, b) => a - b)
+}
+
+export async function interleaveHalves(bytes: Uint8Array): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes)
+  return applyPageOrder(bytes, interleaveHalvesOrder(src.getPageCount()))
+}
+
+export async function deinterleaveOddEven(bytes: Uint8Array): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes)
+  return applyPageOrder(bytes, deinterleaveOddEvenOrder(src.getPageCount()))
+}
+
 export async function movePages(
   bytes: Uint8Array,
   fromIndexes: readonly number[],

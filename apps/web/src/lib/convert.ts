@@ -9,6 +9,8 @@ export type ExportFormat =
   | 'csv'
   | 'docx'
   | 'doc'
+  | 'odt'
+  | 'fb2'
   | 'epub'
   | 'mobi'
   | 'png'
@@ -187,6 +189,99 @@ function pageId(index: number): string {
 
 function isoNow(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
+}
+
+function escapeXml(value: string): string {
+  return escapeHtml(value)
+}
+
+export function toFb2(title: string, pages: string[]): string {
+  const heading = escapeXml(title.trim() || 'Tài liệu')
+  const sections = (pages.length > 0 ? pages : ['']).map((text, index) => {
+    const paragraphs = (text.trim() || '(không có chữ)')
+      .split(/\n+/)
+      .map((line) => `    <p>${escapeXml(line)}</p>`)
+      .join('\n')
+    return `  <section>
+    <title><p>Trang ${index + 1}</p></title>
+${paragraphs}
+  </section>`
+  })
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0">
+  <description>
+    <title-info>
+      <genre>ref</genre>
+      <book-title>${heading}</book-title>
+      <lang>vi</lang>
+    </title-info>
+    <document-info>
+      <program-used>Smart-Read</program-used>
+    </document-info>
+  </description>
+  <body>
+${sections.join('\n')}
+  </body>
+</FictionBook>
+`
+}
+
+function odtParagraphs(text: string): string {
+  const lines = (text.trim() || '(không có chữ)').split(/\n+/)
+  return lines.map((line) => `      <text:p>${escapeXml(line)}</text:p>`).join('\n')
+}
+
+export async function toOdt(title: string, pages: string[]): Promise<Blob> {
+  const heading = escapeXml(title.trim() || 'Tài liệu')
+  const body = (pages.length > 0 ? pages : ['']).map((text, index) => {
+    return `      <text:h text:outline-level="2">Trang ${index + 1}</text:h>
+${odtParagraphs(text)}`
+  })
+  const zip = new JSZip()
+  zip.file('mimetype', 'application/vnd.oasis.opendocument.text', { compression: 'STORE' })
+  zip.file(
+    'META-INF/manifest.xml',
+    `<?xml version="1.0" encoding="UTF-8"?>
+<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.2">
+  <manifest:file-entry manifest:full-path="/" manifest:media-type="application/vnd.oasis.opendocument.text" manifest:version="1.2"/>
+  <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>
+  <manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/>
+  <manifest:file-entry manifest:full-path="meta.xml" manifest:media-type="text/xml"/>
+</manifest:manifest>`,
+  )
+  zip.file(
+    'styles.xml',
+    `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" office:version="1.2">
+  <office:styles/>
+</office:document-styles>`,
+  )
+  zip.file(
+    'meta.xml',
+    `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-meta xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0" office:version="1.2">
+  <office:meta>
+    <dc:title>${heading}</dc:title>
+    <meta:generator>Smart-Read</meta:generator>
+  </office:meta>
+</office:document-meta>`,
+  )
+  zip.file(
+    'content.xml',
+    `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.2">
+  <office:body>
+    <office:text>
+      <text:h text:outline-level="1">${heading}</text:h>
+${body.join('\n')}
+    </office:text>
+  </office:body>
+</office:document-content>`,
+  )
+  return zip.generateAsync({
+    type: 'blob',
+    mimeType: 'application/vnd.oasis.opendocument.text',
+  })
 }
 
 export async function toEpub(
@@ -381,6 +476,10 @@ export function mimeFor(format: ExportFormat): string {
     case 'docx':
     case 'doc':
       return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    case 'odt':
+      return 'application/vnd.oasis.opendocument.text'
+    case 'fb2':
+      return 'application/x-fictionbook+xml'
     case 'epub':
       return 'application/epub+zip'
     case 'mobi':

@@ -18,14 +18,14 @@ export const PIPELINE_STAGES = [
     subagent: "pdf-editor",
     title: "PDF editor",
     summary:
-      "Implement in-browser PDF page operations: rotate, reverse, page numbers, watermark, crop, grayscale, find text, go to page, remove blank (no-text) pages, fit to A4, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, and text overlay.",
+      "Implement in-browser PDF page operations: rotate, reverse, interleave halves / split odd-even, page numbers, watermark, crop, grayscale, find text, go to page, remove blank or duplicate-text pages, fit to A4, invert selection, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, and text overlay.",
   },
   {
     id: "format-converter",
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, CSV, DOCX/DOC, EPUB, and MOBI; raster pages to PNG/JPEG; import TXT/MD/HTML/JSON/CSV/DOCX/EPUB/PNG/JPEG as PDF.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, CSV, DOCX/DOC, ODT, FB2, EPUB, and MOBI; raster pages to PNG/JPEG; import TXT/MD/HTML/JSON/CSV/RTF/DOCX/ODT/FB2/EPUB/PNG/JPEG as PDF.",
   },
   {
     id: "qa-reviewer",
@@ -106,13 +106,13 @@ export const SUPPORTED_FORMATS = [
     id: "pdf",
     label: "PDF",
     role: "edit",
-    notes: "Source format. Page rotate 90/180, reverse order, page numbers, watermark, crop, grayscale, find text, go to page, remove no-text pages, fit to A4, delete, duplicate, extract, keep, split to ZIP, insert blank or PNG/JPEG, reorder, merge, metadata, persist undo, and text overlay.",
+    notes: "Source format. Page rotate 90/180, reverse order, interleave halves / split odd-even, page numbers, watermark, crop, grayscale, find text, go to page, remove no-text or duplicate-text pages, fit to A4, invert selection, delete, duplicate, extract, keep, split to ZIP, insert blank or PNG/JPEG, reorder, merge, metadata, persist undo, and text overlay.",
   },
   {
     id: "txt",
     label: "Plain text",
     role: "export",
-    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats. PNG/JPEG, DOCX, EPUB, JSON, and CSV uploads also become PDF pages.",
+    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats. PNG/JPEG, DOCX, ODT, EPUB, FB2, RTF, JSON, and CSV uploads also become PDF pages.",
   },
   {
     id: "html",
@@ -131,7 +131,7 @@ export const SUPPORTED_FORMATS = [
     id: "rtf",
     label: "RTF",
     role: "export",
-    notes: "Rich Text from extracted page text. Opens in Word and most editors.",
+    notes: "Rich Text from extracted page text. Opens in Word and most editors. Uploading RTF builds a PDF first.",
   },
   {
     id: "json",
@@ -151,6 +151,18 @@ export const SUPPORTED_FORMATS = [
     role: "export",
     aliases: ["doc"],
     notes: "Word document generated from extracted text. Uploading DOCX (Office Open XML) builds a PDF first; binary .doc is rejected.",
+  },
+  {
+    id: "odt",
+    label: "ODT",
+    role: "export",
+    notes: "OpenDocument Text ZIP. Uploading ODT builds a PDF from content.xml.",
+  },
+  {
+    id: "fb2",
+    label: "FB2",
+    role: "export",
+    notes: "FictionBook XML ebook. Uploading FB2 builds a PDF from section bodies.",
   },
   {
     id: "epub",

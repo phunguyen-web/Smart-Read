@@ -9,8 +9,8 @@ Smart-Read is a Vite + React + TypeScript SPA in `apps/web`.
 ## Routes
 
 - `/` landing: Edit PDF and Convert file.
-- `/edit` PDF editor: upload PDF, TXT/MD/HTML/JSON/CSV, DOCX, EPUB, or PNG/JPEG; page list, rotate 90/180 / reverse order / page numbers / watermark / crop / grayscale / find text / go to page / remove no-text pages / fit to A4 / odd-even select / delete / duplicate / extract selected pages / keep selection / split every N pages to ZIP / insert blank or images / drag a multi-select as one block or send it to start/end / undo-redo / merge-at-position / metadata / click-to-place text overlay / forget local copy, download. Reload restores the last PDF and undo stack from IndexedDB.
-- `/convert` converter: upload PDF, TXT/MD/HTML/JSON/CSV, DOCX, EPUB, or PNG/JPEG; pick TXT / HTML / Markdown / RTF / JSON / CSV / DOCX / EPUB / MOBI / PNG / JPEG, validate from–to range or export the editor's multi-page selection, download. EPUB is built in the browser; MOBI uses `/api/mobi` (Calibre) when available; PNG/JPEG rasterize pages.
+- `/edit` PDF editor: upload PDF, TXT/MD/HTML/JSON/CSV/RTF, DOCX, ODT, FB2, EPUB, or PNG/JPEG; page list, rotate 90/180 / reverse order / interleave halves / split odd-even / page numbers / watermark / crop / grayscale / find text / go to page / remove no-text or duplicate-text pages / fit to A4 / odd-even-invert select / delete / duplicate / extract selected pages / keep selection / split every N pages to ZIP / insert blank or images / drag a multi-select as one block or send it to start/end / undo-redo / merge-at-position / metadata / click-to-place text overlay / forget local copy, download. Reload restores the last PDF and undo stack from IndexedDB.
+- `/convert` converter: upload PDF, TXT/MD/HTML/JSON/CSV/RTF, DOCX, ODT, FB2, EPUB, or PNG/JPEG; pick TXT / HTML / Markdown / RTF / JSON / CSV / DOCX / ODT / FB2 / EPUB / MOBI / PNG / JPEG, validate from–to range or export the editor's multi-page selection, download. EPUB is built in the browser; MOBI uses `/api/mobi` (Calibre) when available; PNG/JPEG rasterize pages.
 
 ## Rules
 

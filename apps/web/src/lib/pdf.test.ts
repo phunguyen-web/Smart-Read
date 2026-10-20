@@ -10,9 +10,11 @@ import {
   slicePagesByIndexes,
   toCsv,
   toEpub,
+  toFb2,
   toHtml,
   toJson,
   toMarkdown,
+  toOdt,
   toRtf,
   toTxt,
   zipPdfParts,
@@ -21,11 +23,15 @@ import {
   pagesFromCsv,
   pagesFromDocx,
   pagesFromEpub,
+  pagesFromFb2,
   pagesFromHtml,
   pagesFromImportedText,
   pagesFromJson,
   pagesFromMarkdown,
+  pagesFromOdt,
   pagesFromPlainText,
+  pagesFromRtf,
+  rtfToPlain,
   parseCsv,
   stripMarkup,
 } from './import-text.ts'
@@ -37,6 +43,7 @@ import {
   blankPageIndexes,
   findPagesWithText,
   foldSearch,
+  repeatedPageIndexes,
   grayscaleRgba,
   luma,
   previewScaleForPage,
@@ -71,6 +78,8 @@ import {
   a4SizeForPage,
   cropBoxAfterMargin,
   cropPages,
+  deinterleaveOddEven,
+  deinterleaveOddEvenOrder,
   deletePages,
   duplicatePages,
   duplicatedIndexes,
@@ -83,6 +92,8 @@ import {
   imagesToPdf,
   insertBlankPage,
   insertImages,
+  interleaveHalves,
+  interleaveHalvesOrder,
   isIdentityOrder,
   keepPages,
   MAX_METADATA_LENGTH,
@@ -92,6 +103,7 @@ import {
   movePages,
   pageCount,
   readMetadata,
+  remapAfterOrder,
   reorderPageBlock,
   replacePagesWithPngs,
   reversePages,
@@ -111,6 +123,7 @@ import {
   clampPageRange,
   evenPageIndexes,
   indexesFromPageRange,
+  invertPageIndexes,
   movingIndexesForDrag,
   nextPageAfterDelete,
   oddPageIndexes,
@@ -351,6 +364,24 @@ describe('pdf edits', () => {
     expect(second.height).toBe(280)
     await expect(fitPagesToA4(bytes, [])).rejects.toThrow(/A4/)
   })
+
+  it('interleaves halves and splits odd/even pages', async () => {
+    expect(interleaveHalvesOrder(1)).toEqual([0])
+    expect(interleaveHalvesOrder(2)).toEqual([0, 1])
+    expect(interleaveHalvesOrder(4)).toEqual([0, 2, 1, 3])
+    expect(interleaveHalvesOrder(5)).toEqual([0, 3, 1, 4, 2])
+    expect(deinterleaveOddEvenOrder(4)).toEqual([0, 2, 1, 3])
+    expect(deinterleaveOddEvenOrder(5)).toEqual([0, 2, 4, 1, 3])
+    expect(remapAfterOrder([0, 3, 1, 4, 2], [0, 2])).toEqual([0, 4])
+    expect(isIdentityOrder(interleaveHalvesOrder(2))).toBe(true)
+    const bytes = await samplePdf(['A', 'B', 'C', 'D'])
+    const collated = await interleaveHalves(bytes)
+    expect(await pageCount(collated)).toBe(4)
+    const split = await deinterleaveOddEven(bytes)
+    expect(await pageCount(split)).toBe(4)
+    const small = await samplePdf(['A', 'B'])
+    expect(await interleaveHalves(small)).toBe(small)
+  })
 })
 
 describe('conversion helpers', () => {
@@ -411,6 +442,31 @@ describe('conversion helpers', () => {
     expect(findPagesWithText(['Xin chào', 'Trang hai'], 'chao')).toEqual([0])
     expect(findPagesWithText(['A', 'B'], '   ')).toEqual([])
     expect(blankPageIndexes(['Hello', '  ', ''])).toEqual([1, 2])
+    expect(repeatedPageIndexes(['Hello', 'hello', 'Hai'])).toEqual([1])
+    expect(repeatedPageIndexes(['A', 'B', 'C'])).toEqual([])
+    expect(repeatedPageIndexes(['  ', '', 'x'])).toEqual([1])
+    expect(toFb2('Demo', ['Một', 'Hai'])).toContain('<FictionBook')
+    expect(toFb2('Demo', ['Một'])).toContain('<book-title>Demo</book-title>')
+    expect(pagesFromFb2(toFb2('Demo', ['Một', 'Hai']))).toEqual(['Một', 'Hai'])
+    expect(() => pagesFromFb2('<xml/>')).toThrow(/FB2/)
+    expect(rtfToPlain(toRtf('Demo', ['Xin chào', 'Hai']))).toMatch(/Xin chào/)
+    expect(pagesFromRtf(toRtf('Demo', ['Một', 'Hai']))).toEqual(['Một', 'Hai'])
+    expect(pagesFromImportedText('rtf', toRtf('Demo', ['Chỉ một đoạn.']))).toEqual(['Chỉ một đoạn.'])
+    expect(sourceKindFromFile(new File(['{\\rtf1}'], 'note.rtf', { type: 'application/rtf' }))).toBe(
+      'rtf',
+    )
+    expect(sourceKindFromFile(new File(['<FictionBook/>'], 'book.fb2', { type: '' }))).toBe('fb2')
+    expect(sourceKindFromFile(new File(['x'], 'paper.odt', { type: '' }))).toBe('odt')
+    expect(swapExtension('paper.odt', 'pdf')).toBe('paper.pdf')
+  })
+
+  it('round-trips ODT packages', async () => {
+    const odt = await toOdt('Demo', ['Một', 'Hai'])
+    expect(odt.type).toContain('opendocument')
+    const zip = await JSZip.loadAsync(await odt.arrayBuffer())
+    expect(zip.file('mimetype')).toBeTruthy()
+    expect(zip.file('content.xml')).toBeTruthy()
+    expect(await pagesFromOdt(new Uint8Array(await odt.arrayBuffer()))).toEqual(['Một', 'Hai'])
   })
 
   it('rebuilds pages from a DOCX zip and from an EPUB package', async () => {
@@ -466,6 +522,9 @@ describe('page selection', () => {
     expect(oddPageIndexes(4)).toEqual([0, 2])
     expect(evenPageIndexes(4)).toEqual([1, 3])
     expect(evenPageIndexes(1)).toEqual([])
+    expect(invertPageIndexes(4, [0, 2])).toEqual([1, 3])
+    expect(invertPageIndexes(3, [0, 1, 2])).toEqual([])
+    expect(invertPageIndexes(1, [0])).toEqual([])
     expect(blockEdgeDropTo([2, 3], 'start', 4)).toBe(0)
     expect(blockEdgeDropTo([0, 1], 'start', 4)).toBeNull()
     expect(blockEdgeDropTo([0, 1], 'end', 4)).toBe(3)

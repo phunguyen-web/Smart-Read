@@ -150,6 +150,23 @@ export function blankPageIndexes(
   return pages.flatMap((text, index) => (text.trim().length < minChars ? [index] : []))
 }
 
+/** Later pages whose folded text already appeared earlier. Keeps the first copy. */
+export function repeatedPageIndexes(pages: readonly string[]): number[] {
+  const seen = new Set<string>()
+  const dups: number[] = []
+  for (let index = 0; index < pages.length; index += 1) {
+    const key = foldSearch(pages[index] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (seen.has(key)) {
+      dups.push(index)
+    } else {
+      seen.add(key)
+    }
+  }
+  return dups
+}
+
 export async function extractPageTexts(bytes: Uint8Array): Promise<string[]> {
   const pdfjs = await loadPdfJs()
   const loadingTask = pdfjs.getDocument({ data: bytes.slice() })

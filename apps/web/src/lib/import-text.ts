@@ -4,8 +4,8 @@ export const MAX_IMPORT_CHARS = 200_000
 export const MAX_IMPORT_PAGES = 80
 export const IMPORT_PAGE_CHARS = 1800
 
-export type ImportedTextKind = 'txt' | 'md' | 'html' | 'json' | 'csv'
-export type ZipImportKind = 'docx' | 'epub'
+export type ImportedTextKind = 'txt' | 'md' | 'html' | 'json' | 'csv' | 'rtf' | 'fb2'
+export type ZipImportKind = 'docx' | 'epub' | 'odt'
 
 function capPages(pages: string[]): string[] {
   const cleaned = pages.map((page) => page.replaceAll('\u0000', '').trimEnd())
@@ -164,6 +164,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   if (kind === 'csv') {
     return pagesFromCsv(text)
   }
+  if (kind === 'rtf') {
+    return pagesFromRtf(text)
+  }
+  if (kind === 'fb2') {
+    return pagesFromFb2(text)
+  }
   return pagesFromPlainText(text)
 }
 
@@ -265,14 +271,12 @@ export function pagesFromCsv(text: string): string[] {
 }
 
 function pagesFromOfficeHeadings(text: string): string[] {
-  if (!/^Trang\s+\d+\s*$/m.test(text)) {
+  if (!/^[ \t]*Trang\s+\d+\s*$/m.test(text)) {
     return pagesFromPlainText(text)
   }
-  const parts = text
-    .split(/^Trang\s+\d+\s*$/m)
-    .map((page) => page.trim())
-    .filter((page) => page.length > 0)
-  return capPages(parts)
+  const parts = text.split(/^[ \t]*Trang\s+\d+\s*$/m).map((page) => page.trim())
+  const body = parts.slice(1).filter((page) => page.length > 0)
+  return capPages(body.length > 0 ? body : parts.filter((page) => page.length > 0))
 }
 
 function xmlToPlain(xml: string): string {
@@ -296,6 +300,152 @@ export async function pagesFromDocx(bytes: Uint8Array): Promise<string[]> {
     throw new Error('Chỉ mở được DOCX (Office Open XML), không phải DOC nhị phân.')
   }
   return pagesFromOfficeHeadings(xmlToPlain(await file.async('string')))
+}
+
+function odtXmlToPlain(xml: string): string {
+  return unescapeXml(
+    xml
+      .replace(/<office:automatic-styles[\s\S]*?<\/office:automatic-styles>/gi, ' ')
+      .replace(/<text:line-break\b[^>]*\/?>/gi, '\n')
+      .replace(/<text:tab\b[^>]*\/?>/gi, '\t')
+      .replace(/<text:s\b[^>]*\/?>/gi, ' ')
+      .replace(/<\/text:h>/gi, '\n\n')
+      .replace(/<\/text:p>/gi, '\n\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/^[ \t]+/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim(),
+  )
+}
+
+export async function pagesFromOdt(bytes: Uint8Array): Promise<string[]> {
+  let zip: JSZip
+  try {
+    zip = await JSZip.loadAsync(bytes)
+  } catch {
+    throw new Error('Tệp ODT không phải gói OpenDocument hợp lệ.')
+  }
+  const file = zip.file('content.xml')
+  if (!file) {
+    throw new Error('Tệp ODT thiếu content.xml.')
+  }
+  return pagesFromOfficeHeadings(odtXmlToPlain(await file.async('string')))
+}
+
+export function rtfToPlain(rtf: string): string {
+  if (!/\\rtf/i.test(rtf)) {
+    return rtf
+  }
+  let out = ''
+  let index = 0
+  let skipDepth = 0
+  while (index < rtf.length) {
+    const char = rtf[index]!
+    if (char === '{') {
+      const ahead = rtf.slice(index, index + 24)
+      if (/^\{\\(\*|fonttbl|colortbl|stylesheet|info|pict|header|footer)/i.test(ahead)) {
+        skipDepth += 1
+      } else if (skipDepth > 0) {
+        skipDepth += 1
+      }
+      index += 1
+      continue
+    }
+    if (char === '}') {
+      if (skipDepth > 0) {
+        skipDepth -= 1
+      }
+      index += 1
+      continue
+    }
+    if (skipDepth > 0) {
+      index += 1
+      continue
+    }
+    if (char === '\\') {
+      const next = rtf[index + 1]
+      if (next === '\\' || next === '{' || next === '}') {
+        out += next
+        index += 2
+        continue
+      }
+      if (next === "'") {
+        const hex = rtf.slice(index + 2, index + 4)
+        const code = Number.parseInt(hex, 16)
+        if (Number.isFinite(code)) {
+          out += String.fromCharCode(code)
+        }
+        index += 4
+        continue
+      }
+      if (next === '~') {
+        out += ' '
+        index += 2
+        continue
+      }
+      const unicode = rtf.slice(index + 1).match(/^u(-?\d+)\s?/)
+      if (unicode) {
+        let code = Number(unicode[1])
+        if (code < 0) {
+          code += 65536
+        }
+        if (code > 0) {
+          out += String.fromCodePoint(code)
+        }
+        index += 1 + unicode[0].length
+        if (rtf[index] === '?') {
+          index += 1
+        }
+        continue
+      }
+      const word = rtf.slice(index + 1).match(/^([a-z]+)(-?\d+)?[ ]?/i)
+      if (word) {
+        const name = word[1]!.toLowerCase()
+        if (name === 'par' || name === 'line' || name === 'page') {
+          out += '\n'
+        }
+        if (name === 'tab') {
+          out += '\t'
+        }
+        index += 1 + word[0].length
+        continue
+      }
+      index += 1
+      continue
+    }
+    if (char === '\r' || char === '\n') {
+      index += 1
+      continue
+    }
+    out += char
+    index += 1
+  }
+  return out.replace(/\n{3,}/g, '\n\n').trim()
+}
+
+export function pagesFromRtf(text: string): string[] {
+  return pagesFromOfficeHeadings(rtfToPlain(assertImportBudget(text)))
+}
+
+export function pagesFromFb2(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (!/<FictionBook\b/i.test(trimmed)) {
+    throw new Error('Tệp FB2 không hợp lệ.')
+  }
+  const sections = trimmed.match(/<section\b[\s\S]*?<\/section>/gi)
+  if (!sections || sections.length === 0) {
+    throw new Error('FB2 không có nội dung chữ để mở.')
+  }
+  const pages = sections
+    .map((section) => {
+      const body = section.replace(/<title\b[\s\S]*?<\/title>/i, ' ')
+      return stripMarkup(body.replace(/<\/p>/gi, '\n')).replace(/^Trang\s+\d+\s*/i, '').trim()
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length === 0) {
+    throw new Error('FB2 không có nội dung chữ để mở.')
+  }
+  return capPages(pages)
 }
 
 function attr(tag: string, name: string): string | null {

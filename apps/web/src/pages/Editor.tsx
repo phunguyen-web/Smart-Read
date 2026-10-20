@@ -5,6 +5,7 @@ import {
   findPagesWithText,
   grayscalePagePngs,
   renderPageToCanvas,
+  repeatedPageIndexes,
 } from '../lib/extract.ts'
 import {
   CROP_MARGINS,
@@ -12,7 +13,9 @@ import {
   addPageNumbers,
   addTextOverlay,
   addWatermark,
+  applyPageOrder,
   cropPages,
+  deinterleaveOddEvenOrder,
   deletePages,
   duplicatePages,
   duplicatedIndexes,
@@ -21,6 +24,7 @@ import {
   imagesToPdf,
   insertBlankPage,
   insertImages,
+  interleaveHalvesOrder,
   isIdentityOrder,
   keepPages,
   mergeInsertIndex,
@@ -28,6 +32,7 @@ import {
   movePages,
   pageCount,
   readMetadata,
+  remapAfterOrder,
   reorderPageBlock,
   replacePagesWithPngs,
   reversePages,
@@ -69,6 +74,7 @@ import {
   blockEdgeDropTo,
   blockNudgeDropTo,
   evenPageIndexes,
+  invertPageIndexes,
   movingIndexesForDrag,
   nextPageAfterDelete,
   oddPageIndexes,
@@ -438,6 +444,35 @@ export function Editor() {
     }
   }, [doc, run])
 
+  const removeDuplicatePages = useCallback(async (): Promise<void> => {
+    if (!doc) {
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const dups = repeatedPageIndexes(await extractPageTexts(doc.bytes))
+      if (dups.length === 0) {
+        setError('Không có trang trùng chữ để xóa.')
+        return
+      }
+      if (dups.length >= doc.pageCount) {
+        setError('Không xóa hết tài liệu.')
+        return
+      }
+      await run((bytes) => deletePages(bytes, dups), () => {
+        setPage(0)
+        setSelected([0])
+        setAnchor(0)
+        setSearchRaw(null)
+      })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không xóa được trang trùng.')
+    } finally {
+      setBusy(false)
+    }
+  }, [doc, run])
+
   const applyReorder = useCallback(
     (fromIndexes: readonly number[], dropTo: number, focusFrom?: number): void => {
       if (!doc) {
@@ -458,6 +493,38 @@ export function Editor() {
     },
     [doc, run],
   )
+
+  const applyOrder = useCallback(
+    (order: number[]): void => {
+      if (!doc || isIdentityOrder(order)) {
+        return
+      }
+      const nextPage = order.indexOf(page)
+      const nextSelected = remapAfterOrder(order, targets)
+      const nextAnchor = order.indexOf(anchor)
+      void run((bytes) => applyPageOrder(bytes, order), () => {
+        const focused = nextPage >= 0 ? nextPage : 0
+        setPage(focused)
+        setSelected(nextSelected.length > 0 ? nextSelected : [focused])
+        setAnchor(nextAnchor >= 0 ? nextAnchor : focused)
+      })
+    },
+    [anchor, doc, page, run, targets],
+  )
+
+  const invertSelection = useCallback((): void => {
+    if (!doc) {
+      return
+    }
+    const inverted = invertPageIndexes(doc.pageCount, selected)
+    if (inverted.length === 0) {
+      goToPage(page, 'replace')
+      return
+    }
+    setSelected(inverted)
+    setPage(inverted.includes(page) ? page : inverted[0]!)
+    setAnchor(inverted[0]!)
+  }, [doc, goToPage, page, selected])
 
   const deleteSelected = useCallback(async (): Promise<void> => {
     if (!doc) {
@@ -486,6 +553,11 @@ export function Editor() {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'g') {
         event.preventDefault()
         gotoRef.current?.focus()
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i') {
+        event.preventDefault()
+        invertSelection()
         return
       }
       if (event.key === 'F3') {
@@ -557,6 +629,7 @@ export function Editor() {
     searchHits,
     searchAt,
     jumpSearchHit,
+    invertSelection,
   ])
 
   async function onUpload(file: File | undefined): Promise<void> {
@@ -664,11 +737,12 @@ export function Editor() {
       <header className="page-head">
         <h1>Chỉnh sửa PDF</h1>
         <p>
-          Xoay, đảo thứ tự, đánh số trang, đóng chữ mờ, cắt lề, chuyển xám, tìm chữ, xóa trang
-          không chữ, vừa khổ A4, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách thành nhiều PDF,
-          chèn trang trắng hoặc ảnh PNG/JPEG, kéo thumbnail để đổi thứ tự, hoàn tác (giữ khi tải
-          lại trang), gộp tệp, sửa thông tin tài liệu và chèn chữ, rồi tải PDF mới. Có thể mở TXT,
-          Markdown, HTML, JSON, CSV, DOCX, EPUB hoặc PNG/JPEG để tạo PDF.
+          Xoay, đảo thứ tự, đan/tách trang lẻ-chẵn, đánh số trang, đóng chữ mờ, cắt lề, chuyển xám,
+          tìm chữ, xóa trang không chữ hoặc trùng chữ, vừa khổ A4, đảo chọn, xóa, nhân bản, tách hoặc
+          giữ trang đã chọn, tách thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG, kéo thumbnail
+          để đổi thứ tự, hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu và chèn
+          chữ, rồi tải PDF mới. Có thể mở TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, FB2, EPUB
+          hoặc PNG/JPEG để tạo PDF.
         </p>
       </header>
 
@@ -677,7 +751,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, DOCX, EPUB, PNG hoặc JPEG để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, FB2, EPUB, PNG hoặc JPEG để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -725,10 +799,11 @@ export function Editor() {
               Nhấn thumbnail để xem trang, kéo để đổi thứ tự — các trang đã chọn đi cùng nhau.
               Ctrl/Cmd chọn thêm, Shift chọn dải. Phím: ← →, R xoay 90°, Shift+R xoay 180°, Delete
               xóa, Alt+↑↓ dời nhóm, Ctrl+Z hoàn tác, Ctrl+Y làm lại, Ctrl+F tìm chữ, Ctrl+G tới
-              trang, F3 kết quả sau. Nhân bản chèn bản sao sau trang đã chọn cuối; tách trang tải một
-              PDF mới; giữ lại chỉ các trang đã chọn; tách mỗi N trang thành ZIP; chữ mờ, cắt lề,
-              chuyển xám và vừa A4 áp dụng cho trang đã chọn. Chèn PNG/JPEG thành trang mới; thông
-              tin tiêu đề/tác giả lưu vào PDF.
+              trang, Ctrl+I đảo chọn, F3 kết quả sau. Nhân bản chèn bản sao sau trang đã chọn cuối;
+              tách trang tải một PDF mới; giữ lại chỉ các trang đã chọn; tách mỗi N trang thành ZIP;
+              đan hai nửa (mặt trước rồi mặt sau) hoặc tách lẻ/chẵn; chữ mờ, cắt lề, chuyển xám, vừa
+              A4 và xóa trùng chữ áp dụng cho trang đã chọn. Chèn PNG/JPEG thành trang mới; thông tin
+              tiêu đề/tác giả lưu vào PDF.
             </p>
           </div>
           <div className="tools" role="toolbar" aria-label="Công cụ chỉnh PDF">
@@ -878,6 +953,14 @@ export function Editor() {
                 }}
               >
                 Chọn trang chẵn
+              </button>
+              <button
+                type="button"
+                disabled={busy || doc.pageCount < 2}
+                aria-keyshortcuts="Control+I"
+                onClick={invertSelection}
+              >
+                Đảo chọn
               </button>
             </div>
             <div className="tool-row">
@@ -1129,6 +1212,22 @@ export function Editor() {
               >
                 Đảo thứ tự trang
               </button>
+              <button
+                type="button"
+                disabled={busy || isIdentityOrder(interleaveHalvesOrder(doc.pageCount))}
+                aria-label="Đan hai nửa trang (mặt trước rồi mặt sau)"
+                onClick={() => applyOrder(interleaveHalvesOrder(doc.pageCount))}
+              >
+                Đan hai nửa
+              </button>
+              <button
+                type="button"
+                disabled={busy || isIdentityOrder(deinterleaveOddEvenOrder(doc.pageCount))}
+                aria-label="Tách trang lẻ rồi trang chẵn"
+                onClick={() => applyOrder(deinterleaveOddEvenOrder(doc.pageCount))}
+              >
+                Tách lẻ/chẵn
+              </button>
             </div>
             <fieldset className="number-stamp">
               <legend>Đánh số trang</legend>
@@ -1270,6 +1369,14 @@ export function Editor() {
                 onClick={() => void removeBlankPages()}
               >
                 Xóa trang không chữ
+              </button>
+              <button
+                type="button"
+                disabled={busy || doc.pageCount < 2}
+                aria-label="Xóa các trang trùng chữ với trang trước"
+                onClick={() => void removeDuplicatePages()}
+              >
+                Xóa trang trùng chữ
               </button>
             </div>
             <label className="file-btn secondary-file">

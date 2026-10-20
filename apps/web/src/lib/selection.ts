@@ -37,6 +37,17 @@ export function evenPageIndexes(count: number): number[] {
   return Array.from({ length: count }, (_, index) => index).filter((index) => index % 2 === 1)
 }
 
+/** Pages that are not in `selected` (0-based, in order). */
+export function invertPageIndexes(count: number, selected: readonly number[]): number[] {
+  if (count < 1) {
+    return []
+  }
+  const picked = new Set(
+    selected.filter((index) => Number.isInteger(index) && index >= 0 && index < count),
+  )
+  return Array.from({ length: count }, (_, index) => index).filter((index) => !picked.has(index))
+}
+
 /** Drop target to send a selection to the start or end, or null if it is already there. */
 export function blockEdgeDropTo(
   moving: readonly number[],
