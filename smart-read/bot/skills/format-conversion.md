@@ -20,6 +20,7 @@ Extract text with `pdfjs-dist` (`getTextContent` per page), then build the targe
 ## Rules
 
 - Preserve page order. Validate the from–to range with `parsePageRange` (empty, non-integer, inverted, or out of bounds must show an error and block export). Slice extracted pages with `slicePageRange` only after the range is valid. If the editor has a multi-page subset selected, `slicePagesByIndexes` may export those pages instead (including a non-contiguous set).
+- TXT, Markdown, and HTML uploads become a PDF via `pagesFromImportedText` + `textPagesToPdf` so they can then export to the other formats.
 - Strip NULs and cap extracted text so a huge PDF cannot freeze the tab.
 - Name downloads from the source filename plus the new extension.
 - Never upload the file to a third-party conversion API.

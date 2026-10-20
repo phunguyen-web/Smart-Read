@@ -10,6 +10,7 @@ import {
   extractPages,
   insertBlankPage,
   isIdentityOrder,
+  keepPages,
   mergeInsertIndex,
   mergePdf,
   movePages,
@@ -19,15 +20,32 @@ import {
   reversedIndexes,
   rotatePages,
   rotatePagesBy,
+  splitEvery,
+  textPagesToPdf,
   type MergeWhere,
   type OverlayPosition,
   type OverlayPresetId,
   type PageNumberPosition,
   type PageNumberStyle,
 } from '../lib/pdf.ts'
-import { extractedPdfName, readPdfFile } from '../lib/limits.ts'
+import { zipPdfParts } from '../lib/convert.ts'
+import { pagesFromImportedText } from '../lib/import-text.ts'
+import {
+  extractedPdfName,
+  readPdfFile,
+  readSourceFile,
+  splitPartName,
+  splitZipName,
+} from '../lib/limits.ts'
 import { popSnapshot, pushSnapshot, snapshotOf, type EditorSnapshot } from '../lib/history.ts'
-import { clearEditorView, restoreEditorView, saveEditorView } from '../lib/persist.ts'
+import {
+  clearEditorView,
+  forgetHistory,
+  getHydratedHistory,
+  persistHistory,
+  restoreEditorView,
+  saveEditorView,
+} from '../lib/persist.ts'
 import {
   blockEdgeDropTo,
   blockNudgeDropTo,
@@ -36,6 +54,7 @@ import {
   nextPageAfterDelete,
   oddPageIndexes,
   pageRange,
+  parseSplitSize,
   togglePage,
 } from '../lib/selection.ts'
 import {
@@ -92,8 +111,14 @@ export function Editor() {
   const [mergeWhere, setMergeWhere] = useState<MergeWhere>('end')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [past, setPast] = useState<EditorSnapshot[]>([])
-  const [future, setFuture] = useState<EditorSnapshot[]>([])
+  const startedHistory = useMemo(() => getHydratedHistory(), [])
+  const [past, setPast] = useState<EditorSnapshot[]>(startedHistory.past)
+  const [future, setFuture] = useState<EditorSnapshot[]>(startedHistory.future)
+  const docId = doc ? `${doc.name}:${doc.bytes.byteLength}:${doc.pageCount}` : ''
+  const [splitRaw, setSplitRaw] = useState<{ id: string; value: string } | null>(null)
+  const splitValue = splitRaw?.id === docId ? splitRaw.value : doc ? String(Math.min(10, doc.pageCount)) : '1'
+  const parsedSplit = doc ? parseSplitSize(splitValue, doc.pageCount) : null
+  const splitError = parsedSplit && !parsedSplit.ok ? parsedSplit.message : null
 
   const targets = useMemo(
     () => (selected.length > 0 ? selected : [page]),
@@ -220,6 +245,10 @@ export function Editor() {
     saveEditorView({ page, selected, anchor })
   }, [doc, page, selected, anchor])
 
+  useEffect(() => {
+    void persistHistory(past, future)
+  }, [past, future])
+
   const goToPage = useCallback(
     (index: number, mode: 'replace' | 'toggle' | 'range'): void => {
       if (!doc) {
@@ -341,8 +370,16 @@ export function Editor() {
     setError(null)
     setMergePending(null)
     try {
-      const bytes = await readPdfFile(file)
-      await setDocument(file.name, bytes)
+      const source = await readSourceFile(file)
+      const next =
+        source.kind === 'pdf'
+          ? { name: source.name, bytes: source.bytes }
+          : {
+              name: source.pdfName,
+              bytes: await textPagesToPdf(pagesFromImportedText(source.kind, source.text)),
+            }
+      await forgetHistory()
+      await setDocument(next.name, next.bytes)
       clearEditorView()
       setPage(0)
       setSelected([0])
@@ -408,18 +445,18 @@ export function Editor() {
       <header className="page-head">
         <h1>Chỉnh sửa PDF</h1>
         <p>
-          Xoay, đảo thứ tự, đánh số trang, xóa, nhân bản, tách trang đã chọn, chèn trang trắng, kéo
-          thumbnail để đổi thứ tự, hoàn tác, gộp tệp và chèn chữ, rồi tải PDF mới. Tệp gần nhất được
-          giữ trên trình duyệt này khi tải lại trang.
+          Xoay, đảo thứ tự, đánh số trang, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách thành
+          nhiều PDF, chèn trang trắng, kéo thumbnail để đổi thứ tự, hoàn tác (giữ khi tải lại
+          trang), gộp tệp và chèn chữ, rồi tải PDF mới. Có thể mở TXT/Markdown/HTML để tạo PDF.
         </p>
       </header>
 
       <label className="file-btn">
-        Tải PDF
+        Tải PDF / chữ
         <input
           type="file"
-          accept="application/pdf,.pdf"
-          aria-label="Tải tệp PDF để chỉnh sửa"
+          accept="application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm"
+          aria-label="Tải tệp PDF, TXT, Markdown hoặc HTML để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -467,7 +504,8 @@ export function Editor() {
               Nhấn thumbnail để xem trang, kéo để đổi thứ tự — các trang đã chọn đi cùng nhau.
               Ctrl/Cmd chọn thêm, Shift chọn dải. Phím: ← →, R xoay 90°, Shift+R xoay 180°, Delete
               xóa, Alt+↑↓ dời nhóm, Ctrl+Z hoàn tác, Ctrl+Y làm lại. Nhân bản chèn bản sao sau trang
-              đã chọn cuối; tách trang tải một PDF mới mà không đổi tài liệu hiện tại.
+              đã chọn cuối; tách trang tải một PDF mới; giữ lại chỉ các trang đã chọn; tách mỗi N
+              trang thành ZIP.
             </p>
           </div>
           <div className="tools" role="toolbar" aria-label="Công cụ chỉnh PDF">
@@ -634,6 +672,25 @@ export function Editor() {
               >
                 Tách {targets.length > 1 ? `${targets.length} trang` : 'trang'} thành PDF
               </button>
+              <button
+                type="button"
+                disabled={busy || targets.length === doc.pageCount}
+                aria-label={
+                  targets.length > 1
+                    ? `Giữ lại ${targets.length} trang đã chọn`
+                    : 'Giữ lại trang hiện tại'
+                }
+                onClick={() => {
+                  const kept = targets
+                  void run((bytes) => keepPages(bytes, kept), () => {
+                    setPage(0)
+                    setSelected(kept.map((_, index) => index))
+                    setAnchor(0)
+                  })
+                }}
+              >
+                Giữ {targets.length > 1 ? `${targets.length} trang` : 'trang'} đã chọn
+              </button>
             </div>
             <div className="tool-row">
               <button
@@ -652,6 +709,59 @@ export function Editor() {
                 Chèn trang trắng
               </button>
             </div>
+            <fieldset className="split-pack">
+              <legend>Tách thành nhiều PDF</legend>
+              <label className="overlay-field">
+                Mỗi tệp (trang)
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={splitValue}
+                  aria-label="Số trang mỗi tệp khi tách"
+                  aria-invalid={splitError ? true : undefined}
+                  onChange={(event) => setSplitRaw({ id: docId, value: event.target.value })}
+                />
+              </label>
+              {splitError ? (
+                <p className="error" role="alert">
+                  {splitError}
+                </p>
+              ) : (
+                <p className="range-ok">
+                  Sẽ tạo {parsedSplit && parsedSplit.ok ? Math.ceil(doc.pageCount / parsedSplit.size) : 1} tệp PDF trong ZIP.
+                </p>
+              )}
+              <button
+                type="button"
+                disabled={busy || Boolean(splitError) || !parsedSplit || !parsedSplit.ok}
+                onClick={() => {
+                  void (async () => {
+                    if (!doc || !parsedSplit || !parsedSplit.ok) {
+                      return
+                    }
+                    setBusy(true)
+                    setError(null)
+                    try {
+                      const parts = await splitEvery(doc.bytes, parsedSplit.size)
+                      const blob = await zipPdfParts(
+                        parts.map((bytes, index) => ({
+                          name: splitPartName(doc.name, index + 1, parts.length),
+                          bytes,
+                        })),
+                      )
+                      downloadBlob(blob, splitZipName(doc.name))
+                    } catch (cause) {
+                      setError(cause instanceof Error ? cause.message : 'Không tách được thành nhiều PDF.')
+                    } finally {
+                      setBusy(false)
+                    }
+                  })()
+                }}
+              >
+                Tải ZIP các phần
+              </button>
+            </fieldset>
             <div className="tool-row">
               <button
                 type="button"
@@ -863,6 +973,7 @@ export function Editor() {
                   setError(null)
                   try {
                     await clearDocument()
+                    await forgetHistory()
                     clearEditorView()
                     setPast([])
                     setFuture([])

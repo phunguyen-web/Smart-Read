@@ -9,7 +9,15 @@ import {
   toHtml,
   toMarkdown,
   toTxt,
+  zipPdfParts,
 } from './convert.ts'
+import {
+  pagesFromHtml,
+  pagesFromImportedText,
+  pagesFromMarkdown,
+  pagesFromPlainText,
+  stripMarkup,
+} from './import-text.ts'
 import {
   BASE_PREVIEW_SCALE,
   BASE_THUMB_CONTRAST,
@@ -19,8 +27,14 @@ import {
   thumbnailContrastForPage,
   thumbnailScaleForPage,
 } from './extract.ts'
-import { editorExportSelection, formatPageList, restoreEditorView } from './persist.ts'
-import { extractedPdfName } from './limits.ts'
+import {
+  decodeSnapshots,
+  encodeSnapshots,
+  formatPageList,
+  editorExportSelection,
+  restoreEditorView,
+} from './persist.ts'
+import { extractedPdfName, splitPartName, splitZipName, swapExtension } from './limits.ts'
 import {
   addPageNumbers,
   addTextOverlay,
@@ -31,6 +45,7 @@ import {
   formatPageNumber,
   insertBlankPage,
   isIdentityOrder,
+  keepPages,
   mergeInsertIndex,
   mergePdf,
   movePage,
@@ -41,6 +56,9 @@ import {
   reversedIndexes,
   rotatePages,
   rotatePagesBy,
+  splitEvery,
+  textPagesToPdf,
+  wrapPdfText,
 } from './pdf.ts'
 import { MAX_EDITOR_HISTORY, popSnapshot, pushSnapshot, snapshotOf } from './history.ts'
 import {
@@ -53,6 +71,7 @@ import {
   oddPageIndexes,
   pageRange,
   parsePageRange,
+  parseSplitSize,
   togglePage,
 } from './selection.ts'
 
@@ -171,6 +190,35 @@ describe('pdf edits', () => {
     expect(blank.width).toBe(first.width)
     expect(blank.height).toBe(first.height)
   })
+
+  it('keeps only selected pages and splits every N pages', async () => {
+    const bytes = await samplePdf(['A', 'B', 'C', 'D', 'E'])
+    const kept = await keepPages(bytes, [0, 2, 4])
+    expect(await pageCount(kept)).toBe(3)
+    const identity = await keepPages(bytes, [0, 1, 2, 3, 4])
+    expect(identity).toBe(bytes)
+    await expect(keepPages(bytes, [])).rejects.toThrow(/giữ/)
+    const parts = await splitEvery(bytes, 2)
+    expect(parts).toHaveLength(3)
+    expect(await pageCount(parts[0]!)).toBe(2)
+    expect(await pageCount(parts[1]!)).toBe(2)
+    expect(await pageCount(parts[2]!)).toBe(1)
+    await expect(splitEvery(bytes, 0)).rejects.toThrow(/từ 1/)
+    const zip = await zipPdfParts([
+      { name: splitPartName('demo.pdf', 1, 2), bytes: parts[0]! },
+      { name: splitPartName('demo.pdf', 2, 2), bytes: parts[1]! },
+    ])
+    const loaded = await JSZip.loadAsync(await zip.arrayBuffer())
+    expect(loaded.file('demo-phan-1-cua-2.pdf')).toBeTruthy()
+    expect(splitZipName('demo.pdf')).toBe('demo-tach.zip')
+  })
+
+  it('builds a PDF from imported text pages and wraps long lines', async () => {
+    const pdf = await textPagesToPdf(['Hello', 'Page two'])
+    expect(await pageCount(pdf)).toBe(2)
+    expect(wrapPdfText('one two three', (value) => value.length, 7)).toEqual(['one two', 'three'])
+    await expect(textPagesToPdf([])).rejects.toThrow(/nội dung/)
+  })
 })
 
 describe('conversion helpers', () => {
@@ -186,6 +234,12 @@ describe('conversion helpers', () => {
     expect(slicePagesByIndexes(['A', 'B', 'C'], [0, 2])).toEqual(['A', 'C'])
     expect(() => slicePagesByIndexes(['A'], [])).toThrow(/đã chọn/)
     expect(() => slicePageRange(['A'], 2, 1)).toThrow(/Khoảng trang/)
+    expect(pagesFromPlainText('--- Trang 1 ---\nA\n--- Trang 2 ---\nB')).toEqual(['A', 'B'])
+    expect(pagesFromMarkdown('# Demo\n\n## Trang 1\nMột\n\n## Trang 2\nHai')).toEqual(['Một', 'Hai'])
+    expect(pagesFromHtml('<section>Một</section><section>Hai</section>')).toEqual(['Một', 'Hai'])
+    expect(stripMarkup('<p>Hi<br/>there</p>')).toContain('Hi')
+    expect(pagesFromImportedText('txt', 'Chỉ một đoạn.')).toEqual(['Chỉ một đoạn.'])
+    expect(swapExtension('notes.md', 'pdf')).toBe('notes.pdf')
   })
 
   it('builds an EPUB 3 package with nav, ncx, and per-page documents', async () => {
@@ -259,6 +313,11 @@ describe('page selection', () => {
       expect(inverted.message).toMatch(/không được lớn hơn/)
     }
     expect(parsePageRange('2', '3', 4)).toEqual({ ok: true, fromPage: 2, toPage: 3 })
+    expect(parseSplitSize('', 4)).toEqual({ ok: false, message: 'Nhập số trang mỗi tệp.' })
+    expect(parseSplitSize('1.5', 4).ok).toBe(false)
+    expect(parseSplitSize('0', 4).ok).toBe(false)
+    expect(parseSplitSize('9', 4).ok).toBe(false)
+    expect(parseSplitSize('2', 4)).toEqual({ ok: true, size: 2 })
   })
 
   it('caps undo snapshots and pops the latest first', () => {
@@ -272,6 +331,15 @@ describe('page selection', () => {
     expect(popped?.rest).toEqual([])
     expect(popSnapshot([])).toBeNull()
     expect(MAX_EDITOR_HISTORY).toBeGreaterThan(0)
+    const encoded = encodeSnapshots(
+      [snapshotOf(new Uint8Array([9, 8]), 2, [1, 2], 1), snapshotOf(new Uint8Array([7]), 0, [0], 0)],
+      1,
+    )
+    expect(encoded).toHaveLength(1)
+    const decoded = decodeSnapshots(encoded)
+    expect(decoded[0]?.page).toBe(0)
+    expect([...decoded[0]!.bytes]).toEqual([7])
+    expect(decodeSnapshots(null)).toEqual([])
   })
 
   it('scales sparse pages more strongly than letter-size pages', () => {

@@ -12,9 +12,11 @@ import {
   type ExportFormat,
 } from '../lib/convert.ts'
 import { extractPageTexts } from '../lib/extract.ts'
+import { pagesFromImportedText } from '../lib/import-text.ts'
 import { convertEpubToMobi, getMobiStatus } from '../lib/mobi.ts'
-import { readPdfFile, swapExtension } from '../lib/limits.ts'
-import { editorExportSelection, formatPageList } from '../lib/persist.ts'
+import { readSourceFile, swapExtension } from '../lib/limits.ts'
+import { textPagesToPdf } from '../lib/pdf.ts'
+import { editorExportSelection, forgetHistory, formatPageList } from '../lib/persist.ts'
 import { parsePageRange } from '../lib/selection.ts'
 import { downloadBlob, setDocument } from '../lib/document-store.ts'
 import { useDocument } from '../use-document.ts'
@@ -71,8 +73,17 @@ export function Convert() {
     setError(null)
     setNote(null)
     try {
-      const bytes = await readPdfFile(file)
-      await setDocument(file.name, bytes)
+      const source = await readSourceFile(file)
+      if (source.kind === 'pdf') {
+        await forgetHistory()
+        await setDocument(source.name, source.bytes)
+        return
+      }
+      const pages = pagesFromImportedText(source.kind, source.text)
+      const bytes = await textPagesToPdf(pages)
+      await forgetHistory()
+      await setDocument(source.pdfName, bytes)
+      setNote(`Đã tạo PDF ${pages.length} trang từ ${source.kind.toUpperCase()}. Có thể xuất sang định dạng khác.`)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Không đọc được tệp.')
     }
@@ -161,17 +172,18 @@ export function Convert() {
       <header className="page-head">
         <h1>Chuyển đổi định dạng</h1>
         <p>
-          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, DOCX/DOC, EPUB hoặc MOBI. Có thể xuất đúng
-          các trang đang chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau.
+          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, DOCX/DOC, EPUB hoặc MOBI. Có thể mở
+          TXT/Markdown/HTML để tạo PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang chọn
+          trên Chỉnh sửa, kể cả khi chúng không liền nhau.
         </p>
       </header>
 
       <label className="file-btn">
-        Tải PDF
+        Tải PDF / chữ
         <input
           type="file"
-          accept="application/pdf,.pdf"
-          aria-label="Tải tệp PDF để chuyển đổi"
+          accept="application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm"
+          aria-label="Tải tệp PDF, TXT, Markdown hoặc HTML để chuyển đổi"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -182,7 +194,7 @@ export function Convert() {
         </p>
       ) : (
         <p className="empty">
-          Chưa có tài liệu. Hãy tải một tệp PDF để chọn khoảng trang và định dạng xuất.
+          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown hoặc HTML để chọn khoảng trang và định dạng xuất.
         </p>
       )}
       {error ? (

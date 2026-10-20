@@ -342,12 +342,14 @@ button:disabled {
 }
 
 .merge-where legend,
-.number-stamp legend {
+.number-stamp legend,
+.split-pack legend {
   font-weight: 600;
   margin-bottom: 4px;
 }
 
-.number-stamp {
+.number-stamp,
+.split-pack {
   border: 1px dashed var(--line);
   border-radius: 12px;
   padding: 10px;

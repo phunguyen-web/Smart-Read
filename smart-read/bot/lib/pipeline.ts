@@ -18,14 +18,14 @@ export const PIPELINE_STAGES = [
     subagent: "pdf-editor",
     title: "PDF editor",
     summary:
-      "Implement in-browser PDF page operations: rotate, reverse, page numbers, delete, duplicate, extract, insert blank, reorder, merge, and text overlay.",
+      "Implement in-browser PDF page operations: rotate, reverse, page numbers, delete, duplicate, extract, keep, split, insert blank, reorder, merge, persist undo, and text overlay.",
   },
   {
     id: "format-converter",
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, Markdown, DOCX/DOC, EPUB, and MOBI.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, DOCX/DOC, EPUB, and MOBI; import TXT/MD/HTML as PDF.",
   },
   {
     id: "qa-reviewer",
@@ -106,26 +106,26 @@ export const SUPPORTED_FORMATS = [
     id: "pdf",
     label: "PDF",
     role: "edit",
-    notes: "Source format. Page rotate 90/180, reverse order, page numbers, delete, duplicate, extract, insert blank, reorder, merge, and text overlay.",
+    notes: "Source format. Page rotate 90/180, reverse order, page numbers, delete, duplicate, extract, keep, split to ZIP, insert blank, reorder, merge, persist undo, and text overlay.",
   },
   {
     id: "txt",
     label: "Plain text",
     role: "export",
-    notes: "Extracted page text.",
+    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats.",
   },
   {
     id: "html",
     label: "HTML",
     role: "export",
-    notes: "Readable HTML document from extracted text.",
+    notes: "Readable HTML document from extracted text. Uploading HTML builds a PDF first.",
   },
   {
     id: "md",
     label: "Markdown",
     role: "export",
     aliases: ["markdown"],
-    notes: "Markdown document with one heading per page.",
+    notes: "Markdown document with one heading per page. Uploading Markdown builds a PDF first.",
   },
   {
     id: "docx",

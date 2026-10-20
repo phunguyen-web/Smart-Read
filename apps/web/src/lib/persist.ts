@@ -1,7 +1,14 @@
+import { snapshotOf, type EditorSnapshot } from './history.ts'
+
 const DB_NAME = 'smart-read'
 const STORE_NAME = 'session'
 const DOC_KEY = 'document'
+const HISTORY_PAST_KEY = 'history-past'
+const HISTORY_FUTURE_KEY = 'history-future'
 const VIEW_KEY = 'smart-read-editor-view'
+const DB_VERSION = 2
+
+export const MAX_PERSISTED_HISTORY = 8
 
 export type PersistedDocument = {
   name: string
@@ -14,10 +21,24 @@ export type EditorView = {
   anchor: number
 }
 
+export type EditorHistory = {
+  past: EditorSnapshot[]
+  future: EditorSnapshot[]
+}
+
 type StoredDocument = {
   name: string
   bytes: ArrayBuffer
 }
+
+type StoredSnapshot = {
+  bytes: ArrayBuffer
+  page: number
+  selected: number[]
+  anchor: number
+}
+
+let hydratedHistory: EditorHistory = { past: [], future: [] }
 
 function sessionStore(): Storage | null {
   try {
@@ -35,7 +56,7 @@ function openDb(): Promise<IDBDatabase | null> {
     return Promise.resolve(null)
   }
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1)
+    const request = indexedDB.open(DB_NAME, DB_VERSION)
     request.onupgradeneeded = () => {
       const db = request.result
       if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -91,6 +112,114 @@ export async function loadPersistedDocument(): Promise<PersistedDocument | null>
 
 export async function clearPersistedDocument(): Promise<void> {
   await withStore('readwrite', (store) => store.delete(DOC_KEY))
+}
+
+export function encodeSnapshots(
+  stack: readonly EditorSnapshot[],
+  limit = MAX_PERSISTED_HISTORY,
+): StoredSnapshot[] {
+  const kept = stack.slice(Math.max(0, stack.length - limit))
+  return kept.map((snapshot) => {
+    const copy = new ArrayBuffer(snapshot.bytes.byteLength)
+    new Uint8Array(copy).set(snapshot.bytes)
+    return {
+      bytes: copy,
+      page: snapshot.page,
+      selected: [...snapshot.selected],
+      anchor: snapshot.anchor,
+    }
+  })
+}
+
+export function decodeSnapshots(raw: unknown): EditorSnapshot[] {
+  if (!Array.isArray(raw)) {
+    return []
+  }
+  const snapshots: EditorSnapshot[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') {
+      continue
+    }
+    const record = item as { bytes?: unknown; page?: unknown; selected?: unknown; anchor?: unknown }
+    const bytes =
+      record.bytes instanceof ArrayBuffer
+        ? new Uint8Array(record.bytes)
+        : record.bytes instanceof Uint8Array
+          ? record.bytes.slice()
+          : null
+    if (!bytes || !Number.isInteger(record.page) || !Array.isArray(record.selected)) {
+      continue
+    }
+    const selected = record.selected.filter((index): index is number => Number.isInteger(index))
+    const page = record.page as number
+    snapshots.push(
+      snapshotOf(
+        bytes,
+        page,
+        selected,
+        Number.isInteger(record.anchor) ? (record.anchor as number) : page,
+      ),
+    )
+  }
+  return snapshots
+}
+
+export function getHydratedHistory(): EditorHistory {
+  return {
+    past: hydratedHistory.past.map((snapshot) =>
+      snapshotOf(snapshot.bytes, snapshot.page, snapshot.selected, snapshot.anchor),
+    ),
+    future: hydratedHistory.future.map((snapshot) =>
+      snapshotOf(snapshot.bytes, snapshot.page, snapshot.selected, snapshot.anchor),
+    ),
+  }
+}
+
+export async function hydrateHistory(): Promise<EditorHistory> {
+  hydratedHistory = (await loadPersistedHistory()) ?? { past: [], future: [] }
+  return getHydratedHistory()
+}
+
+export async function loadPersistedHistory(): Promise<EditorHistory | null> {
+  try {
+    const pastRaw = await withStore<unknown>('readonly', (store) => store.get(HISTORY_PAST_KEY))
+    const futureRaw = await withStore<unknown>('readonly', (store) => store.get(HISTORY_FUTURE_KEY))
+    const past = decodeSnapshots(pastRaw)
+    const future = decodeSnapshots(futureRaw)
+    if (past.length === 0 && future.length === 0) {
+      return { past: [], future: [] }
+    }
+    return { past, future }
+  } catch {
+    return null
+  }
+}
+
+export async function persistHistory(past: EditorSnapshot[], future: EditorSnapshot[]): Promise<void> {
+  hydratedHistory = {
+    past: past.map((snapshot) =>
+      snapshotOf(snapshot.bytes, snapshot.page, snapshot.selected, snapshot.anchor),
+    ),
+    future: future.map((snapshot) =>
+      snapshotOf(snapshot.bytes, snapshot.page, snapshot.selected, snapshot.anchor),
+    ),
+  }
+  try {
+    await withStore('readwrite', (store) => store.put(encodeSnapshots(past), HISTORY_PAST_KEY))
+    await withStore('readwrite', (store) => store.put(encodeSnapshots(future), HISTORY_FUTURE_KEY))
+  } catch {
+    // Quota or private-mode IndexedDB should not block editing.
+  }
+}
+
+export async function forgetHistory(): Promise<void> {
+  hydratedHistory = { past: [], future: [] }
+  try {
+    await withStore('readwrite', (store) => store.delete(HISTORY_PAST_KEY))
+    await withStore('readwrite', (store) => store.delete(HISTORY_FUTURE_KEY))
+  } catch {
+    // Ignore a missing store.
+  }
 }
 
 export function saveEditorView(view: EditorView): void {

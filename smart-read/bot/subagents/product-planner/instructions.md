@@ -5,7 +5,7 @@ You are stage 1 of Smart-Read. Produce a short, concrete plan for a web app that
 ## Do
 
 - Read `product-brief.md` when it is in the workspace.
-- Name routes, editor operations, conversion targets, and upload limits.
+- Name routes, editor operations (including keep/split and persisted undo), conversion targets (including TXT/MD/HTML import), and upload limits.
 - Keep v1 out of accounts, cloud storage, and OCR.
 - Return a plan the parent can pass to `record_plan` (`goal` + `notes`).
 

@@ -299,6 +299,134 @@ export async function extractPages(
   return new Uint8Array(await dst.save())
 }
 
+/** Keep only `pageIndexes` in the current document (sorted, de-duplicated). */
+export async function keepPages(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để giữ.')
+  }
+  if (unique.length === count) {
+    return bytes
+  }
+  return extractPages(bytes, unique)
+}
+
+export async function splitEvery(bytes: Uint8Array, size: number): Promise<Uint8Array[]> {
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  const chunk = Math.trunc(size)
+  if (!Number.isInteger(chunk) || chunk < 1) {
+    throw new Error('Số trang mỗi tệp phải là số nguyên từ 1.')
+  }
+  if (count < 1) {
+    throw new Error('Không có trang để tách.')
+  }
+  const parts: Uint8Array[] = []
+  for (let start = 0; start < count; start += chunk) {
+    const indexes = Array.from(
+      { length: Math.min(chunk, count - start) },
+      (_, offset) => start + offset,
+    )
+    const dst = await PDFDocument.create()
+    const copied = await dst.copyPages(src, indexes)
+    for (const page of copied) {
+      dst.addPage(page)
+    }
+    parts.push(new Uint8Array(await dst.save()))
+  }
+  return parts
+}
+
+const A4_WIDTH = 595.28
+const A4_HEIGHT = 841.89
+const TEXT_MARGIN = 50
+const TEXT_SIZE = 11
+const TEXT_LEADING = 15
+
+export function wrapPdfText(
+  text: string,
+  measure: (value: string) => number,
+  maxWidth: number,
+): string[] {
+  const normalized = text.replace(/\r\n/g, '\n').replaceAll('\u0000', '')
+  const lines: string[] = []
+  for (const raw of normalized.split('\n')) {
+    const trimmed = raw.replace(/\s+$/g, '')
+    if (!trimmed) {
+      lines.push('')
+      continue
+    }
+    let rest = trimmed
+    while (rest.length > 0) {
+      if (measure(rest) <= maxWidth) {
+        lines.push(rest)
+        break
+      }
+      let lo = 1
+      let hi = rest.length
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2)
+        if (measure(rest.slice(0, mid)) <= maxWidth) {
+          lo = mid
+        } else {
+          hi = mid - 1
+        }
+      }
+      let cut = lo
+      const space = rest.lastIndexOf(' ', cut)
+      if (space >= Math.floor(cut * 0.5)) {
+        cut = space
+      }
+      const piece = rest.slice(0, cut).trimEnd()
+      lines.push(piece || rest.slice(0, lo))
+      rest = rest.slice(piece ? cut : lo).trimStart()
+    }
+  }
+  return lines
+}
+
+export async function textPagesToPdf(pages: readonly string[]): Promise<Uint8Array> {
+  if (pages.length === 0) {
+    throw new Error('Không có nội dung để tạo PDF.')
+  }
+  const doc = await PDFDocument.create()
+  const font = await embedOverlayFont(doc)
+  const maxWidth = A4_WIDTH - TEXT_MARGIN * 2
+  const maxLines = Math.max(1, Math.floor((A4_HEIGHT - TEXT_MARGIN * 2) / TEXT_LEADING))
+  const measure = (value: string) => font.widthOfTextAtSize(value, TEXT_SIZE)
+  for (const pageText of pages) {
+    const wrapped = wrapPdfText(pageText, measure, maxWidth)
+    const body =
+      wrapped.length === 0
+        ? [['']]
+        : Array.from({ length: Math.ceil(wrapped.length / maxLines) }, (_, index) =>
+            wrapped.slice(index * maxLines, (index + 1) * maxLines),
+          )
+    for (const lines of body) {
+      const page = doc.addPage([A4_WIDTH, A4_HEIGHT])
+      let y = A4_HEIGHT - TEXT_MARGIN - TEXT_SIZE
+      for (const line of lines) {
+        if (line) {
+          page.drawText(line, {
+            x: TEXT_MARGIN,
+            y,
+            size: TEXT_SIZE,
+            font,
+            color: rgb(0.12, 0.1, 0.08),
+          })
+        }
+        y -= TEXT_LEADING
+      }
+    }
+  }
+  return new Uint8Array(await doc.save())
+}
+
 export async function insertBlankPage(
   bytes: Uint8Array,
   afterIndex: number,

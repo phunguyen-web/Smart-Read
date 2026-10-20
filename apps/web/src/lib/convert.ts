@@ -260,6 +260,22 @@ export function extensionFor(format: ExportFormat): string {
   return format
 }
 
+export async function zipPdfParts(
+  parts: readonly { name: string; bytes: Uint8Array }[],
+): Promise<Blob> {
+  if (parts.length === 0) {
+    throw new Error('Không có phần PDF để nén.')
+  }
+  const zip = new JSZip()
+  for (const part of parts) {
+    zip.file(part.name, part.bytes)
+  }
+  return zip.generateAsync({
+    type: 'blob',
+    mimeType: 'application/zip',
+  })
+}
+
 export function mimeFor(format: ExportFormat): string {
   switch (format) {
     case 'txt':

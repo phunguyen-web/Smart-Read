@@ -167,3 +167,26 @@ export function parsePageRange(
   }
   return { ok: true, fromPage: from, toPage: to }
 }
+
+export type SplitSizeParse = { ok: true; size: number } | { ok: false; message: string }
+
+export function parseSplitSize(raw: string, pageCount: number): SplitSizeParse {
+  if (pageCount < 1) {
+    return { ok: false, message: 'Tài liệu không có trang để tách.' }
+  }
+  const trimmed = raw.trim()
+  if (trimmed === '') {
+    return { ok: false, message: 'Nhập số trang mỗi tệp.' }
+  }
+  if (!/^\d+$/.test(trimmed)) {
+    return { ok: false, message: 'Số trang mỗi tệp phải là số nguyên.' }
+  }
+  const size = Number(trimmed)
+  if (size < 1) {
+    return { ok: false, message: 'Số trang mỗi tệp phải từ 1.' }
+  }
+  if (size > pageCount) {
+    return { ok: false, message: `Số trang mỗi tệp không được vượt quá ${pageCount}.` }
+  }
+  return { ok: true, size }
+}

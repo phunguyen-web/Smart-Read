@@ -2,6 +2,7 @@ import { pageCount } from './pdf.ts'
 import {
   clearEditorView,
   clearPersistedDocument,
+  forgetHistory,
   loadPersistedDocument,
   savePersistedDocument,
 } from './persist.ts'
@@ -75,7 +76,7 @@ export async function clearDocument(): Promise<void> {
   notify()
   clearEditorView()
   try {
-    await clearPersistedDocument()
+    await Promise.all([clearPersistedDocument(), forgetHistory()])
   } catch {
     // IndexedDB may be unavailable; in-memory state is already cleared.
   }
