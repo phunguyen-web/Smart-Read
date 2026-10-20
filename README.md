@@ -1,1 +1,46 @@
 # Smart-Read
+
+Web app to edit PDFs in the browser and convert them to TXT, HTML, Markdown, DOCX/DOC, EPUB, and MOBI.
+
+## Layout
+
+| Path | Role |
+| --- | --- |
+| `apps/web` | Vite + React UI (editor + converter) |
+| `smart-read` | BDK orchestrator agent and sequenced subagents |
+| `.cursor/agents` | Cursor specialists used while coding this repo |
+
+## Agent sequence
+
+1. `product-planner`
+2. `web-engineer`
+3. `pdf-editor`
+4. `format-converter`
+5. `qa-reviewer`
+
+The orchestrator records the current stage (`list_pipeline`, `advance_stage`) and the product plan (`record_plan`).
+
+## Web app
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+Open the printed local URL. Use **Chỉnh sửa PDF** to preview a thumbnail strip, multi-select pages (click / Ctrl / Shift, plus odd/even), rotate 90° / reverse / 180°, reverse page order, stamp page numbers, delete, duplicate, extract selected pages as a new PDF, insert a blank page, drag-reorder (a multi-select moves as one block, or send it to the start/end), undo/redo, merge (start / after current / end), overlay text at a click or preset, and forget the local copy. Sparse pages get a higher-contrast thumbnail. Keyboard: ← →, R (90°), Shift+R (180°), Delete (selected pages), Alt+↑↓, Ctrl+Z / Ctrl+Y. Use **Chuyển đổi định dạng** to export a page range to TXT, HTML, Markdown, DOCX/DOC, EPUB (nav + per-page spine), or MOBI. Invalid from–to ranges show an error and block export. A multi-page editor selection can be exported even when the pages are not contiguous. MOBI calls `/api/mobi` which runs Calibre `ebook-convert` when installed; otherwise the app downloads EPUB.
+
+Uploads stay on this device. The current PDF is mirrored to IndexedDB so a reload restores it; undo history stays in memory and clears on a new upload or when you forget the local copy. Maximum size is 20 MB. There is no account or cloud store in v1.
+
+## Orchestrator
+
+```bash
+cd smart-read
+npm install
+npx @cursor/bdk@0.2.27 validate --dir .
+npx @cursor/bdk@0.2.27 info --dir . --json
+npx @cursor/bdk@0.2.27 call list_pipeline --dir .
+npx @cursor/bdk@0.2.27 dev --dir .
+```
+
+Model turns need a Cursor API key (`CURSOR_API_KEY` or `npx @cursor/bdk@0.2.27 login`). Direct tool calls do not.
