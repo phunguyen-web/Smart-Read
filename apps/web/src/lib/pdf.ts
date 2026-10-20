@@ -44,16 +44,28 @@ export async function pageCount(bytes: Uint8Array): Promise<number> {
   return doc.getPageCount()
 }
 
+export async function rotatePagesBy(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  delta = 90,
+): Promise<Uint8Array> {
+  const step = ((Math.trunc(delta) % 360) + 360) % 360
+  if (step === 0) {
+    return bytes
+  }
+  const doc = await PDFDocument.load(bytes)
+  for (const index of uniqueSorted(pageIndexes, false)) {
+    const page = doc.getPage(index)
+    page.setRotation(degrees((page.getRotation().angle + step) % 360))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 export async function rotatePages(
   bytes: Uint8Array,
   pageIndexes: number[],
 ): Promise<Uint8Array> {
-  const doc = await PDFDocument.load(bytes)
-  for (const index of uniqueSorted(pageIndexes, false)) {
-    const page = doc.getPage(index)
-    page.setRotation(degrees((page.getRotation().angle + 90) % 360))
-  }
-  return new Uint8Array(await doc.save())
+  return rotatePagesBy(bytes, pageIndexes, 90)
 }
 
 export async function deletePages(
@@ -116,6 +128,89 @@ export function reorderPageBlock(
   const order = [...remaining.slice(0, insertAt), ...moving, ...remaining.slice(insertAt)]
   const moved = moving.map((_, offset) => insertAt + offset)
   return { order, moved }
+}
+
+export function reversedIndexes(count: number, selected: readonly number[]): number[] {
+  return [...new Set(selected)]
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < count)
+    .map((index) => count - 1 - index)
+    .sort((a, b) => a - b)
+}
+
+export async function reversePages(bytes: Uint8Array): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  if (count < 2) {
+    return bytes
+  }
+  const order = Array.from({ length: count }, (_, index) => count - 1 - index)
+  return applyPageOrder(bytes, order)
+}
+
+export type PageNumberStyle = 'n' | 'n-of-total' | 'trang-n'
+export type PageNumberPosition = 'bottom-center' | 'bottom-right' | 'top-center'
+
+export const PAGE_NUMBER_PRESETS: Record<PageNumberPosition, OverlayPosition> = {
+  'bottom-center': { xRatio: 0.5, yRatio: 0.94 },
+  'bottom-right': { xRatio: 0.92, yRatio: 0.94 },
+  'top-center': { xRatio: 0.5, yRatio: 0.06 },
+}
+
+export function formatPageNumber(
+  pageIndex: number,
+  total: number,
+  style: PageNumberStyle = 'n-of-total',
+): string {
+  const n = pageIndex + 1
+  if (style === 'n') {
+    return String(n)
+  }
+  if (style === 'trang-n') {
+    return `Trang ${n}`
+  }
+  return `${n} / ${total}`
+}
+
+export async function addPageNumbers(
+  bytes: Uint8Array,
+  options: {
+    indexes?: readonly number[]
+    position?: PageNumberPosition
+    style?: PageNumberStyle
+  } = {},
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const total = doc.getPageCount()
+  if (total < 1) {
+    throw new Error('Không có trang để đánh số.')
+  }
+  const requested = options.indexes
+  const unique = uniqueSorted(
+    requested && requested.length > 0 ? [...requested] : Array.from({ length: total }, (_, index) => index),
+    false,
+  ).filter((index) => index >= 0 && index < total)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đánh số.')
+  }
+  const position = PAGE_NUMBER_PRESETS[options.position ?? 'bottom-center']
+  const style = options.style ?? 'n-of-total'
+  const font = await embedOverlayFont(doc)
+  const size = 12
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const text = formatPageNumber(index, total, style)
+    const x = clamp(position.xRatio, 0, 1) * width
+    const y = clamp(1 - position.yRatio, 0, 1) * height - size
+    page.drawText(text, {
+      x: Math.max(8, Math.min(width - 8, x)),
+      y: Math.max(8, Math.min(height - 8, y)),
+      size,
+      font,
+      color: rgb(0.22, 0.12, 0.08),
+    })
+  }
+  return new Uint8Array(await doc.save())
 }
 
 export async function applyPageOrder(

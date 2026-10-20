@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { renderPageToCanvas } from '../lib/extract.ts'
 import {
   OVERLAY_PRESETS,
+  addPageNumbers,
   addTextOverlay,
   deletePages,
   duplicatePages,
@@ -14,18 +15,26 @@ import {
   movePages,
   pageCount,
   reorderPageBlock,
+  reversePages,
+  reversedIndexes,
   rotatePages,
+  rotatePagesBy,
   type MergeWhere,
   type OverlayPosition,
   type OverlayPresetId,
+  type PageNumberPosition,
+  type PageNumberStyle,
 } from '../lib/pdf.ts'
 import { extractedPdfName, readPdfFile } from '../lib/limits.ts'
 import { popSnapshot, pushSnapshot, snapshotOf, type EditorSnapshot } from '../lib/history.ts'
 import { clearEditorView, restoreEditorView, saveEditorView } from '../lib/persist.ts'
 import {
+  blockEdgeDropTo,
   blockNudgeDropTo,
+  evenPageIndexes,
   movingIndexesForDrag,
   nextPageAfterDelete,
+  oddPageIndexes,
   pageRange,
   togglePage,
 } from '../lib/selection.ts'
@@ -47,6 +56,18 @@ const PRESET_LABELS: { id: OverlayPresetId; label: string }[] = [
   { id: 'bottom-left', label: 'Dưới trái' },
 ]
 
+const PAGE_NUMBER_POSITIONS: { id: PageNumberPosition; label: string }[] = [
+  { id: 'bottom-center', label: 'Dưới giữa' },
+  { id: 'bottom-right', label: 'Dưới phải' },
+  { id: 'top-center', label: 'Trên giữa' },
+]
+
+const PAGE_NUMBER_STYLES: { id: PageNumberStyle; label: string }[] = [
+  { id: 'n-of-total', label: '1 / N' },
+  { id: 'n', label: '1' },
+  { id: 'trang-n', label: 'Trang 1' },
+]
+
 function initialEditorView() {
   const current = getDocument()
   return current ? restoreEditorView(current.pageCount) : { page: 0, selected: [0], anchor: 0 }
@@ -61,6 +82,8 @@ export function Editor() {
   const [anchor, setAnchor] = useState(started.anchor)
   const [overlay, setOverlay] = useState('')
   const [overlayPos, setOverlayPos] = useState<OverlayPosition>(OVERLAY_PRESETS['top-left'])
+  const [numberPos, setNumberPos] = useState<PageNumberPosition>('bottom-center')
+  const [numberStyle, setNumberStyle] = useState<PageNumberStyle>('n-of-total')
   const [mergePending, setMergePending] = useState<{
     name: string
     bytes: Uint8Array
@@ -277,7 +300,9 @@ export function Editor() {
         goToPage(Math.min(doc.pageCount - 1, page + 1), 'replace')
       } else if (event.key === 'r' || event.key === 'R') {
         event.preventDefault()
-        void run((bytes) => rotatePages(bytes, targets))
+        void run((bytes) =>
+          event.shiftKey ? rotatePagesBy(bytes, targets, 180) : rotatePages(bytes, targets),
+        )
       } else if (event.key === 'Delete') {
         event.preventDefault()
         void deleteSelected()
@@ -383,9 +408,9 @@ export function Editor() {
       <header className="page-head">
         <h1>Chỉnh sửa PDF</h1>
         <p>
-          Xoay, xóa, nhân bản, tách trang đã chọn, chèn trang trắng, kéo thumbnail để đổi thứ tự,
-          hoàn tác, gộp tệp và chèn chữ, rồi tải PDF mới. Tệp gần nhất được giữ trên trình duyệt này
-          khi tải lại trang.
+          Xoay, đảo thứ tự, đánh số trang, xóa, nhân bản, tách trang đã chọn, chèn trang trắng, kéo
+          thumbnail để đổi thứ tự, hoàn tác, gộp tệp và chèn chữ, rồi tải PDF mới. Tệp gần nhất được
+          giữ trên trình duyệt này khi tải lại trang.
         </p>
       </header>
 
@@ -440,9 +465,9 @@ export function Editor() {
             </div>
             <p className="kbd-hint">
               Nhấn thumbnail để xem trang, kéo để đổi thứ tự — các trang đã chọn đi cùng nhau.
-              Ctrl/Cmd chọn thêm, Shift chọn dải. Phím: ← →, R xoay các trang đã chọn, Delete xóa,
-              Alt+↑↓ dời nhóm, Ctrl+Z hoàn tác, Ctrl+Y làm lại. Nhân bản chèn bản sao sau trang đã
-              chọn cuối; tách trang tải một PDF mới mà không đổi tài liệu hiện tại.
+              Ctrl/Cmd chọn thêm, Shift chọn dải. Phím: ← →, R xoay 90°, Shift+R xoay 180°, Delete
+              xóa, Alt+↑↓ dời nhóm, Ctrl+Z hoàn tác, Ctrl+Y làm lại. Nhân bản chèn bản sao sau trang
+              đã chọn cuối; tách trang tải một PDF mới mà không đổi tài liệu hiện tại.
             </p>
           </div>
           <div className="tools" role="toolbar" aria-label="Công cụ chỉnh PDF">
@@ -489,6 +514,36 @@ export function Editor() {
               <button type="button" disabled={busy} onClick={() => goToPage(page, 'replace')}>
                 Bỏ chọn
               </button>
+              <button
+                type="button"
+                disabled={busy || oddPageIndexes(doc.pageCount).length === 0}
+                onClick={() => {
+                  const odd = oddPageIndexes(doc.pageCount)
+                  if (odd.length === 0) {
+                    return
+                  }
+                  setSelected(odd)
+                  setPage(odd.includes(page) ? page : odd[0]!)
+                  setAnchor(odd[0]!)
+                }}
+              >
+                Chọn trang lẻ
+              </button>
+              <button
+                type="button"
+                disabled={busy || evenPageIndexes(doc.pageCount).length === 0}
+                onClick={() => {
+                  const even = evenPageIndexes(doc.pageCount)
+                  if (even.length === 0) {
+                    return
+                  }
+                  setSelected(even)
+                  setPage(even.includes(page) ? page : even[0]!)
+                  setAnchor(even[0]!)
+                }}
+              >
+                Chọn trang chẵn
+              </button>
             </div>
             <div className="tool-row">
               <button
@@ -497,8 +552,25 @@ export function Editor() {
                 aria-keyshortcuts="R"
                 onClick={() => void run((bytes) => rotatePages(bytes, targets))}
               >
-                Xoay {targets.length > 1 ? `${targets.length} trang` : '90°'}
+                Xoay {targets.length > 1 ? `${targets.length} trang 90°` : '90°'}
               </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void run((bytes) => rotatePagesBy(bytes, targets, -90))}
+              >
+                Xoay ngược
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-keyshortcuts="Shift+R"
+                onClick={() => void run((bytes) => rotatePagesBy(bytes, targets, 180))}
+              >
+                Xoay 180°
+              </button>
+            </div>
+            <div className="tool-row">
               <button
                 type="button"
                 disabled={busy}
@@ -607,7 +679,92 @@ export function Editor() {
               >
                 Đưa xuống
               </button>
+              <button
+                type="button"
+                disabled={busy || blockEdgeDropTo(targets, 'start', doc.pageCount) == null}
+                onClick={() => {
+                  const dropTo = blockEdgeDropTo(targets, 'start', doc.pageCount)
+                  if (dropTo != null) {
+                    applyReorder(targets, dropTo, page)
+                  }
+                }}
+              >
+                Đưa lên đầu
+              </button>
+              <button
+                type="button"
+                disabled={busy || blockEdgeDropTo(targets, 'end', doc.pageCount) == null}
+                onClick={() => {
+                  const dropTo = blockEdgeDropTo(targets, 'end', doc.pageCount)
+                  if (dropTo != null) {
+                    applyReorder(targets, dropTo, page)
+                  }
+                }}
+              >
+                Đưa xuống cuối
+              </button>
             </div>
+            <div className="tool-row">
+              <button
+                type="button"
+                disabled={busy || doc.pageCount < 2}
+                onClick={() => {
+                  const count = doc.pageCount
+                  const nextPage = count - 1 - page
+                  const nextSelected = reversedIndexes(count, targets)
+                  const nextAnchor = count - 1 - anchor
+                  void run((bytes) => reversePages(bytes), () => {
+                    setPage(nextPage)
+                    setSelected(nextSelected.length > 0 ? nextSelected : [nextPage])
+                    setAnchor(Math.max(0, Math.min(count - 1, nextAnchor)))
+                  })
+                }}
+              >
+                Đảo thứ tự trang
+              </button>
+            </div>
+            <fieldset className="number-stamp">
+              <legend>Đánh số trang</legend>
+              <div className="preset-row" role="group" aria-label="Vị trí số trang">
+                {PAGE_NUMBER_POSITIONS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={numberPos === item.id ? 'picked' : undefined}
+                    onClick={() => setNumberPos(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <div className="preset-row" role="group" aria-label="Kiểu số trang">
+                {PAGE_NUMBER_STYLES.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={numberStyle === item.id ? 'picked' : undefined}
+                    onClick={() => setNumberStyle(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void run((bytes) =>
+                    addPageNumbers(bytes, {
+                      indexes: targets,
+                      position: numberPos,
+                      style: numberStyle,
+                    }),
+                  )
+                }
+              >
+                Đánh số {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+              </button>
+            </fieldset>
             <label className="file-btn secondary-file">
               Chọn PDF để gộp
               <input

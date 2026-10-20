@@ -19,10 +19,10 @@ export function Home() {
       </div>
       <ul className="feature-list">
         <li>
-          Dải thumbnail rõ nét, chọn nhiều trang để xoay/xóa/nhân bản/tách PDF, chèn trang trắng, kéo
-          cả nhóm để sắp xếp, hoàn tác, gộp và chèn chữ
+          Dải thumbnail rõ nét, chọn lẻ/chẵn, xoay 90/180, đảo thứ tự, đánh số trang, nhân bản, tách
+          PDF, chèn trang trắng, kéo cả nhóm để sắp xếp, hoàn tác, gộp và chèn chữ
         </li>
-        <li>Xuất TXT, HTML, DOCX/DOC, EPUB, MOBI</li>
+        <li>Xuất TXT, HTML, Markdown, DOCX/DOC, EPUB, MOBI</li>
         <li>Không tài khoản, không lưu đám mây — tệp gần nhất được giữ trên trình duyệt này</li>
       </ul>
     </main>

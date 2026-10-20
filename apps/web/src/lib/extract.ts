@@ -20,6 +20,7 @@ type OpenPdf = {
 let pdfjsPromise: Promise<PdfJs> | null = null
 let open: OpenPdf | null = null
 let loadGen = 0
+let opening: { bytes: Uint8Array; promise: Promise<PDFDocumentProxy> } | null = null
 let activeRender: RenderTask | null = null
 let renderSeq = 0
 
@@ -89,29 +90,42 @@ async function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
   if (cached && cached.bytes === bytes) {
     return cached.pdf
   }
+  if (opening && opening.bytes === bytes) {
+    return opening.promise
+  }
   const gen = ++loadGen
-  await cancelActiveRender()
-  const pdfjs = await loadPdfJs()
-  const loadingTask = pdfjs.getDocument({ data: bytes.slice() })
-  try {
-    const pdf = await loadingTask.promise
-    if (gen !== loadGen) {
-      await loadingTask.destroy()
-      if (open) {
-        return open.pdf
+  const promise: Promise<PDFDocumentProxy> = (async (): Promise<PDFDocumentProxy> => {
+    await cancelActiveRender()
+    const pdfjs = await loadPdfJs()
+    const loadingTask = pdfjs.getDocument({ data: bytes.slice() })
+    try {
+      const pdf = await loadingTask.promise
+      if (gen !== loadGen) {
+        await loadingTask.destroy().catch(() => undefined)
+        if (open && open.bytes === bytes) {
+          return open.pdf
+        }
+        throw new Error('Đã hủy tải PDF.')
       }
-      throw new Error('Đã hủy tải PDF.')
+      open = { bytes, pdf, loadingTask }
+      if (cached && cached.bytes !== bytes) {
+        await cached.loadingTask.destroy().catch(() => undefined)
+      }
+      return pdf
+    } catch (error) {
+      if (gen === loadGen) {
+        await loadingTask.destroy().catch(() => undefined)
+      }
+      throw error
     }
-    open = { bytes, pdf, loadingTask }
-    if (cached && cached.bytes !== bytes) {
-      await cached.loadingTask.destroy().catch(() => undefined)
+  })()
+  opening = { bytes, promise }
+  try {
+    return await promise
+  } finally {
+    if (opening?.promise === promise) {
+      opening = null
     }
-    return pdf
-  } catch (error) {
-    if (gen === loadGen) {
-      await loadingTask.destroy().catch(() => undefined)
-    }
-    throw error
   }
 }
 

@@ -7,6 +7,7 @@ import {
   toDocx,
   toEpub,
   toHtml,
+  toMarkdown,
   toTxt,
   type ExportFormat,
 } from '../lib/convert.ts'
@@ -21,6 +22,7 @@ import { useDocument } from '../use-document.ts'
 const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'txt', label: 'TXT', hint: 'Văn bản thuần' },
   { id: 'html', label: 'HTML', hint: 'Trang web' },
+  { id: 'md', label: 'Markdown', hint: 'Tệp .md, một mục mỗi trang' },
   { id: 'docx', label: 'DOCX', hint: 'Microsoft Word' },
   { id: 'doc', label: 'DOC', hint: 'Word (cùng nội dung DOCX)' },
   { id: 'epub', label: 'EPUB', hint: 'Sách điện tử, có mục lục' },
@@ -111,6 +113,11 @@ export function Convert() {
           new Blob([toHtml(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
+      } else if (format === 'md') {
+        downloadBlob(
+          new Blob([toMarkdown(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
       } else if (format === 'docx' || format === 'doc') {
         const blob = await toDocx(title, pages)
         downloadBlob(blob, swapExtension(doc.name, extensionFor(format)))
@@ -154,8 +161,8 @@ export function Convert() {
       <header className="page-head">
         <h1>Chuyển đổi định dạng</h1>
         <p>
-          Trích chữ từ PDF rồi xuất TXT, HTML, DOCX/DOC, EPUB hoặc MOBI. Có thể xuất đúng các trang
-          đang chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau.
+          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, DOCX/DOC, EPUB hoặc MOBI. Có thể xuất đúng
+          các trang đang chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau.
         </p>
       </header>
 

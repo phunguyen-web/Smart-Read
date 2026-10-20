@@ -23,6 +23,36 @@ export function movingIndexesForDrag(selected: readonly number[], from: number):
   return [from]
 }
 
+export function oddPageIndexes(count: number): number[] {
+  if (count < 1) {
+    return []
+  }
+  return Array.from({ length: count }, (_, index) => index).filter((index) => index % 2 === 0)
+}
+
+export function evenPageIndexes(count: number): number[] {
+  if (count < 2) {
+    return []
+  }
+  return Array.from({ length: count }, (_, index) => index).filter((index) => index % 2 === 1)
+}
+
+/** Drop target to send a selection to the start or end, or null if it is already there. */
+export function blockEdgeDropTo(
+  moving: readonly number[],
+  edge: 'start' | 'end',
+  count: number,
+): number | null {
+  if (moving.length === 0 || count < 2) {
+    return null
+  }
+  const sorted = [...moving].sort((a, b) => a - b)
+  if (edge === 'start') {
+    return sorted[0] === 0 ? null : 0
+  }
+  return sorted[sorted.length - 1] === count - 1 ? null : count - 1
+}
+
 /** Drop target for nudging a selection one slot, or null if it cannot move. */
 export function blockNudgeDropTo(
   moving: readonly number[],

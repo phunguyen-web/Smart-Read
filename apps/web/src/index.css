@@ -341,9 +341,20 @@ button:disabled {
   font-size: 14px;
 }
 
-.merge-where legend {
+.merge-where legend,
+.number-stamp legend {
   font-weight: 600;
   margin-bottom: 4px;
+}
+
+.number-stamp {
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
 }
 
 .preset-row {

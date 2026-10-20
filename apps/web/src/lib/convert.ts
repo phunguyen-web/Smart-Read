@@ -1,6 +1,6 @@
 import JSZip from 'jszip'
 
-export type ExportFormat = 'txt' | 'html' | 'docx' | 'doc' | 'epub' | 'mobi'
+export type ExportFormat = 'txt' | 'html' | 'md' | 'docx' | 'doc' | 'epub' | 'mobi'
 
 export type EpubOptions = {
   identifier?: string
@@ -43,6 +43,17 @@ export function toTxt(pages: string[]): string {
 
 function htmlParagraph(text: string): string {
   return `<p>${escapeHtml(text || '(không có chữ)').replaceAll('\n', '<br/>')}</p>`
+}
+
+export function toMarkdown(title: string, pages: string[]): string {
+  const heading = `# ${title.trim() || 'Tài liệu'}`
+  const body = pages
+    .map((text, index) => {
+      const content = text.trim() || '*(không có chữ)*'
+      return `## Trang ${index + 1}\n\n${content}`
+    })
+    .join('\n\n')
+  return `${heading}\n\n${body}\n`
 }
 
 export function toHtml(title: string, pages: string[]): string {
@@ -255,6 +266,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/plain;charset=utf-8'
     case 'html':
       return 'text/html;charset=utf-8'
+    case 'md':
+      return 'text/markdown;charset=utf-8'
     case 'docx':
     case 'doc':
       return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'

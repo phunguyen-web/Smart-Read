@@ -18,14 +18,14 @@ export const PIPELINE_STAGES = [
     subagent: "pdf-editor",
     title: "PDF editor",
     summary:
-      "Implement in-browser PDF page operations: rotate, delete, duplicate, extract, insert blank, reorder, merge, and text overlay.",
+      "Implement in-browser PDF page operations: rotate, reverse, page numbers, delete, duplicate, extract, insert blank, reorder, merge, and text overlay.",
   },
   {
     id: "format-converter",
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, DOCX/DOC, EPUB, and MOBI.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, DOCX/DOC, EPUB, and MOBI.",
   },
   {
     id: "qa-reviewer",
@@ -106,7 +106,7 @@ export const SUPPORTED_FORMATS = [
     id: "pdf",
     label: "PDF",
     role: "edit",
-    notes: "Source format. Page rotate, delete, duplicate, extract, insert blank, reorder, merge, and text overlay.",
+    notes: "Source format. Page rotate 90/180, reverse order, page numbers, delete, duplicate, extract, insert blank, reorder, merge, and text overlay.",
   },
   {
     id: "txt",
@@ -119,6 +119,13 @@ export const SUPPORTED_FORMATS = [
     label: "HTML",
     role: "export",
     notes: "Readable HTML document from extracted text.",
+  },
+  {
+    id: "md",
+    label: "Markdown",
+    role: "export",
+    aliases: ["markdown"],
+    notes: "Markdown document with one heading per page.",
   },
   {
     id: "docx",

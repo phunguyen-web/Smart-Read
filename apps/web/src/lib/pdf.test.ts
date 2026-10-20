@@ -7,6 +7,7 @@ import {
   slicePagesByIndexes,
   toEpub,
   toHtml,
+  toMarkdown,
   toTxt,
 } from './convert.ts'
 import {
@@ -21,11 +22,13 @@ import {
 import { editorExportSelection, formatPageList, restoreEditorView } from './persist.ts'
 import { extractedPdfName } from './limits.ts'
 import {
+  addPageNumbers,
   addTextOverlay,
   deletePages,
   duplicatePages,
   duplicatedIndexes,
   extractPages,
+  formatPageNumber,
   insertBlankPage,
   isIdentityOrder,
   mergeInsertIndex,
@@ -34,14 +37,20 @@ import {
   movePages,
   pageCount,
   reorderPageBlock,
+  reversePages,
+  reversedIndexes,
   rotatePages,
+  rotatePagesBy,
 } from './pdf.ts'
 import { MAX_EDITOR_HISTORY, popSnapshot, pushSnapshot, snapshotOf } from './history.ts'
 import {
+  blockEdgeDropTo,
   blockNudgeDropTo,
   clampPageRange,
+  evenPageIndexes,
   movingIndexesForDrag,
   nextPageAfterDelete,
+  oddPageIndexes,
   pageRange,
   parsePageRange,
   togglePage,
@@ -63,6 +72,11 @@ describe('pdf edits', () => {
     const doc = await PDFDocument.load(rotated)
     expect(doc.getPage(0).getRotation().angle).toBe(90)
     expect(doc.getPage(1).getRotation().angle).toBe(0)
+    const flipped = await rotatePagesBy(bytes, [1], 180)
+    const flippedDoc = await PDFDocument.load(flipped)
+    expect(flippedDoc.getPage(1).getRotation().angle).toBe(180)
+    const back = await rotatePagesBy(rotated, [0], -90)
+    expect((await PDFDocument.load(back)).getPage(0).getRotation().angle).toBe(0)
   })
 
   it('deletes a page and refuses to delete the last page', async () => {
@@ -125,6 +139,26 @@ describe('pdf edits', () => {
     await expect(duplicatePages(bytes, [])).rejects.toThrow(/nhân bản/)
   })
 
+  it('reverses page order and stamps page numbers', async () => {
+    const bytes = await samplePdf(['A', 'B', 'C'])
+    expect(reversedIndexes(3, [0, 2])).toEqual([0, 2])
+    expect(reversedIndexes(3, [0])).toEqual([2])
+    const reversed = await reversePages(bytes)
+    expect(await pageCount(reversed)).toBe(3)
+    const identity = await reversePages(await samplePdf(['Only']))
+    expect(await pageCount(identity)).toBe(1)
+    expect(formatPageNumber(0, 4, 'n')).toBe('1')
+    expect(formatPageNumber(1, 4, 'n-of-total')).toBe('2 / 4')
+    expect(formatPageNumber(2, 4, 'trang-n')).toBe('Trang 3')
+    const numbered = await addPageNumbers(bytes, {
+      indexes: [0, 2],
+      position: 'bottom-center',
+      style: 'n-of-total',
+    })
+    expect(await pageCount(numbered)).toBe(3)
+    await expect(addPageNumbers(bytes, { indexes: [] })).resolves.toBeTruthy()
+  })
+
   it('extracts selected pages into a new PDF and inserts a blank page', async () => {
     const bytes = await samplePdf(['A', 'B', 'C'])
     const extracted = await extractPages(bytes, [0, 2])
@@ -143,6 +177,8 @@ describe('conversion helpers', () => {
   it('builds text and html from page strings', () => {
     const pages = ['Xin chào', 'Trang hai']
     expect(toTxt(pages)).toContain('Trang 2')
+    expect(toMarkdown('Demo', pages)).toContain('# Demo')
+    expect(toMarkdown('Demo', pages)).toContain('## Trang 2')
     expect(toHtml('Demo', pages)).toContain('<h2>Trang 1</h2>')
     expect(toHtml('Demo', pages)).toContain('<article>')
     expect(escapeHtml('<b>x</b>')).toBe('&lt;b&gt;x&lt;/b&gt;')
@@ -187,6 +223,13 @@ describe('page selection', () => {
     expect(blockNudgeDropTo([1, 2], -1, 4)).toBe(0)
     expect(blockNudgeDropTo([1, 2], 1, 4)).toBe(3)
     expect(blockNudgeDropTo([0, 1], -1, 4)).toBeNull()
+    expect(oddPageIndexes(4)).toEqual([0, 2])
+    expect(evenPageIndexes(4)).toEqual([1, 3])
+    expect(evenPageIndexes(1)).toEqual([])
+    expect(blockEdgeDropTo([2, 3], 'start', 4)).toBe(0)
+    expect(blockEdgeDropTo([0, 1], 'start', 4)).toBeNull()
+    expect(blockEdgeDropTo([0, 1], 'end', 4)).toBe(3)
+    expect(blockEdgeDropTo([2, 3], 'end', 4)).toBeNull()
   })
 
   it('rejects empty, inverted, and out-of-range convert bounds', () => {
