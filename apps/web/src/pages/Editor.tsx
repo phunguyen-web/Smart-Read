@@ -18,6 +18,12 @@ import {
   addCoverPage,
   addHeaderFooter,
   addOutlineBookmarks,
+  extractEmbeddedImages,
+  frontMatterPageCount,
+  PAGE_LABEL_LABELS,
+  PAGE_LABEL_STYLES,
+  setFrontMatterPageLabels,
+  setPageLabels,
   addPageBorder,
   addPageNumbers,
   addTextOverlay,
@@ -73,6 +79,7 @@ import {
   type OverlayPosition,
   type OverlayPresetId,
   type PageBgId,
+  type PageLabelStyle,
   type PageNumberPosition,
   type PageNumberStyle,
   type TintId,
@@ -82,6 +89,8 @@ import { zipPdfParts } from '../lib/convert.ts'
 import { decryptPdfForEdit, isPdfPasswordError } from '../lib/encrypt.ts'
 import {
   ACCEPT_SOURCES,
+  embeddedImageName,
+  embeddedImageZipName,
   encryptedPdfName,
   extractedPdfName,
   readImageFiles,
@@ -166,6 +175,11 @@ const PAGE_BG_PRESETS: { id: PageBgId; label: string }[] = PAGE_BG_IDS.map((id) 
   label: PAGE_BG_LABELS[id],
 }))
 
+const PAGE_LABEL_PRESETS: { id: PageLabelStyle; label: string }[] = PAGE_LABEL_STYLES.map((id) => ({
+  id,
+  label: PAGE_LABEL_LABELS[id],
+}))
+
 function initialEditorView() {
   const current = getDocument()
   return current ? restoreEditorView(current.pageCount) : { page: 0, selected: [0], anchor: 0 }
@@ -197,6 +211,7 @@ export function Editor() {
   const [downloadConfirm, setDownloadConfirm] = useState('')
   const [openPassword, setOpenPassword] = useState('')
   const [bookmarkTitle, setBookmarkTitle] = useState('')
+  const [pageLabelStyle, setPageLabelStyle] = useState<PageLabelStyle>('decimal')
   const [lockedPdf, setLockedPdf] = useState<{
     name: string
     bytes: Uint8Array
@@ -240,6 +255,7 @@ export function Editor() {
     () => (selected.length > 0 ? selected : [page]),
     [selected, page],
   )
+  const frontCount = doc ? frontMatterPageCount(targets, doc.pageCount) : null
 
   const restore = useCallback((snapshot: EditorSnapshot): void => {
     setPage(snapshot.page)
@@ -890,9 +906,9 @@ export function Editor() {
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục,
-          mở PDF khóa bằng mật khẩu, rồi tải PDF
+          nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
           mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, DOCX, ODT, ODS, XLSX,
-          PPTX, ODP, FB2, EPUB hoặc PNG/JPEG/WEBP để tạo PDF.
+          PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
 
@@ -901,7 +917,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -1248,6 +1264,58 @@ export function Editor() {
                 }}
               >
                 Tách {targets.length > 1 ? `${targets.length} trang` : 'trang'} thành PDF
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={
+                  targets.length > 1
+                    ? `Tải ảnh nhúng từ ${targets.length} trang đã chọn`
+                    : 'Tải ảnh nhúng từ trang hiện tại'
+                }
+                onClick={() => {
+                  void (async () => {
+                    if (!doc) {
+                      return
+                    }
+                    setBusy(true)
+                    setError(null)
+                    try {
+                      const images = await extractEmbeddedImages(doc.bytes, targets)
+                      if (images.length === 1) {
+                        const image = images[0]!
+                        downloadBlob(
+                          bytesToBlob(
+                            image.bytes,
+                            image.kind === 'png' ? 'image/png' : 'image/jpeg',
+                          ),
+                          embeddedImageName(doc.name, image.pageIndex, image.imageIndex, image.kind),
+                        )
+                        return
+                      }
+                      downloadBlob(
+                        await zipPdfParts(
+                          images.map((image) => ({
+                            name: embeddedImageName(
+                              doc.name,
+                              image.pageIndex,
+                              image.imageIndex,
+                              image.kind,
+                            ),
+                            bytes: image.bytes,
+                          })),
+                        ),
+                        embeddedImageZipName(doc.name),
+                      )
+                    } catch (cause) {
+                      setError(cause instanceof Error ? cause.message : 'Không tải được ảnh nhúng.')
+                    } finally {
+                      setBusy(false)
+                    }
+                  })()
+                }}
+              >
+                Tải ảnh nhúng {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
               </button>
               <button
                 type="button"
@@ -1772,6 +1840,48 @@ export function Editor() {
               >
                 Đánh dấu {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
               </button>
+            </fieldset>
+            <fieldset className="crop-pack">
+              <legend>Nhãn trang</legend>
+              <div className="preset-row" role="group" aria-label="Kiểu nhãn trang">
+                {PAGE_LABEL_PRESETS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={pageLabelStyle === item.id ? 'picked' : undefined}
+                    onClick={() => setPageLabelStyle(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <div className="preset-row" role="group" aria-label="Ghi nhãn trang">
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label={`Ghi nhãn trang ${PAGE_LABEL_LABELS[pageLabelStyle]} cho cả tài liệu`}
+                  onClick={() => void run((bytes) => setPageLabels(bytes, pageLabelStyle))}
+                >
+                  Nhãn {PAGE_LABEL_LABELS[pageLabelStyle]}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || frontCount == null}
+                  aria-label={
+                    frontCount
+                      ? `Đặt ${frontCount} trang đầu là i, ii rồi 1, 2`
+                      : 'Chọn các trang đầu liên tiếp để đặt nhãn i, ii rồi 1'
+                  }
+                  onClick={() => {
+                    if (frontCount == null) {
+                      return
+                    }
+                    void run((bytes) => setFrontMatterPageLabels(bytes, frontCount))
+                  }}
+                >
+                  Mở đầu i, ii
+                </button>
+              </div>
             </fieldset>
             <fieldset className="crop-pack">
               <legend>Cắt hoặc thêm lề</legend>

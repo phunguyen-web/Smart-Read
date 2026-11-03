@@ -24,7 +24,63 @@ export type ImportedTextKind =
   | 'wiki'
   | 'rtf'
   | 'fb2'
-export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp'
+export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
+
+export type ComicImageKind = 'png' | 'jpg' | 'webp'
+export type ComicImage = {
+  bytes: Uint8Array
+  kind: ComicImageKind
+  name: string
+}
+
+const COMIC_IMAGE_NAME = /\.(png|jpe?g|webp)$/i
+
+export async function imagesFromCbz(bytes: Uint8Array): Promise<ComicImage[]> {
+  let zip: JSZip
+  try {
+    zip = await JSZip.loadAsync(bytes)
+  } catch {
+    throw new Error('Tệp CBZ không đọc được.')
+  }
+  const names = Object.keys(zip.files)
+    .filter((name) => {
+      const file = zip.files[name]
+      if (!file || file.dir) {
+        return false
+      }
+      const base = name.split('/').pop() ?? name
+      if (!base || base.startsWith('.') || name.includes('__MACOSX')) {
+        return false
+      }
+      return COMIC_IMAGE_NAME.test(base)
+    })
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' }))
+  if (names.length === 0) {
+    throw new Error('CBZ không có ảnh PNG, JPEG hoặc WEBP.')
+  }
+  if (names.length > MAX_IMPORT_PAGES) {
+    throw new Error(`CBZ tạo quá ${MAX_IMPORT_PAGES} trang. Hãy cắt nhỏ rồi tải lại.`)
+  }
+  const images: ComicImage[] = []
+  for (const name of names) {
+    const data = await zip.files[name]!.async('uint8array')
+    if (data.byteLength === 0) {
+      continue
+    }
+    const base = name.split('/').pop() ?? name
+    const lower = base.toLowerCase()
+    const kind: ComicImageKind = lower.endsWith('.png')
+      ? 'png'
+      : lower.endsWith('.webp')
+        ? 'webp'
+        : 'jpg'
+    images.push({ bytes: data, kind, name: base })
+  }
+  if (images.length === 0) {
+    throw new Error('CBZ không có ảnh PNG, JPEG hoặc WEBP.')
+  }
+  return images
+}
 
 function capPages(pages: string[]): string[] {
   const cleaned = pages.map((page) => page.replaceAll('\u0000', '').trimEnd())

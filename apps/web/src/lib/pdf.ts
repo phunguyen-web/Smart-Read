@@ -4,9 +4,12 @@ import {
   PDFDocument,
   PDFHexString,
   PDFName,
+  PDFNumber,
+  PDFRawStream,
   PDFRef,
   PDFString,
   StandardFonts,
+  decodePDFRawStream,
   degrees,
   rgb,
 } from 'pdf-lib'
@@ -2047,6 +2050,438 @@ export async function addOutlineBookmarks(
     pageIndex,
   }))
   return writeOutlineBookmarks(bytes, [...existing, ...added])
+}
+
+export const PAGE_LABEL_STYLES = ['decimal', 'roman', 'Roman', 'trang'] as const
+export type PageLabelStyle = (typeof PAGE_LABEL_STYLES)[number]
+export const PAGE_LABEL_LABELS: Record<PageLabelStyle, string> = {
+  decimal: '1, 2, 3',
+  roman: 'i, ii, iii',
+  Roman: 'I, II, III',
+  trang: 'Trang 1',
+}
+
+export type PageLabelRange = {
+  startIndex: number
+  style: PageLabelStyle
+  prefix: string
+  start: number
+}
+
+export type EmbeddedImage = {
+  pageIndex: number
+  imageIndex: number
+  kind: 'jpg' | 'png'
+  bytes: Uint8Array
+}
+
+const ROMAN_TABLE: readonly [number, string][] = [
+  [1000, 'm'],
+  [900, 'cm'],
+  [500, 'd'],
+  [400, 'cd'],
+  [100, 'c'],
+  [90, 'xc'],
+  [50, 'l'],
+  [40, 'xl'],
+  [10, 'x'],
+  [9, 'ix'],
+  [5, 'v'],
+  [4, 'iv'],
+  [1, 'i'],
+]
+
+export function isPageLabelStyle(value: string): value is PageLabelStyle {
+  return (PAGE_LABEL_STYLES as readonly string[]).includes(value)
+}
+
+export function toRomanNumeral(value: number, uppercase = false): string {
+  const n = Math.trunc(value)
+  if (!Number.isInteger(n) || n < 1 || n > 3999) {
+    throw new Error('Số La Mã phải từ 1 đến 3999.')
+  }
+  let remaining = n
+  let out = ''
+  for (const [amount, glyph] of ROMAN_TABLE) {
+    while (remaining >= amount) {
+      out += glyph
+      remaining -= amount
+    }
+  }
+  return uppercase ? out.toUpperCase() : out
+}
+
+export function formatPageLabel(style: PageLabelStyle, n: number): string {
+  const start = Math.trunc(n)
+  if (style === 'trang') {
+    return `Trang ${start}`
+  }
+  if (style === 'roman') {
+    return toRomanNumeral(start, false)
+  }
+  if (style === 'Roman') {
+    return toRomanNumeral(start, true)
+  }
+  return String(start)
+}
+
+export function assertPageLabelStart(style: PageLabelStyle, start: number): number {
+  const n = Math.trunc(start)
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error('Số bắt đầu nhãn trang phải từ 1.')
+  }
+  if ((style === 'roman' || style === 'Roman') && n > 3999) {
+    throw new Error('Số La Mã phải từ 1 đến 3999.')
+  }
+  return n
+}
+
+/** Contiguous prefix 0..k-1, not the whole document. Used for i, ii then 1, 2 labels. */
+export function frontMatterPageCount(
+  indexes: readonly number[],
+  count: number,
+): number | null {
+  if (count < 2) {
+    return null
+  }
+  const unique = [
+    ...new Set(
+      indexes.filter((index) => Number.isInteger(index) && index >= 0 && index < count),
+    ),
+  ].sort((a, b) => a - b)
+  if (unique.length === 0 || unique.length >= count || unique[0] !== 0) {
+    return null
+  }
+  if (!unique.every((value, index) => value === index)) {
+    return null
+  }
+  return unique.length
+}
+
+function pageLabelStyleName(style: PageLabelStyle): PDFName {
+  if (style === 'roman') {
+    return PDFName.of('r')
+  }
+  if (style === 'Roman') {
+    return PDFName.of('R')
+  }
+  return PDFName.of('D')
+}
+
+function pageLabelPrefix(style: PageLabelStyle, prefix: string): string {
+  if (style === 'trang') {
+    return prefix || 'Trang '
+  }
+  return prefix
+}
+
+function pageLabelDictFromStyle(
+  doc: PDFDocument,
+  range: PageLabelRange,
+): PDFDict {
+  const dict = doc.context.obj({})
+  dict.set(PDFName.of('S'), pageLabelStyleName(range.style))
+  const prefix = pageLabelPrefix(range.style, range.prefix)
+  if (prefix) {
+    dict.set(PDFName.of('P'), PDFString.of(prefix))
+  }
+  if (range.start !== 1) {
+    dict.set(PDFName.of('St'), PDFNumber.of(range.start))
+  }
+  return dict
+}
+
+function styleFromPageLabelDict(dict: PDFDict): { style: PageLabelStyle; prefix: string; start: number } {
+  const s = dict.lookupMaybe(PDFName.of('S'), PDFName)
+  const prefix = decodePdfString(dict.get(PDFName.of('P')))
+  const start = dict.lookupMaybe(PDFName.of('St'), PDFNumber)?.asNumber() ?? 1
+  const name = s ? s.asString().replace(/^\//, '') : 'D'
+  if (name === 'r') {
+    return { style: 'roman', prefix, start }
+  }
+  if (name === 'R') {
+    return { style: 'Roman', prefix, start }
+  }
+  if (prefix === 'Trang ' || prefix === 'Trang') {
+    return { style: 'trang', prefix: prefix.endsWith(' ') ? prefix : `${prefix} `, start }
+  }
+  return { style: 'decimal', prefix, start }
+}
+
+function decodePdfString(value: unknown): string {
+  if (value instanceof PDFHexString || value instanceof PDFString) {
+    return value.decodeText()
+  }
+  return ''
+}
+
+async function writePageLabelRanges(
+  bytes: Uint8Array,
+  ranges: readonly PageLabelRange[],
+): Promise<Uint8Array> {
+  if (ranges.length === 0) {
+    throw new Error('Chọn kiểu nhãn trang.')
+  }
+  const doc = await PDFDocument.load(bytes)
+  const nums = doc.context.obj([])
+  for (const range of ranges) {
+    nums.push(PDFNumber.of(range.startIndex))
+    nums.push(pageLabelDictFromStyle(doc, range))
+  }
+  doc.catalog.set(PDFName.of('PageLabels'), doc.context.obj({ Nums: nums }))
+  return new Uint8Array(await doc.save())
+}
+
+export async function setPageLabels(
+  bytes: Uint8Array,
+  style: PageLabelStyle,
+  start = 1,
+): Promise<Uint8Array> {
+  if (!isPageLabelStyle(style)) {
+    throw new Error('Chọn kiểu nhãn trang.')
+  }
+  const startNumber = assertPageLabelStart(style, start)
+  return writePageLabelRanges(bytes, [
+    {
+      startIndex: 0,
+      style,
+      prefix: style === 'trang' ? 'Trang ' : '',
+      start: startNumber,
+    },
+  ])
+}
+
+export async function setFrontMatterPageLabels(
+  bytes: Uint8Array,
+  frontCount: number,
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const n = Math.trunc(frontCount)
+  if (!Number.isInteger(n) || n < 1 || n >= count) {
+    throw new Error('Chọn phần mở đầu (ít nhất một trang, không phải cả tài liệu).')
+  }
+  return writePageLabelRanges(bytes, [
+    { startIndex: 0, style: 'roman', prefix: '', start: 1 },
+    { startIndex: n, style: 'decimal', prefix: '', start: 1 },
+  ])
+}
+
+export async function listPageLabels(bytes: Uint8Array): Promise<PageLabelRange[]> {
+  const doc = await PDFDocument.load(bytes)
+  const labels = doc.catalog.lookupMaybe(PDFName.of('PageLabels'), PDFDict)
+  if (!labels) {
+    return []
+  }
+  const nums = labels.lookupMaybe(PDFName.of('Nums'), PDFArray)
+  if (!nums) {
+    return []
+  }
+  const ranges: PageLabelRange[] = []
+  for (let index = 0; index + 1 < nums.size(); index += 2) {
+    const start = nums.lookupMaybe(index, PDFNumber)
+    const dict = nums.lookupMaybe(index + 1, PDFDict)
+    if (!start || !dict) {
+      continue
+    }
+    const startIndex = Math.trunc(start.asNumber())
+    if (!Number.isInteger(startIndex) || startIndex < 0) {
+      continue
+    }
+    const parsed = styleFromPageLabelDict(dict)
+    ranges.push({ startIndex, ...parsed })
+  }
+  return ranges
+}
+
+function pdfFilterName(value: unknown): string {
+  if (value instanceof PDFName) {
+    return value.asString().replace(/^\//, '')
+  }
+  if (value instanceof PDFArray && value.size() > 0) {
+    const first = value.get(0)
+    if (first instanceof PDFName) {
+      return first.asString().replace(/^\//, '')
+    }
+  }
+  return ''
+}
+
+function pdfInt(dict: PDFDict, key: string): number | null {
+  const value = dict.lookupMaybe(PDFName.of(key), PDFNumber)
+  if (!value) {
+    return null
+  }
+  const n = value.asNumber()
+  return Number.isFinite(n) ? n : null
+}
+
+function imageColorChannels(stream: PDFRawStream): 1 | 3 | null {
+  const cs = stream.dict.lookup(PDFName.of('ColorSpace'))
+  if (cs === PDFName.of('DeviceGray') || cs === PDFName.of('DeviceGrey')) {
+    return 1
+  }
+  if (cs === PDFName.of('DeviceRGB')) {
+    return 3
+  }
+  return null
+}
+
+function crc32(data: Uint8Array): number {
+  let crc = ~0
+  for (let i = 0; i < data.length; i += 1) {
+    crc ^= data[i]!
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1))
+    }
+  }
+  return ~crc >>> 0
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+  const out = new Uint8Array(12 + data.length)
+  const view = new DataView(out.buffer)
+  view.setUint32(0, data.length)
+  for (let i = 0; i < 4; i += 1) {
+    out[4 + i] = type.charCodeAt(i)
+  }
+  out.set(data, 8)
+  view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)))
+  return out
+}
+
+async function zlibDeflate(data: Uint8Array): Promise<Uint8Array> {
+  const copy = new ArrayBuffer(data.byteLength)
+  new Uint8Array(copy).set(data)
+  const compressed = new Blob([copy]).stream().pipeThrough(new CompressionStream('deflate'))
+  return new Uint8Array(await new Response(compressed).arrayBuffer())
+}
+
+async function rawPixelsToPng(
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  channels: 1 | 3,
+): Promise<Uint8Array> {
+  const stride = width * channels
+  if (width < 1 || height < 1 || pixels.length < stride * height) {
+    throw new Error('Ảnh nhúng không đọc được.')
+  }
+  const rows = new Uint8Array((stride + 1) * height)
+  for (let y = 0; y < height; y += 1) {
+    const dest = y * (stride + 1)
+    rows[dest] = 0
+    rows.set(pixels.subarray(y * stride, y * stride + stride), dest + 1)
+  }
+  const ihdr = new Uint8Array(13)
+  const view = new DataView(ihdr.buffer)
+  view.setUint32(0, width)
+  view.setUint32(4, height)
+  ihdr[8] = 8
+  ihdr[9] = channels === 3 ? 2 : 0
+  const signature = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10)
+  const chunks = [pngChunk('IHDR', ihdr), pngChunk('IDAT', await zlibDeflate(rows)), pngChunk('IEND', new Uint8Array())]
+  const out = new Uint8Array(signature.length + chunks.reduce((sum, chunk) => sum + chunk.length, 0))
+  out.set(signature, 0)
+  let offset = signature.length
+  for (const chunk of chunks) {
+    out.set(chunk, offset)
+    offset += chunk.length
+  }
+  return out
+}
+
+function decodedImageBytes(stream: PDFRawStream): Uint8Array {
+  try {
+    return decodePDFRawStream(stream).decode()
+  } catch {
+    return stream.getContents()
+  }
+}
+
+async function embeddedImageFromStream(stream: PDFRawStream): Promise<{ kind: 'jpg' | 'png'; bytes: Uint8Array } | null> {
+  const subtype = stream.dict.lookup(PDFName.of('Subtype'))
+  if (subtype !== PDFName.of('Image')) {
+    return null
+  }
+  const filter = pdfFilterName(stream.dict.lookup(PDFName.of('Filter')))
+  if (filter === 'DCTDecode' || filter === 'DCT') {
+    const bytes = stream.getContents()
+    if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+      return { kind: 'jpg', bytes }
+    }
+    const decoded = decodedImageBytes(stream)
+    if (decoded.length >= 2 && decoded[0] === 0xff && decoded[1] === 0xd8) {
+      return { kind: 'jpg', bytes: decoded }
+    }
+    return null
+  }
+  const width = pdfInt(stream.dict, 'Width')
+  const height = pdfInt(stream.dict, 'Height')
+  const bpc = pdfInt(stream.dict, 'BitsPerComponent') ?? 8
+  const channels = imageColorChannels(stream)
+  if (!width || !height || bpc !== 8 || !channels) {
+    return null
+  }
+  const pixels = decodedImageBytes(stream)
+  try {
+    return { kind: 'png', bytes: await rawPixelsToPng(pixels, width, height, channels) }
+  } catch {
+    return null
+  }
+}
+
+function xObjectDictForPage(page: { node: { Resources: () => PDFDict | undefined } }): PDFDict | null {
+  const resources = page.node.Resources()
+  if (!resources) {
+    return null
+  }
+  return resources.lookupMaybe(PDFName.of('XObject'), PDFDict) ?? null
+}
+
+/** Pull DCTDecode JPEG and 8-bit RGB/Gray image XObjects from selected pages. Does not mutate the PDF. */
+export async function extractEmbeddedImages(
+  bytes: Uint8Array,
+  pageIndexes: readonly number[],
+): Promise<EmbeddedImage[]> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted([...pageIndexes], false).filter(
+    (index) => Number.isInteger(index) && index >= 0 && index < count,
+  )
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để tải ảnh nhúng.')
+  }
+  const images: EmbeddedImage[] = []
+  for (const pageIndex of unique) {
+    const xobjects = xObjectDictForPage(doc.getPage(pageIndex))
+    if (!xobjects) {
+      continue
+    }
+    let imageIndex = 0
+    for (const [, value] of xobjects.entries()) {
+      const looked =
+        value instanceof PDFRawStream
+          ? value
+          : value instanceof PDFRef
+            ? doc.context.lookup(value)
+            : undefined
+      const stream = looked instanceof PDFRawStream ? looked : null
+      if (!stream) {
+        continue
+      }
+      const extracted = await embeddedImageFromStream(stream)
+      if (!extracted) {
+        continue
+      }
+      images.push({ pageIndex, imageIndex, kind: extracted.kind, bytes: extracted.bytes })
+      imageIndex += 1
+    }
+  }
+  if (images.length === 0) {
+    throw new Error('Không tìm thấy ảnh nhúng.')
+  }
+  return images
 }
 
 function clamp(value: number, min: number, max: number): number {

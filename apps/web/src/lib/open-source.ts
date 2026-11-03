@@ -1,5 +1,6 @@
 import { rasterToPng } from './extract.ts'
 import {
+  imagesFromCbz,
   pagesFromDocx,
   pagesFromEpub,
   pagesFromImportedText,
@@ -10,7 +11,7 @@ import {
   pagesFromXlsx,
 } from './import-text.ts'
 import { isImageSource, isZipImportSource, type LoadedSource } from './limits.ts'
-import { imagesToPdf, textPagesToPdf } from './pdf.ts'
+import { imagesToPdf, textPagesToPdf, type ImagePage } from './pdf.ts'
 
 export async function pdfFromLoadedSource(
   source: LoadedSource,
@@ -29,6 +30,18 @@ export async function pdfFromLoadedSource(
     }
   }
   if (isZipImportSource(source)) {
+    if (source.kind === 'cbz') {
+      const comics = await imagesFromCbz(source.bytes)
+      const pages: ImagePage[] = []
+      for (const image of comics) {
+        pages.push(
+          image.kind === 'webp'
+            ? { bytes: await rasterToPng(image.bytes), kind: 'png' }
+            : { bytes: image.bytes, kind: image.kind },
+        )
+      }
+      return { name: source.pdfName, bytes: await imagesToPdf(pages) }
+    }
     const pages =
       source.kind === 'docx'
         ? await pagesFromDocx(source.bytes)

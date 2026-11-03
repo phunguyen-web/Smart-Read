@@ -1,5 +1,5 @@
 ---
-description: Use when implementing or changing PDF export to TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, MOBI, PNG, JPEG, or WEBP.
+description: Use when implementing or changing PDF export to TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, MOBI, PNG, JPEG, WEBP, or CBZ.
 ---
 
 # Format conversion
@@ -30,6 +30,7 @@ Extract text with `pdfjs-dist` (`getTextContent` per page), then build the targe
 | MediaWiki | `toWiki` — `= title =` plus `== Trang n ==` sections. Uploading `.wiki` / `.mediawiki` uses `pagesFromWiki`. JSON-shaped MediaWiki falls through to `pagesFromJson`. |
 | XLSX | `toXlsx` — Office Open XML workbook with `page,text` columns (`inlineStr`). Uploading XLSX uses `pagesFromXlsx`. Binary `.xls` is rejected. |
 | PNG / JPEG / WEBP | Raster each selected page with `renderPageToBlob`. One page is a single image; several pages are a ZIP (`imagePageName` / `imageZipName`). JPEG paints a white background. Uploading PNG/JPEG builds a PDF via `imagesToPdf`. WEBP import is decoded to PNG with `rasterToPng` first. |
+| CBZ | `toCbz` / `comicPageName` — ZIP of JPEG rasters (`001.jpg`, …). Always a ZIP. Uploading `.cbz` uses `imagesFromCbz` then `imagesToPdf`. WEBP images inside CBZ are decoded to PNG first. |
 | DOCX / DOC | Dynamic `import('docx')` `Document` / `Packer`. Same bytes for `.doc` download name if the user picked DOC. Uploading DOCX uses `pagesFromDocx` (binary `.doc` is rejected). |
 | ODT | `toOdt` — OpenDocument ZIP (`mimetype` STORE, `content.xml`, `styles.xml`, `meta.xml`, manifest). Uploading ODT uses `pagesFromOdt`. |
 | ODS | `toOds` — OpenDocument Spreadsheet ZIP with `page,text` columns. Uploading ODS uses `pagesFromOds`. |
@@ -42,7 +43,7 @@ Extract text with `pdfjs-dist` (`getTextContent` per page), then build the targe
 ## Rules
 
 - Preserve page order. Validate the from–to range with `parsePageRange` (empty, non-integer, inverted, or out of bounds must show an error and block export). Slice extracted pages with `slicePageRange` only after the range is valid. If the editor has a multi-page subset selected, `slicePagesByIndexes` may export those pages instead (including a non-contiguous set).
-- TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, and FB2 uploads become a PDF via `pagesFromImportedText` + `textPagesToPdf` so they can then export to the other formats. DOCX, ODT, ODS, XLSX, PPTX, ODP, and EPUB uploads use `pagesFromDocx` / `pagesFromOdt` / `pagesFromOds` / `pagesFromXlsx` / `pagesFromPptx` / `pagesFromOdp` / `pagesFromEpub`. PNG and JPEG uploads become a PDF via `imagesToPdf`. WEBP uploads use `rasterToPng` then `imagesToPdf`. `pdfFromLoadedSource` is the shared entry. RTF import uses `rtfToPlain` / `pagesFromRtf`. YAML import uses `pagesFromYaml`. XML import uses `pagesFromXml`. TSV import uses `pagesFromTsv`. TOML import uses `pagesFromToml`. Org import uses `pagesFromOrg`. LaTeX import uses `pagesFromLatex`. JSONL import uses `pagesFromJsonl`. INI import uses `pagesFromIni`. AsciiDoc import uses `pagesFromAdoc`. RST import uses `pagesFromRst`. Textile import uses `pagesFromTextile`. MediaWiki import uses `pagesFromWiki`.
+- TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, and FB2 uploads become a PDF via `pagesFromImportedText` + `textPagesToPdf` so they can then export to the other formats. DOCX, ODT, ODS, XLSX, PPTX, ODP, and EPUB uploads use `pagesFromDocx` / `pagesFromOdt` / `pagesFromOds` / `pagesFromXlsx` / `pagesFromPptx` / `pagesFromOdp` / `pagesFromEpub`. CBZ uploads use `imagesFromCbz` then `imagesToPdf`. PNG and JPEG uploads become a PDF via `imagesToPdf`. WEBP uploads use `rasterToPng` then `imagesToPdf`. `pdfFromLoadedSource` is the shared entry. RTF import uses `rtfToPlain` / `pagesFromRtf`. YAML import uses `pagesFromYaml`. XML import uses `pagesFromXml`. TSV import uses `pagesFromTsv`. TOML import uses `pagesFromToml`. Org import uses `pagesFromOrg`. LaTeX import uses `pagesFromLatex`. JSONL import uses `pagesFromJsonl`. INI import uses `pagesFromIni`. AsciiDoc import uses `pagesFromAdoc`. RST import uses `pagesFromRst`. Textile import uses `pagesFromTextile`. MediaWiki import uses `pagesFromWiki`.
 - Strip NULs and cap extracted text so a huge PDF cannot freeze the tab.
 - Name downloads from the source filename plus the new extension.
 - Never upload the file to a third-party conversion API.

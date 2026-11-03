@@ -7,7 +7,10 @@ import {
   escapeTsv,
   escapeHtml,
   escapeRtf,
+  comicPageName,
+  isComicFormat,
   isImageFormat,
+  toCbz,
   slicePageRange,
   slicePagesByIndexes,
   toCsv,
@@ -47,6 +50,7 @@ import {
   pagesFromIni,
   pagesFromAdoc,
   pagesFromRst,
+  imagesFromCbz,
   pagesFromTextile,
   pagesFromWiki,
   pagesFromJsonl,
@@ -97,6 +101,8 @@ import {
   restoreEditorView,
 } from './persist.ts'
 import {
+  embeddedImageName,
+  embeddedImageZipName,
   encryptedPdfName,
   extractedPdfName,
   imageKindFromFile,
@@ -120,6 +126,13 @@ import {
   addCoverPage,
   addHeaderFooter,
   addOutlineBookmarks,
+  extractEmbeddedImages,
+  formatPageLabel,
+  frontMatterPageCount,
+  listPageLabels,
+  setFrontMatterPageLabels,
+  setPageLabels,
+  toRomanNumeral,
   addPageBorder,
   applyContentCrops,
   autoCropPages,
@@ -535,6 +548,31 @@ describe('pdf edits', () => {
     await expect(addOutlineBookmarks(bytes, [], 'X')).rejects.toThrow(/trang/)
     await expect(addOutlineBookmarks(bytes, [0], '  ')).rejects.toThrow(/mục lục/)
 
+    expect(toRomanNumeral(2)).toBe('ii')
+    expect(toRomanNumeral(4, true)).toBe('IV')
+    expect(formatPageLabel('trang', 3)).toBe('Trang 3')
+    expect(formatPageLabel('roman', 2)).toBe('ii')
+    expect(frontMatterPageCount([0, 1], 4)).toBe(2)
+    expect(frontMatterPageCount([0, 1, 2, 3], 4)).toBeNull()
+    expect(frontMatterPageCount([1, 2], 4)).toBeNull()
+    const labeled = await setPageLabels(bytes, 'trang')
+    expect(await listPageLabels(labeled)).toEqual([
+      { startIndex: 0, style: 'trang', prefix: 'Trang ', start: 1 },
+    ])
+    const roman = await setPageLabels(bytes, 'roman', 1)
+    expect(await listPageLabels(roman)).toEqual([
+      { startIndex: 0, style: 'roman', prefix: '', start: 1 },
+    ])
+    const split = await setFrontMatterPageLabels(await samplePdf(['A', 'B', 'C']), 1)
+    expect(await listPageLabels(split)).toEqual([
+      { startIndex: 0, style: 'roman', prefix: '', start: 1 },
+      { startIndex: 1, style: 'decimal', prefix: '', start: 1 },
+    ])
+    await expect(setPageLabels(bytes, 'decimal', 0)).rejects.toThrow(/bắt đầu/)
+    await expect(setFrontMatterPageLabels(bytes, 2)).rejects.toThrow(/mở đầu/)
+    await expect(extractEmbeddedImages(bytes, [0])).rejects.toThrow(/ảnh nhúng/)
+    await expect(extractEmbeddedImages(bytes, [])).rejects.toThrow(/ảnh nhúng/)
+
     const pixels = new Uint8ClampedArray(4 * 4 * 4)
     pixels.fill(255)
     pixels[4 * (1 * 4 + 1)] = 10
@@ -614,6 +652,11 @@ describe('pdf edits', () => {
     const png = tinyPng()
     const fromImage = await imagesToPdf([{ bytes: png, kind: 'png' }])
     expect(await pageCount(fromImage)).toBe(1)
+    const pulled = await extractEmbeddedImages(fromImage, [0])
+    expect(pulled).toHaveLength(1)
+    expect(pulled[0]?.kind).toBe('png')
+    expect(pulled[0]?.bytes.byteLength).toBeGreaterThan(8)
+    expect(pulled[0]?.bytes[0]).toBe(0x89)
     await expect(imagesToPdf([])).rejects.toThrow(/ảnh PNG/)
     const inserted = await insertImages(bytes, [{ bytes: png, kind: 'png' }], 1)
     expect(await pageCount(inserted)).toBe(3)
@@ -823,6 +866,12 @@ describe('conversion helpers', () => {
     expect(isImageFormat('jpg')).toBe(true)
     expect(isImageFormat('webp')).toBe(true)
     expect(isImageFormat('docx')).toBe(false)
+    expect(isComicFormat('cbz')).toBe(true)
+    expect(isComicFormat('png')).toBe(false)
+    expect(comicPageName(0)).toBe('001.jpg')
+    expect(comicPageName(9, 'png')).toBe('010.png')
+    expect(embeddedImageName('demo.pdf', 0, 1, 'jpg')).toBe('demo-trang-1-anh-2.jpg')
+    expect(embeddedImageZipName('demo.pdf')).toBe('demo-anh-nhung.zip')
     expect(imagePageName('demo.pdf', 0, 'webp')).toBe('demo-trang-1.webp')
     expect(imageZipName('demo.pdf', 'webp')).toBe('demo-anh-webp.zip')
     expect(toJson('Demo', ['Một', 'Hai'])).toContain('"page": 2')
@@ -949,6 +998,11 @@ describe('conversion helpers', () => {
     )
     expect(swapExtension('notes.wiki', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.mediawiki', 'pdf')).toBe('notes.pdf')
+    expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: '' }))).toBe('cbz')
+    expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: 'application/vnd.comicbook+zip' }))).toBe(
+      'cbz',
+    )
+    expect(swapExtension('comic.cbz', 'pdf')).toBe('comic.pdf')
     expect(sourceKindFromFile(new File(['x'], 'notes.yaml', { type: '' }))).toBe('yaml')
     expect(sourceKindFromFile(new File(['x'], 'notes.yml', { type: 'application/yaml' }))).toBe(
       'yaml',
@@ -1011,6 +1065,20 @@ describe('conversion helpers', () => {
     const zip = await JSZip.loadAsync(await xlsx.arrayBuffer())
     expect(zip.file('xl/worksheets/sheet1.xml')).toBeTruthy()
     expect(await pagesFromXlsx(new Uint8Array(await xlsx.arrayBuffer()))).toEqual(['Một', 'Hai,ba'])
+  })
+
+  it('packs and unpacks CBZ comic archives', async () => {
+    const png = tinyPng()
+    const blob = await toCbz([
+      { bytes: png },
+      { name: 'cover.png', bytes: png },
+    ])
+    expect(blob.type).toContain('comicbook')
+    const images = await imagesFromCbz(new Uint8Array(await blob.arrayBuffer()))
+    expect(images.map((image) => image.name)).toEqual(['001.jpg', 'cover.png'])
+    expect(images[1]?.kind).toBe('png')
+    await expect(toCbz([])).rejects.toThrow(/CBZ/)
+    await expect(imagesFromCbz(new Uint8Array([1, 2, 3]))).rejects.toThrow(/CBZ/)
   })
 
   it('round-trips PPTX decks', async () => {

@@ -32,11 +32,43 @@ export type ExportFormat =
   | 'png'
   | 'jpg'
   | 'webp'
+  | 'cbz'
 
 export type ImageExportFormat = 'png' | 'jpg' | 'webp'
 
 export function isImageFormat(format: ExportFormat): format is ImageExportFormat {
   return format === 'png' || format === 'jpg' || format === 'webp'
+}
+
+export function isComicFormat(format: ExportFormat): format is 'cbz' {
+  return format === 'cbz'
+}
+
+export function comicPageName(index: number, ext: 'jpg' | 'png' = 'jpg'): string {
+  const page = Number.isInteger(index) && index >= 0 ? index + 1 : 1
+  const width = Math.max(3, String(page).length)
+  return `${String(page).padStart(width, '0')}.${ext}`
+}
+
+export async function toCbz(
+  images: readonly { name?: string; bytes: Uint8Array }[],
+): Promise<Blob> {
+  if (images.length === 0) {
+    throw new Error('Không có ảnh để tạo CBZ.')
+  }
+  const parts = images.map((image, index) => ({
+    name:
+      image.name && /\.(png|jpe?g)$/i.test(image.name) ? image.name.replace(/^.*[/\\]/, '') : comicPageName(index),
+    bytes: image.bytes,
+  }))
+  const zip = new JSZip()
+  for (const part of parts) {
+    zip.file(part.name, part.bytes)
+  }
+  return zip.generateAsync({
+    type: 'blob',
+    mimeType: 'application/vnd.comicbook+zip',
+  })
 }
 
 export type EpubOptions = {
@@ -1184,6 +1216,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'image/jpeg'
     case 'webp':
       return 'image/webp'
+    case 'cbz':
+      return 'application/vnd.comicbook+zip'
     case 'docx':
     case 'doc':
       return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'

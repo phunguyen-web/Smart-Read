@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   extensionFor,
+  comicPageName,
+  isComicFormat,
   isImageFormat,
   mimeFor,
+  toCbz,
   slicePageRange,
   slicePagesByIndexes,
   toCsv,
@@ -83,6 +86,7 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'png', label: 'PNG', hint: 'Ảnh từng trang (ZIP nếu nhiều)' },
   { id: 'jpg', label: 'JPEG', hint: 'Ảnh từng trang, nền trắng' },
   { id: 'webp', label: 'WEBP', hint: 'Ảnh từng trang, nhẹ hơn PNG' },
+  { id: 'cbz', label: 'CBZ', hint: 'Truyện tranh ZIP, mỗi trang một JPEG' },
 ]
 
 export function Convert() {
@@ -201,7 +205,19 @@ export function Convert() {
         setError('Khoảng trang không có nội dung để xuất.')
         return
       }
-      if (isImageFormat(format)) {
+      if (isImageFormat(format) || isComicFormat(format)) {
+        if (isComicFormat(format)) {
+          const parts = []
+          for (const [offset, index] of indexes.entries()) {
+            const blob = await renderPageToBlob(doc.bytes, index + 1, 'image/jpeg')
+            parts.push({
+              name: comicPageName(offset),
+              bytes: new Uint8Array(await blob.arrayBuffer()),
+            })
+          }
+          downloadBlob(await toCbz(parts), swapExtension(doc.name, 'cbz'))
+          return
+        }
         const mime = mimeFor(format) as 'image/png' | 'image/jpeg' | 'image/webp'
         if (indexes.length === 1) {
           const blob = await renderPageToBlob(doc.bytes, indexes[0]! + 1, mime)
@@ -379,9 +395,9 @@ export function Convert() {
         <h1>Chuyển đổi định dạng</h1>
         <p>
           Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, XLSX, DOCX/DOC,
-          ODT, ODS, PPTX, ODP, FB2, EPUB hoặc MOBI; hoặc raster từng trang thành PNG/JPEG/WEBP. Có
+          ODT, ODS, PPTX, ODP, FB2, EPUB hoặc MOBI; hoặc raster từng trang thành PNG/JPEG/WEBP/CBZ. Có
           thể mở TXT/Markdown/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2,
-          EPUB hoặc PNG/JPEG/WEBP để tạo PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang
+          EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang
           chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau. PDF khóa cần mật khẩu; bản làm việc được giải khóa.
         </p>
       </header>
@@ -391,7 +407,7 @@ export function Convert() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chuyển đổi"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chuyển đổi"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -402,7 +418,7 @@ export function Convert() {
         </p>
       ) : (
         <p className="empty">
-          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chọn khoảng trang và định dạng xuất.
+          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chọn khoảng trang và định dạng xuất.
         </p>
       )}
       {error ? (
