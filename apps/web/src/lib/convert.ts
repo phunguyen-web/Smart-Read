@@ -6,6 +6,8 @@ export type ExportFormat =
   | 'md'
   | 'rtf'
   | 'json'
+  | 'yaml'
+  | 'xml'
   | 'csv'
   | 'xlsx'
   | 'docx'
@@ -134,6 +136,40 @@ export function toJson(title: string, pages: string[]): string {
     pages: pages.map((text, index) => ({ page: index + 1, text })),
   }
   return `${JSON.stringify(payload, null, 2)}\n`
+}
+
+export function escapeYaml(value: string): string {
+  return `"${value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('"', '\\"')
+    .replaceAll('\r', '')
+    .replaceAll('\n', '\\n')}"`
+}
+
+export function toYaml(title: string, pages: string[]): string {
+  const lines = [`title: ${escapeYaml(title.trim() || 'Tài liệu')}`, 'pages:']
+  for (let index = 0; index < pages.length; index += 1) {
+    lines.push(`  - page: ${index + 1}`)
+    lines.push(`    text: ${escapeYaml(pages[index] ?? '')}`)
+  }
+  if (pages.length === 0) {
+    lines.push('  - page: 1')
+    lines.push(`    text: ${escapeYaml('')}`)
+  }
+  return `${lines.join('\n')}\n`
+}
+
+export function toXml(title: string, pages: string[]): string {
+  const heading = escapeXml(title.trim() || 'Tài liệu')
+  const body = (pages.length > 0 ? pages : ['']).map(
+    (text, index) => `  <page n="${index + 1}">${escapeXml(text)}</page>`,
+  )
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<document>
+  <title>${heading}</title>
+${body.join('\n')}
+</document>
+`
 }
 
 export function toMarkdown(title: string, pages: string[]): string {
@@ -945,6 +981,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/rtf'
     case 'json':
       return 'application/json;charset=utf-8'
+    case 'yaml':
+      return 'application/yaml;charset=utf-8'
+    case 'xml':
+      return 'application/xml;charset=utf-8'
     case 'csv':
       return 'text/csv;charset=utf-8'
     case 'xlsx':

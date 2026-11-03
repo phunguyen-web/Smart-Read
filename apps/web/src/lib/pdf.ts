@@ -411,6 +411,26 @@ export const A4_WIDTH = 595.28
 export const A4_HEIGHT = 841.89
 export const A4_PORTRAIT = { width: A4_WIDTH, height: A4_HEIGHT } as const
 export const A4_LANDSCAPE = { width: A4_HEIGHT, height: A4_WIDTH } as const
+export const LETTER_WIDTH = 612
+export const LETTER_HEIGHT = 792
+export const LETTER_PORTRAIT = { width: LETTER_WIDTH, height: LETTER_HEIGHT } as const
+export const LETTER_LANDSCAPE = { width: LETTER_HEIGHT, height: LETTER_WIDTH } as const
+export const A5_WIDTH = 419.53
+export const A5_HEIGHT = 595.28
+export const A5_PORTRAIT = { width: A5_WIDTH, height: A5_HEIGHT } as const
+export const A5_LANDSCAPE = { width: A5_HEIGHT, height: A5_WIDTH } as const
+export const PAPER_IDS = ['a4', 'letter', 'a5'] as const
+export type PaperId = (typeof PAPER_IDS)[number]
+export const PAPER_SIZES: Record<PaperId, { portrait: PageSize; landscape: PageSize }> = {
+  a4: { portrait: A4_PORTRAIT, landscape: A4_LANDSCAPE },
+  letter: { portrait: LETTER_PORTRAIT, landscape: LETTER_LANDSCAPE },
+  a5: { portrait: A5_PORTRAIT, landscape: A5_LANDSCAPE },
+}
+export const PAPER_LABELS: Record<PaperId, string> = {
+  a4: 'A4',
+  letter: 'Letter',
+  a5: 'A5',
+}
 const TEXT_MARGIN = 50
 const TEXT_SIZE = 11
 const TEXT_LEADING = 15
@@ -515,38 +535,38 @@ export function fittedPageRect(src: PageSize, dest: PageSize): PageBox {
   }
 }
 
-export function a4SizeForPage(size: PageSize): PageSize {
-  return size.width > size.height ? A4_LANDSCAPE : A4_PORTRAIT
+export function isPaperId(value: string): value is PaperId {
+  return (PAPER_IDS as readonly string[]).includes(value)
 }
 
-/** Draw selected pages onto A4 (portrait or landscape to match each page). */
-export async function fitPagesToA4(
+export function paperSizeForPage(size: PageSize, paper: PaperId): PageSize {
+  const spec = PAPER_SIZES[paper]
+  return size.width > size.height ? spec.landscape : spec.portrait
+}
+
+export function a4SizeForPage(size: PageSize): PageSize {
+  return paperSizeForPage(size, 'a4')
+}
+
+/** Draw selected pages onto a paper size (portrait or landscape to match each page). */
+export async function fitPagesToPaper(
   bytes: Uint8Array,
   pageIndexes: number[],
+  paper: PaperId,
 ): Promise<Uint8Array> {
+  if (!isPaperId(paper)) {
+    throw new Error('Khổ giấy không hỗ trợ.')
+  }
   const src = await PDFDocument.load(bytes)
   const count = src.getPageCount()
   const unique = new Set(
     uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count),
   )
   if (unique.size === 0) {
-    throw new Error('Chọn ít nhất một trang để vừa khổ A4.')
+    throw new Error(`Chọn ít nhất một trang để vừa khổ ${PAPER_LABELS[paper]}.`)
   }
   const dst = await PDFDocument.create()
-  const title = src.getTitle()
-  const author = src.getAuthor()
-  const subject = src.getSubject()
-  if (title) {
-    dst.setTitle(title)
-  }
-  if (author) {
-    dst.setAuthor(author)
-  }
-  if (subject) {
-    dst.setSubject(subject)
-  }
-  dst.setProducer('Smart-Read')
-  dst.setCreator('Smart-Read')
+  copyDocumentInfo(src, dst)
   for (let index = 0; index < count; index += 1) {
     if (!unique.has(index)) {
       const [copied] = await dst.copyPages(src, [index])
@@ -554,7 +574,10 @@ export async function fitPagesToA4(
       continue
     }
     const [embedded] = await dst.embedPages([src.getPage(index)])
-    const destSize = a4SizeForPage({ width: embedded.width, height: embedded.height })
+    const destSize = paperSizeForPage(
+      { width: embedded.width, height: embedded.height },
+      paper,
+    )
     const page = dst.addPage([destSize.width, destSize.height])
     const box = fittedPageRect(
       { width: embedded.width, height: embedded.height },
@@ -568,6 +591,14 @@ export async function fitPagesToA4(
     })
   }
   return new Uint8Array(await dst.save())
+}
+
+/** Draw selected pages onto A4 (portrait or landscape to match each page). */
+export async function fitPagesToA4(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  return fitPagesToPaper(bytes, pageIndexes, 'a4')
 }
 
 export type NUpCount = 2 | 4
@@ -1035,12 +1066,28 @@ export const CROP_MARGINS = {
 export type CropMarginId = keyof typeof CROP_MARGINS
 
 export const MIN_CROP_REMAINING = 36
+export const PAD_MARGINS = CROP_MARGINS
+export type PadMarginId = CropMarginId
+export const MAX_PADDED_SIDE = 1440
 
 export type PageBox = {
   x: number
   y: number
   width: number
   height: number
+}
+
+export function paddedPageSize(size: PageSize, margin: number): PageSize {
+  const inset = Math.max(0, Math.trunc(margin))
+  if (!Number.isInteger(inset) || inset < 1) {
+    throw new Error('Lề thêm phải là số nguyên từ 1.')
+  }
+  const width = size.width + inset * 2
+  const height = size.height + inset * 2
+  if (width > MAX_PADDED_SIDE || height > MAX_PADDED_SIDE) {
+    throw new Error('Trang quá lớn để thêm lề.')
+  }
+  return { width, height }
 }
 
 export function cropBoxAfterMargin(box: PageBox, margin: number): PageBox {
@@ -1141,6 +1188,48 @@ export async function cropPages(
     page.setCropBox(next.x, next.y, next.width, next.height)
   }
   return new Uint8Array(await doc.save())
+}
+
+/** Embed selected pages onto a larger white sheet, adding equal margins. */
+export async function padPages(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  margin: number,
+): Promise<Uint8Array> {
+  const inset = Math.trunc(margin)
+  if (!Number.isInteger(inset) || inset < 1) {
+    throw new Error('Lề thêm phải là số nguyên từ 1.')
+  }
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  const unique = new Set(
+    uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count),
+  )
+  if (unique.size === 0) {
+    throw new Error('Chọn ít nhất một trang để thêm lề.')
+  }
+  for (const index of unique) {
+    paddedPageSize(src.getPage(index).getSize(), inset)
+  }
+  const dst = await PDFDocument.create()
+  copyDocumentInfo(src, dst)
+  for (let index = 0; index < count; index += 1) {
+    if (!unique.has(index)) {
+      const [copied] = await dst.copyPages(src, [index])
+      dst.addPage(copied)
+      continue
+    }
+    const [embedded] = await dst.embedPages([src.getPage(index)])
+    const dest = paddedPageSize({ width: embedded.width, height: embedded.height }, inset)
+    const page = dst.addPage([dest.width, dest.height])
+    page.drawPage(embedded, {
+      x: inset,
+      y: inset,
+      width: embedded.width,
+      height: embedded.height,
+    })
+  }
+  return new Uint8Array(await dst.save())
 }
 
 export const MAX_METADATA_LENGTH = 200

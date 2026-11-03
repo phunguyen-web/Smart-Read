@@ -17,6 +17,9 @@ import {
   toOdp,
   toOds,
   toOdt,
+  toXml,
+  toYaml,
+  escapeYaml,
   toPptx,
   toRtf,
   toTxt,
@@ -39,6 +42,8 @@ import {
   pagesFromPlainText,
   pagesFromRtf,
   pagesFromXlsx,
+  pagesFromXml,
+  pagesFromYaml,
   rtfToPlain,
   parseCsv,
   stripMarkup,
@@ -81,6 +86,10 @@ import {
   A4_LANDSCAPE,
   A4_PORTRAIT,
   A4_WIDTH,
+  A5_HEIGHT,
+  A5_WIDTH,
+  LETTER_HEIGHT,
+  LETTER_WIDTH,
   addPageNumbers,
   addTextOverlay,
   addWatermark,
@@ -95,6 +104,7 @@ import {
   duplicatedIndexes,
   extractPages,
   fitPagesToA4,
+  fitPagesToPaper,
   fittedPageRect,
   flipPages,
   formatPageNumber,
@@ -118,9 +128,14 @@ import {
   nUpPages,
   nUpSheetCount,
   nUpSheetSize,
+  MAX_PADDED_SIDE,
   movePage,
   movePages,
   orientPages,
+  padPages,
+  paddedPageSize,
+  paperSizeForPage,
+  PAPER_LABELS,
   pageCount,
   pageOrientation,
   displayedPageSize,
@@ -332,6 +347,20 @@ describe('pdf edits', () => {
     expect((await PDFDocument.load(cropped)).getPage(0).getCropBox().width).toBe(before.width)
     await expect(cropPages(bytes, [], 12)).rejects.toThrow(/cắt lề/)
     await expect(cropPages(bytes, [0], 90)).rejects.toThrow(/Lề cắt/)
+    expect(paddedPageSize({ width: 200, height: 280 }, 12)).toEqual({
+      width: 224,
+      height: 304,
+    })
+    expect(() => paddedPageSize({ width: 200, height: 280 }, 0)).toThrow(/Lề thêm/)
+    expect(() => paddedPageSize({ width: MAX_PADDED_SIDE, height: 40 }, 12)).toThrow(/quá lớn/)
+    const padded = await padPages(bytes, [0], CROP_MARGINS.medium)
+    const paddedDoc = await PDFDocument.load(padded)
+    expect(paddedDoc.getPage(0).getSize()).toEqual({
+      width: 200 + CROP_MARGINS.medium * 2,
+      height: 280 + CROP_MARGINS.medium * 2,
+    })
+    expect(paddedDoc.getPage(1).getSize()).toEqual({ width: 200, height: 280 })
+    await expect(padPages(bytes, [], 12)).rejects.toThrow(/thêm lề/)
   })
 
   it('writes metadata and builds pages from PNG images', async () => {
@@ -390,6 +419,29 @@ describe('pdf edits', () => {
     expect(second.width).toBe(200)
     expect(second.height).toBe(280)
     await expect(fitPagesToA4(bytes, [])).rejects.toThrow(/A4/)
+  })
+
+  it('fits selected pages onto Letter or A5', async () => {
+    expect(paperSizeForPage({ width: 800, height: 400 }, 'letter')).toEqual({
+      width: LETTER_HEIGHT,
+      height: LETTER_WIDTH,
+    })
+    expect(paperSizeForPage({ width: 400, height: 800 }, 'a5')).toEqual({
+      width: A5_WIDTH,
+      height: A5_HEIGHT,
+    })
+    expect(PAPER_LABELS.letter).toBe('Letter')
+    const bytes = await samplePdf(['A', 'B'])
+    const letter = await fitPagesToPaper(bytes, [0], 'letter')
+    const letterDoc = await PDFDocument.load(letter)
+    expect(letterDoc.getPage(0).getSize().width).toBeCloseTo(LETTER_WIDTH)
+    expect(letterDoc.getPage(0).getSize().height).toBeCloseTo(LETTER_HEIGHT)
+    expect(letterDoc.getPage(1).getSize()).toEqual({ width: 200, height: 280 })
+    const a5 = await fitPagesToPaper(bytes, [1], 'a5')
+    const a5Doc = await PDFDocument.load(a5)
+    expect(a5Doc.getPage(1).getSize().width).toBeCloseTo(A5_WIDTH)
+    expect(a5Doc.getPage(1).getSize().height).toBeCloseTo(A5_HEIGHT)
+    await expect(fitPagesToPaper(bytes, [], 'letter')).rejects.toThrow(/Letter/)
   })
 
   it('interleaves halves and splits odd/even pages', async () => {
@@ -558,6 +610,23 @@ describe('conversion helpers', () => {
     expect(indexesFromPageRange(2, 4)).toEqual([1, 2, 3])
     expect(() => indexesFromPageRange(3, 1)).toThrow(/Khoảng trang/)
     expect(pagesFromJson(toJson('Demo', ['Một', 'Hai']))).toEqual(['Một', 'Hai'])
+    expect(toYaml('Demo', ['Một', 'Hai\ndòng'])).toContain('title: "Demo"')
+    expect(escapeYaml('a"b')).toContain('\\"')
+    expect(pagesFromYaml(toYaml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromYaml('pages:\n  - text: |-\n      Một\n      Hai')).toEqual(['Một\nHai'])
+    expect(() => pagesFromYaml('title: Demo\n')).toThrow(/YAML/)
+    expect(toXml('Demo', ['Một', 'Hai <ba>'])).toContain('<page n="1">Một</page>')
+    expect(pagesFromXml(toXml('Demo', ['Một', 'Hai <ba>']))).toEqual(['Một', 'Hai <ba>'])
+    expect(() => pagesFromXml('<document/>')).toThrow(/XML/)
+    expect(pagesFromImportedText('yaml', toYaml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromImportedText('xml', toXml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.yaml', { type: '' }))).toBe('yaml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.yml', { type: 'application/yaml' }))).toBe(
+      'yaml',
+    )
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: 'application/xml' }))).toBe('xml')
+    expect(swapExtension('notes.yaml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.xml', 'pdf')).toBe('notes.pdf')
     expect(pagesFromJson('["A","B"]')).toEqual(['A', 'B'])
     expect(() => pagesFromJson('{')).toThrow(/JSON không hợp lệ/)
     expect(parseCsv('page,text\n1,"a,b"')).toEqual([
@@ -569,6 +638,7 @@ describe('conversion helpers', () => {
     expect(sourceKindFromFile(new File(['{}'], 'notes.json', { type: 'application/json' }))).toBe(
       'json',
     )
+    expect(pagesFromYaml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
     expect(sourceKindFromFile(new File(['x'], 'book.epub', { type: '' }))).toBe('epub')
     expect(sourceKindFromFile(new File(['x'], 'paper.docx', { type: '' }))).toBe('docx')
     expect(swapExtension('paper.docx', 'pdf')).toBe('paper.pdf')

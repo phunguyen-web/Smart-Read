@@ -11,6 +11,8 @@ import {
 import {
   CROP_MARGINS,
   OVERLAY_PRESETS,
+  PAPER_IDS,
+  PAPER_LABELS,
   addPageNumbers,
   addTextOverlay,
   addWatermark,
@@ -22,6 +24,7 @@ import {
   duplicatedIndexes,
   extractPages,
   fitPagesToA4,
+  fitPagesToPaper,
   flipPages,
   imagesToPdf,
   imposeBooklet,
@@ -35,6 +38,7 @@ import {
   movePages,
   nUpPages,
   orientPages,
+  padPages,
   pageCount,
   readMetadata,
   remapAfterOrder,
@@ -584,6 +588,11 @@ export function Editor() {
       ) {
         return
       }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+        event.preventDefault()
+        setSelected(pageRange(0, doc.pageCount - 1))
+        return
+      }
       if (event.key === 'ArrowLeft') {
         event.preventDefault()
         goToPage(Math.max(0, page - 1), 'replace')
@@ -639,6 +648,7 @@ export function Editor() {
     searchAt,
     jumpSearchHit,
     invertSelection,
+    setSelected,
   ])
 
   async function onUpload(file: File | undefined): Promise<void> {
@@ -754,13 +764,13 @@ export function Editor() {
         <h1>Chỉnh sửa PDF</h1>
         <p>
           Xoay, đảo thứ tự, đan/tách trang lẻ-chẵn, đánh số trang, đóng chữ mờ, cắt lề, chuyển xám,
-          tìm chữ, xóa trang không chữ hoặc trùng chữ, vừa khổ A4, gộp 2/4 trang mỗi tờ, xếp sách
-          gấp, lật ngang/dọc, cắt đôi trên/dưới hoặc trái/phải, xoay khổ đứng/ngang, đổi tỷ lệ trang,
-          đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách thành nhiều PDF, chèn trang
-          trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự, hoàn tác (giữ khi tải lại
-          trang), gộp tệp, sửa thông tin tài liệu và chèn chữ, rồi tải PDF mới. Có thể mở TXT,
-          Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB hoặc
-          PNG/JPEG/WEBP để tạo PDF.
+          tìm chữ, xóa trang không chữ hoặc trùng chữ, vừa khổ A4/Letter/A5, thêm hoặc cắt lề, gộp
+          2/4 trang mỗi tờ, xếp sách gấp, lật ngang/dọc, cắt đôi trên/dưới hoặc trái/phải, xoay khổ
+          đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
+          thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
+          hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu và chèn chữ, rồi tải PDF
+          mới. Có thể mở TXT, Markdown, HTML, JSON, YAML, XML, CSV, RTF, DOCX, ODT, ODS, XLSX,
+          PPTX, ODP, FB2, EPUB hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
 
@@ -769,7 +779,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, YAML, XML, CSV, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -816,13 +826,13 @@ export function Editor() {
             <p className="kbd-hint">
               Nhấn thumbnail để xem trang, kéo để đổi thứ tự — các trang đã chọn đi cùng nhau.
               Ctrl/Cmd chọn thêm, Shift chọn dải. Phím: ← →, R xoay 90°, Shift+R xoay 180°, Delete
-              xóa, Alt+↑↓ dời nhóm, Ctrl+Z hoàn tác, Ctrl+Y làm lại, Ctrl+F tìm chữ, Ctrl+G tới
-              trang, Ctrl+I đảo chọn, F3 kết quả sau. Nhân bản chèn bản sao sau trang đã chọn cuối;
-              tách trang tải một PDF mới; giữ lại chỉ các trang đã chọn; tách mỗi N trang thành ZIP;
-              đan hai nửa (mặt trước rồi mặt sau) hoặc tách lẻ/chẵn; gộp 2/4 trang mỗi tờ, xếp sách
-              gấp, lật ngang/dọc, cắt đôi trên/dưới hoặc trái/phải; chữ mờ, cắt lề, chuyển xám, vừa A4
-              và xóa trùng chữ áp dụng cho trang đã chọn. Chèn PNG/JPEG/WEBP thành trang mới; thông
-              tin tiêu đề/tác giả lưu vào PDF.
+              xóa, Alt+↑↓ dời nhóm, Ctrl+Z hoàn tác, Ctrl+Y làm lại, Ctrl+A chọn tất cả, Ctrl+F tìm
+              chữ, Ctrl+G tới trang, Ctrl+I đảo chọn, F3 kết quả sau. Nhân bản chèn bản sao sau trang
+              đã chọn cuối; tách trang tải một PDF mới; giữ lại chỉ các trang đã chọn; tách mỗi N
+              trang thành ZIP; đan hai nửa (mặt trước rồi mặt sau) hoặc tách lẻ/chẵn; gộp 2/4 trang
+              mỗi tờ, xếp sách gấp, lật ngang/dọc, cắt đôi trên/dưới hoặc trái/phải; chữ mờ, cắt
+              hoặc thêm lề, chuyển xám, vừa A4/Letter/A5 và xóa trùng chữ áp dụng cho trang đã chọn.
+              Chèn PNG/JPEG/WEBP thành trang mới; thông tin tiêu đề/tác giả lưu vào PDF.
             </p>
           </div>
           <div className="tools" role="toolbar" aria-label="Công cụ chỉnh PDF">
@@ -937,7 +947,12 @@ export function Editor() {
               </div>
             </fieldset>
             <div className="tool-row">
-              <button type="button" disabled={busy} onClick={() => setSelected(pageRange(0, doc.pageCount - 1))}>
+              <button
+                type="button"
+                disabled={busy}
+                aria-keyshortcuts="Control+A"
+                onClick={() => setSelected(pageRange(0, doc.pageCount - 1))}
+              >
                 Chọn tất cả
               </button>
               <button type="button" disabled={busy} onClick={() => goToPage(page, 'replace')}>
@@ -1494,8 +1509,8 @@ export function Editor() {
               </button>
             </fieldset>
             <fieldset className="crop-pack">
-              <legend>Cắt lề trang</legend>
-              <div className="preset-row" role="group" aria-label="Độ rộng lề cắt">
+              <legend>Cắt hoặc thêm lề</legend>
+              <div className="preset-row" role="group" aria-label="Độ rộng lề">
                 {CROP_MARGIN_PRESETS.map((item) => (
                   <button
                     key={item.id}
@@ -1507,15 +1522,31 @@ export function Editor() {
                   </button>
                 ))}
               </div>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  void run((bytes) => cropPages(bytes, targets, CROP_MARGINS[cropMargin]))
-                }
-              >
-                Cắt lề {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
-              </button>
+              <div className="preset-row" role="group" aria-label="Cắt hoặc thêm lề trang">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void run((bytes) => cropPages(bytes, targets, CROP_MARGINS[cropMargin]))
+                  }
+                >
+                  Cắt lề {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label={
+                    targets.length > 1
+                      ? `Thêm lề cho ${targets.length} trang đã chọn`
+                      : 'Thêm lề cho trang hiện tại'
+                  }
+                  onClick={() =>
+                    void run((bytes) => padPages(bytes, targets, CROP_MARGINS[cropMargin]))
+                  }
+                >
+                  Thêm lề {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+                </button>
+              </div>
             </fieldset>
             <div className="tool-row">
               <button
@@ -1534,18 +1565,28 @@ export function Editor() {
               >
                 Chuyển xám {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
               </button>
-              <button
-                type="button"
-                disabled={busy}
-                aria-label={
-                  targets.length > 1
-                    ? `Vừa khổ A4 cho ${targets.length} trang đã chọn`
-                    : 'Vừa khổ A4 cho trang hiện tại'
-                }
-                onClick={() => void run((bytes) => fitPagesToA4(bytes, targets))}
-              >
-                Vừa A4 {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
-              </button>
+              {PAPER_IDS.map((paper) => (
+                <button
+                  key={paper}
+                  type="button"
+                  disabled={busy}
+                  aria-label={
+                    targets.length > 1
+                      ? `Vừa khổ ${PAPER_LABELS[paper]} cho ${targets.length} trang đã chọn`
+                      : `Vừa khổ ${PAPER_LABELS[paper]} cho trang hiện tại`
+                  }
+                  onClick={() =>
+                    void run((bytes) =>
+                      paper === 'a4'
+                        ? fitPagesToA4(bytes, targets)
+                        : fitPagesToPaper(bytes, targets, paper),
+                    )
+                  }
+                >
+                  Vừa {PAPER_LABELS[paper]}{' '}
+                  {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+                </button>
+              ))}
               <button
                 type="button"
                 disabled={busy || doc.pageCount < 2}

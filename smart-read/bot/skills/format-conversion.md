@@ -1,5 +1,5 @@
 ---
-description: Use when implementing or changing PDF export to TXT, HTML, Markdown, RTF, JSON, CSV, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, MOBI, PNG, JPEG, or WEBP.
+description: Use when implementing or changing PDF export to TXT, HTML, Markdown, RTF, JSON, YAML, XML, CSV, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, MOBI, PNG, JPEG, or WEBP.
 ---
 
 # Format conversion
@@ -15,6 +15,8 @@ Extract text with `pdfjs-dist` (`getTextContent` per page), then build the targe
 | Markdown | `# title` plus `## Trang n` sections (`toMarkdown`). |
 | RTF | `toRtf` / `escapeRtf` from extracted text (Unicode as `\\uN?`). Uploading RTF uses `pagesFromRtf`. |
 | JSON | `toJson` — `{ title, pages: [{ page, text }] }`. Uploading JSON rebuilds a PDF via `pagesFromJson`. |
+| YAML | `toYaml` / `escapeYaml` — quoted `title` + `pages[].text`. Uploading YAML uses `pagesFromYaml`. |
+| XML | `toXml` — `<document><title/><page n="…">`. Uploading XML uses `pagesFromXml`. |
 | CSV | `toCsv` / `escapeCsv` — `page,text` rows. Uploading CSV rebuilds a PDF via `pagesFromCsv`. |
 | XLSX | `toXlsx` — Office Open XML workbook with `page,text` columns (`inlineStr`). Uploading XLSX uses `pagesFromXlsx`. Binary `.xls` is rejected. |
 | PNG / JPEG / WEBP | Raster each selected page with `renderPageToBlob`. One page is a single image; several pages are a ZIP (`imagePageName` / `imageZipName`). JPEG paints a white background. Uploading PNG/JPEG builds a PDF via `imagesToPdf`. WEBP import is decoded to PNG with `rasterToPng` first. |
@@ -30,7 +32,7 @@ Extract text with `pdfjs-dist` (`getTextContent` per page), then build the targe
 ## Rules
 
 - Preserve page order. Validate the from–to range with `parsePageRange` (empty, non-integer, inverted, or out of bounds must show an error and block export). Slice extracted pages with `slicePageRange` only after the range is valid. If the editor has a multi-page subset selected, `slicePagesByIndexes` may export those pages instead (including a non-contiguous set).
-- TXT, Markdown, HTML, JSON, CSV, RTF, and FB2 uploads become a PDF via `pagesFromImportedText` + `textPagesToPdf` so they can then export to the other formats. DOCX, ODT, ODS, XLSX, PPTX, ODP, and EPUB uploads use `pagesFromDocx` / `pagesFromOdt` / `pagesFromOds` / `pagesFromXlsx` / `pagesFromPptx` / `pagesFromOdp` / `pagesFromEpub`. PNG and JPEG uploads become a PDF via `imagesToPdf`. WEBP uploads use `rasterToPng` then `imagesToPdf`. `pdfFromLoadedSource` is the shared entry. RTF import uses `rtfToPlain` / `pagesFromRtf`.
+- TXT, Markdown, HTML, JSON, YAML, XML, CSV, RTF, and FB2 uploads become a PDF via `pagesFromImportedText` + `textPagesToPdf` so they can then export to the other formats. DOCX, ODT, ODS, XLSX, PPTX, ODP, and EPUB uploads use `pagesFromDocx` / `pagesFromOdt` / `pagesFromOds` / `pagesFromXlsx` / `pagesFromPptx` / `pagesFromOdp` / `pagesFromEpub`. PNG and JPEG uploads become a PDF via `imagesToPdf`. WEBP uploads use `rasterToPng` then `imagesToPdf`. `pdfFromLoadedSource` is the shared entry. RTF import uses `rtfToPlain` / `pagesFromRtf`. YAML import uses `pagesFromYaml`. XML import uses `pagesFromXml`.
 - Strip NULs and cap extracted text so a huge PDF cannot freeze the tab.
 - Name downloads from the source filename plus the new extension.
 - Never upload the file to a third-party conversion API.

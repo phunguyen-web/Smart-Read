@@ -4,7 +4,7 @@ export const MAX_IMPORT_CHARS = 200_000
 export const MAX_IMPORT_PAGES = 80
 export const IMPORT_PAGE_CHARS = 1800
 
-export type ImportedTextKind = 'txt' | 'md' | 'html' | 'json' | 'csv' | 'rtf' | 'fb2'
+export type ImportedTextKind = 'txt' | 'md' | 'html' | 'json' | 'yaml' | 'xml' | 'csv' | 'rtf' | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp'
 
 function capPages(pages: string[]): string[] {
@@ -161,6 +161,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   if (kind === 'json') {
     return pagesFromJson(text)
   }
+  if (kind === 'yaml') {
+    return pagesFromYaml(text)
+  }
+  if (kind === 'xml') {
+    return pagesFromXml(text)
+  }
   if (kind === 'csv') {
     return pagesFromCsv(text)
   }
@@ -254,6 +260,87 @@ export function pagesFromJson(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('JSON cần { pages: [{ text }] } hoặc một mảng chuỗi.')
+}
+
+function unescapeYamlQuoted(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed.length >= 2) {
+    const quote = trimmed[0]
+    if ((quote === '"' || quote === "'") && trimmed.endsWith(quote)) {
+      const inner = trimmed.slice(1, -1)
+      if (quote === "'") {
+        return inner.replaceAll("''", "'")
+      }
+      return inner
+        .replaceAll('\\n', '\n')
+        .replaceAll('\\t', '\t')
+        .replaceAll('\\"', '"')
+        .replaceAll('\\\\', '\\')
+    }
+  }
+  return trimmed
+}
+
+export function pagesFromYaml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*[[{]/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages: string[] = []
+  const lines = trimmed.replace(/\r\n/g, '\n').split('\n')
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index]!.match(/^\s*(?:-\s+)?text:\s*(.*)$/)
+    if (!match) {
+      continue
+    }
+    const rest = match[1]!.trim()
+    if (rest === '|' || rest === '|-' || rest === '>' || rest === '>-') {
+      const block: string[] = []
+      let cursor = index + 1
+      let strip: number | null = null
+      while (cursor < lines.length) {
+        const line = lines[cursor]!
+        if (line.trim() === '') {
+          if (strip != null) {
+            block.push('')
+          }
+          cursor += 1
+          continue
+        }
+        const indent = line.match(/^\s*/)?.[0].length ?? 0
+        if (strip == null) {
+          strip = indent
+        }
+        if (indent < strip) {
+          break
+        }
+        block.push(line.slice(strip))
+        cursor += 1
+      }
+      pages.push(block.join('\n').replace(/\n+$/, ''))
+      index = cursor - 1
+      continue
+    }
+    pages.push(unescapeYamlQuoted(rest))
+  }
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp YAML cần các mục text: trong pages.')
+}
+
+export function pagesFromXml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/<FictionBook\b/i.test(trimmed)) {
+    return pagesFromFb2(trimmed)
+  }
+  const matches = [...trimmed.matchAll(/<page\b[^>]*>([\s\S]*?)<\/page>/gi)]
+  if (matches.length > 0) {
+    return capPages(
+      matches.map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, ''))),
+    )
+  }
+  throw new Error('Tệp XML cần các thẻ <page>.')
 }
 
 export function pagesFromCsv(text: string): string[] {

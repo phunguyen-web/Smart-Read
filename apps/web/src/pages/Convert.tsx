@@ -13,6 +13,8 @@ import {
   toJson,
   toMarkdown,
   toOdp,
+  toXml,
+  toYaml,
   toOds,
   toOdt,
   toPptx,
@@ -43,6 +45,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'md', label: 'Markdown', hint: 'Tệp .md, một mục mỗi trang' },
   { id: 'rtf', label: 'RTF', hint: 'Rich Text, mở được trong Word' },
   { id: 'json', label: 'JSON', hint: 'Trang + chữ, cấu trúc' },
+  { id: 'yaml', label: 'YAML', hint: 'Trang + chữ, cấu trúc' },
+  { id: 'xml', label: 'XML', hint: 'Tài liệu với thẻ page' },
   { id: 'csv', label: 'CSV', hint: 'Bảng trang, chữ' },
   { id: 'xlsx', label: 'XLSX', hint: 'Excel, cột trang + chữ' },
   { id: 'docx', label: 'DOCX', hint: 'Microsoft Word' },
@@ -192,6 +196,16 @@ export function Convert() {
           new Blob([toJson(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
+      } else if (format === 'yaml') {
+        downloadBlob(
+          new Blob([toYaml(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'xml') {
+        downloadBlob(
+          new Blob([toXml(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
       } else if (format === 'csv') {
         downloadBlob(
           new Blob([toCsv(pages)], { type: mimeFor(format) }),
@@ -255,11 +269,11 @@ export function Convert() {
       <header className="page-head">
         <h1>Chuyển đổi định dạng</h1>
         <p>
-          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, CSV, XLSX, DOCX/DOC, ODT, ODS,
-          PPTX, ODP, FB2, EPUB hoặc MOBI; hoặc raster từng trang thành PNG/JPEG/WEBP. Có thể mở
-          TXT/Markdown/HTML/JSON/CSV, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB hoặc
-          PNG/JPEG/WEBP để tạo PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang chọn trên
-          Chỉnh sửa, kể cả khi chúng không liền nhau.
+          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, YAML, XML, CSV, XLSX, DOCX/DOC,
+          ODT, ODS, PPTX, ODP, FB2, EPUB hoặc MOBI; hoặc raster từng trang thành PNG/JPEG/WEBP. Có
+          thể mở TXT/Markdown/HTML/JSON/YAML/XML/CSV, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2,
+          EPUB hoặc PNG/JPEG/WEBP để tạo PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang
+          chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau.
         </p>
       </header>
 
@@ -268,7 +282,7 @@ export function Convert() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chuyển đổi"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, YAML, XML, CSV, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chuyển đổi"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -279,7 +293,7 @@ export function Convert() {
         </p>
       ) : (
         <p className="empty">
-          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, CSV, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chọn khoảng trang và định dạng xuất.
+          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, YAML, XML, CSV, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chọn khoảng trang và định dạng xuất.
         </p>
       )}
       {error ? (
