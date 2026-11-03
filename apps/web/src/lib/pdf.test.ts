@@ -26,6 +26,9 @@ import {
   toDocbook,
   toOpml,
   toAtom,
+  toTypst,
+  toGemtext,
+  escapeTypst,
   toJsonl,
   toLatex,
   toOrg,
@@ -61,6 +64,8 @@ import {
   pagesFromDocbook,
   pagesFromOpml,
   pagesFromAtom,
+  pagesFromTypst,
+  pagesFromGemtext,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -136,7 +141,11 @@ import {
   addOutlineBookmarks,
   addOutlineFolder,
   clearOutline,
+  MAX_OUTLINE_DEPTH,
+  outlineItemIsFolder,
+  setOutlineFolderOpen,
   setOutlineFoldersOpen,
+  visibleOutlineItems,
   extractEmbeddedImages,
   formatPageLabel,
   frontMatterPageCount,
@@ -593,6 +602,55 @@ describe('pdf edits', () => {
       { title: 'Phần A · 2', pageIndex: 1, depth: 1 },
     ])
     await expect(setOutlineFoldersOpen(bytes, false)).rejects.toThrow(/thư mục/)
+    expect(MAX_OUTLINE_DEPTH).toBe(2)
+    const deep = await addOutlineFolder(nested, [1], 'Mục 1', 0)
+    expect(await listOutlineBookmarks(deep)).toEqual([
+      { title: 'Phần A', pageIndex: 0, depth: 0 },
+      { title: 'Phần A · 1', pageIndex: 0, depth: 1 },
+      { title: 'Phần A · 2', pageIndex: 1, depth: 1 },
+      { title: 'Mục 1', pageIndex: 1, depth: 1 },
+      { title: 'Mục 1 · 2', pageIndex: 1, depth: 2 },
+    ])
+    expect(outlineItemIsFolder(await listOutlineBookmarks(deep), 0)).toBe(true)
+    expect(outlineItemIsFolder(await listOutlineBookmarks(deep), 3)).toBe(true)
+    expect(outlineItemIsFolder(await listOutlineBookmarks(deep), 4)).toBe(false)
+    await expect(addOutlineFolder(deep, [0], 'Quá sâu', 3)).rejects.toThrow(/2 cấp/)
+    await expect(addOutlineFolder(nested, [0], 'X', 9)).rejects.toThrow(/mục lục cha/)
+    const oneClosed = await setOutlineFolderOpen(deep, 3, false)
+    expect(await listOutlineBookmarks(oneClosed)).toEqual([
+      { title: 'Phần A', pageIndex: 0, depth: 0 },
+      { title: 'Phần A · 1', pageIndex: 0, depth: 1 },
+      { title: 'Phần A · 2', pageIndex: 1, depth: 1 },
+      { title: 'Mục 1', pageIndex: 1, depth: 1, open: false },
+      { title: 'Mục 1 · 2', pageIndex: 1, depth: 2 },
+    ])
+    expect(visibleOutlineItems(await listOutlineBookmarks(oneClosed)).map((row) => row.index)).toEqual([
+      0, 1, 2, 3,
+    ])
+    const parentClosed = await setOutlineFolderOpen(oneClosed, 0, false)
+    expect((await listOutlineBookmarks(parentClosed))[0]).toEqual({
+      title: 'Phần A',
+      pageIndex: 0,
+      depth: 0,
+      open: false,
+    })
+    expect((await listOutlineBookmarks(parentClosed))[3]).toEqual({
+      title: 'Mục 1',
+      pageIndex: 1,
+      depth: 1,
+      open: false,
+    })
+    expect(visibleOutlineItems(await listOutlineBookmarks(parentClosed)).map((row) => row.index)).toEqual([
+      0,
+    ])
+    const reopened = await setOutlineFolderOpen(parentClosed, 0, true)
+    expect((await listOutlineBookmarks(reopened))[0]).toEqual({
+      title: 'Phần A',
+      pageIndex: 0,
+      depth: 0,
+    })
+    await expect(setOutlineFolderOpen(deep, 4, false)).rejects.toThrow(/không phải thư mục/)
+    await expect(setOutlineFolderOpen(deep, 9, false)).rejects.toThrow(/thư mục/)
     const cleared = await clearOutline(nested)
     expect(await listOutlineBookmarks(cleared)).toEqual([])
     await expect(clearOutline(bytes)).rejects.toThrow(/mục lục/)
@@ -1099,6 +1157,24 @@ describe('conversion helpers', () => {
     )
     expect(swapExtension('notes.atom', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.rss', 'pdf')).toBe('notes.pdf')
+    expect(escapeTypst('A "B"')).toBe('A \\"B\\"')
+    expect(toTypst('Demo', ['Một', 'Hai\ndòng'])).toContain('#set document(title: "Demo")')
+    expect(toTypst('Demo', ['Một'])).toContain('== Trang 1')
+    expect(pagesFromTypst(toTypst('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('typ', toTypst('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromTypst('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.typ', { type: '' }))).toBe('typ')
+    expect(sourceKindFromFile(new File(['x'], 'notes.typ', { type: 'text/x-typst' }))).toBe('typ')
+    expect(swapExtension('notes.typ', 'pdf')).toBe('notes.pdf')
+    expect(toGemtext('Demo', ['Một', 'Hai\ndòng'])).toContain('# Demo')
+    expect(toGemtext('Demo', ['Một'])).toContain('## Trang 1')
+    expect(pagesFromGemtext(toGemtext('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('gmi', toGemtext('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromGemtext('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.gmi', { type: '' }))).toBe('gmi')
+    expect(sourceKindFromFile(new File(['x'], 'notes.gemini', { type: 'text/gemini' }))).toBe('gmi')
+    expect(swapExtension('notes.gmi', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.gemini', 'pdf')).toBe('notes.pdf')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: '' }))).toBe('cbz')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: 'application/vnd.comicbook+zip' }))).toBe(
       'cbz',

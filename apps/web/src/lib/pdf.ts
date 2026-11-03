@@ -1921,6 +1921,9 @@ export type OutlineBookmark = {
   open?: boolean
 }
 
+/** Deepest outline item the editor will write (root 0, nested folder 1, its pages 2). */
+export const MAX_OUTLINE_DEPTH = 2
+
 export function assertOutlineTitle(text: string): string {
   const label = text.normalize('NFC').replace(/\s+/g, ' ').trim()
   if (!label) {
@@ -1980,6 +1983,44 @@ function outlineParentIndex(depths: readonly number[], index: number): number | 
 
 function itemIsOutlineFolder(depths: readonly number[], index: number): boolean {
   return index + 1 < depths.length && (depths[index + 1] ?? 0) > (depths[index] ?? 0)
+}
+
+function lastOutlineDescendantIndex(depths: readonly number[], parentIndex: number): number {
+  const parentDepth = depths[parentIndex] ?? 0
+  let last = parentIndex
+  for (let index = parentIndex + 1; index < depths.length; index += 1) {
+    if ((depths[index] ?? 0) <= parentDepth) {
+      break
+    }
+    last = index
+  }
+  return last
+}
+
+/** True when the item at `index` has children (deeper following items). */
+export function outlineItemIsFolder(items: readonly OutlineBookmark[], index: number): boolean {
+  return itemIsOutlineFolder(normalizeOutlineDepths(items), index)
+}
+
+/** Outline rows a viewer would show: children of a closed folder are omitted. */
+export function visibleOutlineItems(
+  items: readonly OutlineBookmark[],
+): { item: OutlineBookmark; index: number }[] {
+  const depths = normalizeOutlineDepths(items)
+  const out: { item: OutlineBookmark; index: number }[] = []
+  let skipDeeperThan = Number.POSITIVE_INFINITY
+  for (let index = 0; index < items.length; index += 1) {
+    const depth = depths[index] ?? 0
+    if (depth > skipDeeperThan) {
+      continue
+    }
+    skipDeeperThan = Number.POSITIVE_INFINITY
+    out.push({ item: items[index]!, index })
+    if (itemIsOutlineFolder(depths, index) && items[index]!.open === false) {
+      skipDeeperThan = depth
+    }
+  }
+  return out
 }
 
 function walkOutline(
@@ -2146,6 +2187,7 @@ export async function addOutlineFolder(
   bytes: Uint8Array,
   pageIndexes: readonly number[],
   title: string,
+  parentIndex?: number,
 ): Promise<Uint8Array> {
   const label = assertOutlineTitle(title)
   const unique = uniqueSorted([...pageIndexes], false)
@@ -2153,13 +2195,28 @@ export async function addOutlineFolder(
     throw new Error('Chọn ít nhất một trang để đánh dấu.')
   }
   const existing = await listOutlineBookmarks(bytes)
-  const folder: OutlineBookmark = { title: label, pageIndex: unique[0]!, depth: 0 }
+  const depths = normalizeOutlineDepths(existing)
+  let insertAt = existing.length
+  let folderDepth = 0
+  if (parentIndex != null) {
+    if (!Number.isInteger(parentIndex) || parentIndex < 0 || parentIndex >= existing.length) {
+      throw new Error('Chọn một mục lục cha.')
+    }
+    folderDepth = (depths[parentIndex] ?? 0) + 1
+    if (folderDepth + 1 > MAX_OUTLINE_DEPTH) {
+      throw new Error('Không lồng thư mục sâu hơn 2 cấp.')
+    }
+    insertAt = lastOutlineDescendantIndex(depths, parentIndex) + 1
+  }
+  const folder: OutlineBookmark = { title: label, pageIndex: unique[0]!, depth: folderDepth }
   const children: OutlineBookmark[] = unique.map((pageIndex) => ({
     title: `${label} · ${pageIndex + 1}`,
     pageIndex,
-    depth: 1,
+    depth: folderDepth + 1,
   }))
-  return writeOutlineBookmarks(bytes, [...existing, folder, ...children])
+  const next = [...existing]
+  next.splice(insertAt, 0, folder, ...children)
+  return writeOutlineBookmarks(bytes, next)
 }
 
 /** Collapse or expand every outline folder (`/Count` sign). Needs at least one folder. */
@@ -2185,6 +2242,31 @@ export async function setOutlineFoldersOpen(
   if (!found) {
     throw new Error('Không có thư mục mục lục.')
   }
+  return writeOutlineBookmarks(bytes, next)
+}
+
+/** Collapse or expand one outline folder by its index in `listOutlineBookmarks`. */
+export async function setOutlineFolderOpen(
+  bytes: Uint8Array,
+  folderIndex: number,
+  open: boolean,
+): Promise<Uint8Array> {
+  const existing = await listOutlineBookmarks(bytes)
+  const depths = normalizeOutlineDepths(existing)
+  if (!Number.isInteger(folderIndex) || folderIndex < 0 || folderIndex >= existing.length) {
+    throw new Error('Chọn một thư mục mục lục.')
+  }
+  if (!itemIsOutlineFolder(depths, folderIndex)) {
+    throw new Error('Mục này không phải thư mục.')
+  }
+  const next = existing.map((item, index) => {
+    if (index !== folderIndex) {
+      return item
+    }
+    return open
+      ? { title: item.title, pageIndex: item.pageIndex, depth: item.depth }
+      : { title: item.title, pageIndex: item.pageIndex, depth: item.depth, open: false }
+  })
   return writeOutlineBookmarks(bytes, next)
 }
 

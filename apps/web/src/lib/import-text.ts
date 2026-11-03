@@ -26,6 +26,8 @@ export type ImportedTextKind =
   | 'dbk'
   | 'opml'
   | 'atom'
+  | 'typ'
+  | 'gmi'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -290,6 +292,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'atom') {
     return pagesFromAtom(text)
+  }
+  if (kind === 'typ') {
+    return pagesFromTypst(text)
+  }
+  if (kind === 'gmi') {
+    return pagesFromGemtext(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -871,6 +879,60 @@ export function pagesFromAtom(text: string): string[] {
     }
   }
   throw new Error('Tệp Atom cần các mục <entry> hoặc RSS <item>.')
+}
+
+export function pagesFromTypst(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const stripPreamble = (page: string): string =>
+    page.replace(/^#set\s+document\b.*$/m, '').replace(/^=+\s+.*$/m, '').trim()
+  if (/^==+\s+Trang\s+\d+/m.test(trimmed)) {
+    return capPages(
+      trimmed
+        .split(/^==+\s+Trang\s+\d+\s*$/m)
+        .map(stripPreamble)
+        .filter((page) => page.length > 0),
+    )
+  }
+  if (/^==+\s+/m.test(trimmed)) {
+    const pages = trimmed
+      .split(/(?=^==+\s+)/m)
+      .map(stripPreamble)
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  return pagesFromPlainText(trimmed)
+}
+
+export function pagesFromGemtext(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const stripHeading = (page: string): string =>
+    page.replace(/^#+\s+.*$/m, '').trim()
+  if (/^##\s+Trang\s+\d+\s*$/m.test(trimmed)) {
+    return capPages(
+      trimmed
+        .split(/^##\s+Trang\s+\d+\s*$/m)
+        .map(stripHeading)
+        .filter((page) => page.length > 0),
+    )
+  }
+  if (/^##\s+/m.test(trimmed)) {
+    const pages = trimmed
+      .split(/(?=^##\s+)/m)
+      .map(stripHeading)
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  return pagesFromPlainText(trimmed)
 }
 
 export function pagesFromLatex(text: string): string[] {

@@ -22,13 +22,17 @@ import {
   clearOutline,
   extractEmbeddedImages,
   frontMatterPageCount,
+  listOutlineBookmarks,
   listPageLabels,
+  outlineItemIsFolder,
   PAGE_LABEL_LABELS,
   PAGE_LABEL_STYLES,
   pageLabelsForCount,
   setFrontMatterPageLabels,
+  setOutlineFolderOpen,
   setOutlineFoldersOpen,
   setPageLabels,
+  visibleOutlineItems,
   addPageBorder,
   addPageNumbers,
   addTextOverlay,
@@ -82,6 +86,7 @@ import {
   type CropMarginId,
   type MergeWhere,
   type OverlayPosition,
+  type OutlineBookmark,
   type OverlayPresetId,
   type PageBgId,
   type PageLabelStyle,
@@ -216,6 +221,8 @@ export function Editor() {
   const [downloadConfirm, setDownloadConfirm] = useState('')
   const [openPassword, setOpenPassword] = useState('')
   const [bookmarkTitle, setBookmarkTitle] = useState('')
+  const [outline, setOutline] = useState<OutlineBookmark[]>([])
+  const [outlineAt, setOutlineAt] = useState<number | null>(null)
   const [pageLabelStyle, setPageLabelStyle] = useState<PageLabelStyle>('decimal')
   const [lockedPdf, setLockedPdf] = useState<{
     name: string
@@ -284,6 +291,32 @@ export function Editor() {
       .catch(() => {
         if (!cancelled) {
           setViewerLabels([])
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [doc])
+
+  useEffect(() => {
+    if (!doc) {
+      return
+    }
+    let cancelled = false
+    void listOutlineBookmarks(doc.bytes)
+      .then((items) => {
+        if (cancelled) {
+          return
+        }
+        setOutline(items)
+        setOutlineAt((current) =>
+          current != null && current >= 0 && current < items.length ? current : null,
+        )
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOutline([])
+          setOutlineAt(null)
         }
       })
     return () => {
@@ -940,9 +973,9 @@ export function Editor() {
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục
-          (thu gọn / xóa mục lục),
+          (thư mục con, thu từng mục / xóa),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -952,7 +985,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -1886,6 +1919,66 @@ export function Editor() {
               >
                 Thư mục {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
               </button>
+              <button
+                type="button"
+                disabled={busy || outlineAt == null}
+                aria-label={
+                  outlineAt == null
+                    ? 'Chọn một mục lục cha rồi thêm thư mục con'
+                    : `Thêm thư mục con dưới ${outline[outlineAt]?.title ?? 'mục đã chọn'}`
+                }
+                onClick={() => {
+                  if (outlineAt == null) {
+                    return
+                  }
+                  void run((bytes) => addOutlineFolder(bytes, targets, bookmarkTitle, outlineAt))
+                }}
+              >
+                Thư mục con
+              </button>
+              {outline.length > 0 ? (
+                <ol className="outline-list" aria-label="Danh sách mục lục">
+                  {visibleOutlineItems(outline).map(({ item, index }) => (
+                    <li
+                      key={`${item.title}:${index}`}
+                      className="outline-row"
+                      style={{ paddingLeft: `${item.depth * 14}px` }}
+                    >
+                      <button
+                        type="button"
+                        className={outlineAt === index ? 'picked' : undefined}
+                        aria-label={`Chọn mục lục ${item.title}`}
+                        aria-pressed={outlineAt === index}
+                        onClick={() => {
+                          setOutlineAt(index)
+                          goToPage(item.pageIndex, 'replace')
+                        }}
+                      >
+                        {item.title}
+                      </button>
+                      {outlineItemIsFolder(outline, index) ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          aria-label={
+                            item.open === false
+                              ? `Mở thư mục ${item.title}`
+                              : `Thu gọn thư mục ${item.title}`
+                          }
+                          onClick={() => {
+                            setOutlineAt(index)
+                            void run((bytes) =>
+                              setOutlineFolderOpen(bytes, index, item.open === false),
+                            )
+                          }}
+                        >
+                          {item.open === false ? 'Mở' : 'Thu'}
+                        </button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
               <div className="preset-row" role="group" aria-label="Thu gọn hoặc xóa mục lục">
                 <button
                   type="button"

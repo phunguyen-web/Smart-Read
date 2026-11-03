@@ -23,6 +23,8 @@ export type ExportFormat =
   | 'dbk'
   | 'opml'
   | 'atom'
+  | 'typ'
+  | 'gmi'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -450,6 +452,32 @@ export function toAtom(title: string, pages: string[]): string {
 ${entries}
 </feed>
 `
+}
+
+export function escapeTypst(value: string): string {
+  return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
+}
+
+export function toTypst(title: string, pages: string[]): string {
+  const heading = escapeTypst(title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const body = pages
+    .map((text, index) => {
+      const content = text.trim() || '(không có chữ)'
+      return `== Trang ${index + 1}\n\n${content}`
+    })
+    .join('\n\n')
+  return `#set document(title: "${heading}")\n\n${body}\n`
+}
+
+export function toGemtext(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const body = pages
+    .map((text, index) => {
+      const content = text.trim() || '(không có chữ)'
+      return `## Trang ${index + 1}\n\n${content}`
+    })
+    .join('\n\n')
+  return `# ${heading}\n\n${body}\n`
 }
 
 export function toLatex(title: string, pages: string[]): string {
@@ -1295,6 +1323,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-opml;charset=utf-8'
     case 'atom':
       return 'application/atom+xml;charset=utf-8'
+    case 'typ':
+      return 'text/x-typst;charset=utf-8'
+    case 'gmi':
+      return 'text/gemini;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
