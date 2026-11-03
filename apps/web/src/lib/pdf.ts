@@ -1954,7 +1954,18 @@ export type OutlineBookmark = {
    * editor can still jump; viewers do not treat the folder as a page target.
    */
   destless?: true
+  /** Leaf `/Dest` stored as a named destination instead of an explicit page array. */
+  destName?: string
 }
+
+export type NamedDestination = {
+  name: string
+  pageIndex: number
+}
+
+export const MAX_NAMED_DESTS = 80
+export const MAX_NAMED_DEST_NAME = 64
+export const NAMED_DEST_NAME = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/
 
 /** Deepest outline item the editor will write (root 0 … nested folder 2, its pages 3). */
 export const MAX_OUTLINE_DEPTH = 3
@@ -1987,6 +1998,7 @@ function cloneOutlineItem(
     depth?: number
     open?: boolean
     destless?: boolean
+    destName?: string
   } = {},
 ): OutlineBookmark {
   const next: OutlineBookmark = {
@@ -2001,6 +2013,12 @@ function cloneOutlineItem(
   const open = Object.prototype.hasOwnProperty.call(patch, 'open') ? patch.open : item.open
   if (open === false) {
     next.open = false
+  }
+  const destName = Object.prototype.hasOwnProperty.call(patch, 'destName')
+    ? patch.destName
+    : item.destName
+  if (destName) {
+    next.destName = destName
   }
   return next
 }
@@ -2018,6 +2036,144 @@ function pageIndexForDest(pages: { ref: PDFRef }[], dest: unknown): number {
     return -1
   }
   return pages.findIndex((page) => samePdfRef(page.ref, first))
+}
+
+export function assertNamedDestName(text: string): string {
+  const name = text.normalize('NFC').trim()
+  if (!name) {
+    throw new Error('Nhập tên đích.')
+  }
+  if (name.length > MAX_NAMED_DEST_NAME || !NAMED_DEST_NAME.test(name)) {
+    throw new Error('Tên đích chỉ dùng chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.')
+  }
+  return name
+}
+
+function decodeDestName(value: unknown): string {
+  if (value instanceof PDFName) {
+    const raw = value.asString()
+    return (raw.startsWith('/') ? raw.slice(1) : raw).trim()
+  }
+  if (value instanceof PDFHexString || value instanceof PDFString) {
+    return value.decodeText().trim()
+  }
+  return ''
+}
+
+function unwrapDestArray(doc: PDFDocument, value: unknown): PDFArray | null {
+  let current = value
+  if (current instanceof PDFRef) {
+    current = doc.context.lookup(current)
+  }
+  if (current instanceof PDFArray) {
+    return current
+  }
+  if (current instanceof PDFDict) {
+    const dest = current.lookupMaybe(PDFName.of('D'), PDFArray)
+    return dest instanceof PDFArray ? dest : null
+  }
+  return null
+}
+
+function walkDestNameTree(
+  doc: PDFDocument,
+  pages: { ref: PDFRef }[],
+  node: unknown,
+  dests: Map<string, number>,
+  seen: Set<number>,
+): void {
+  let current = node
+  if (current instanceof PDFRef) {
+    if (seen.has(current.objectNumber)) {
+      return
+    }
+    seen.add(current.objectNumber)
+    current = doc.context.lookup(current)
+  }
+  if (!(current instanceof PDFDict)) {
+    return
+  }
+  const names = current.lookupMaybe(PDFName.of('Names'), PDFArray)
+  if (names instanceof PDFArray) {
+    for (let index = 0; index + 1 < names.size(); index += 2) {
+      const name = decodeDestName(names.get(index))
+      const pageIndex = pageIndexForDest(pages, unwrapDestArray(doc, names.get(index + 1)))
+      if (name && pageIndex >= 0) {
+        dests.set(name, pageIndex)
+      }
+    }
+  }
+  const kids = current.lookupMaybe(PDFName.of('Kids'), PDFArray)
+  if (kids instanceof PDFArray) {
+    for (let index = 0; index < kids.size(); index += 1) {
+      walkDestNameTree(doc, pages, kids.get(index), dests, seen)
+    }
+  }
+}
+
+function collectNamedDests(doc: PDFDocument): Map<string, number> {
+  const pages = doc.getPages()
+  const dests = new Map<string, number>()
+  const catalogDests = doc.catalog.lookupMaybe(PDFName.of('Dests'), PDFDict)
+  if (catalogDests) {
+    for (const key of catalogDests.keys()) {
+      const name = decodeDestName(key)
+      if (!name || name === 'Type') {
+        continue
+      }
+      const pageIndex = pageIndexForDest(pages, unwrapDestArray(doc, catalogDests.get(key)))
+      if (pageIndex >= 0) {
+        dests.set(name, pageIndex)
+      }
+    }
+  }
+  const names = doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)
+  if (names) {
+    walkDestNameTree(doc, pages, names.get(PDFName.of('Dests')), dests, new Set())
+  }
+  return dests
+}
+
+function writeCatalogNamedDests(
+  doc: PDFDocument,
+  dests: readonly NamedDestination[],
+): void {
+  const pages = doc.getPages()
+  let dict = doc.catalog.lookupMaybe(PDFName.of('Dests'), PDFDict)
+  if (!dict) {
+    dict = doc.context.obj({})
+    doc.catalog.set(PDFName.of('Dests'), dict)
+  }
+  for (const dest of dests) {
+    const page = pages[dest.pageIndex]
+    if (!page || !NAMED_DEST_NAME.test(dest.name)) {
+      continue
+    }
+    dict.set(
+      PDFName.of(dest.name),
+      doc.context.obj([page.ref, PDFName.of('XYZ'), null, null, null]),
+    )
+  }
+}
+
+function outlineItemDest(
+  doc: PDFDocument,
+  item: PDFDict,
+): { dest: unknown; destName: string } {
+  let dest: unknown = item.get(PDFName.of('Dest'))
+  if (dest instanceof PDFRef) {
+    dest = doc.context.lookup(dest)
+  }
+  if (dest == null) {
+    const action = item.lookupMaybe(PDFName.of('A'), PDFDict)
+    if (action) {
+      dest = action.get(PDFName.of('D'))
+      if (dest instanceof PDFRef) {
+        dest = doc.context.lookup(dest)
+      }
+    }
+  }
+  return { dest, destName: decodeDestName(dest) }
 }
 
 function normalizeOutlineDepths(items: readonly OutlineBookmark[]): number[] {
@@ -2142,6 +2298,7 @@ function walkOutline(
   depth: number,
   items: OutlineBookmark[],
   seen: Set<number>,
+  named: Map<string, number>,
 ): void {
   let currentRef = startRef
   let guard = 0
@@ -2153,8 +2310,10 @@ function walkOutline(
     seen.add(currentRef.objectNumber)
     const current = doc.context.lookup(currentRef, PDFDict)
     const title = decodeOutlineTitle(current.lookupMaybe(PDFName.of('Title'), PDFString, PDFHexString))
-    const dest = current.lookupMaybe(PDFName.of('Dest'), PDFArray)
-    const pageIndex = pageIndexForDest(pages, dest)
+    const { dest, destName } = outlineItemDest(doc, current)
+    const explicit = unwrapDestArray(doc, dest)
+    const namedPage = destName ? (named.get(destName) ?? -1) : -1
+    const pageIndex = explicit ? pageIndexForDest(pages, explicit) : namedPage
     const count = current.lookupMaybe(PDFName.of('Count'), PDFNumber)
     const closed = count instanceof PDFNumber && count.asNumber() < 0
     const first = current.get(PDFName.of('First'))
@@ -2168,6 +2327,8 @@ function walkOutline(
       }
       if (!hasDest) {
         item.destless = true
+      } else if (destName) {
+        item.destName = destName
       }
       if (closed) {
         item.open = false
@@ -2175,7 +2336,7 @@ function walkOutline(
       items.push(item)
       const selfIndex = items.length - 1
       if (hasKids) {
-        walkOutline(doc, pages, first, depth + 1, items, seen)
+        walkOutline(doc, pages, first, depth + 1, items, seen, named)
       }
       if (!hasDest) {
         const child = items[selfIndex + 1]
@@ -2184,7 +2345,7 @@ function walkOutline(
         }
       }
     } else if (hasKids) {
-      walkOutline(doc, pages, first, depth + 1, items, seen)
+      walkOutline(doc, pages, first, depth + 1, items, seen, named)
     }
     currentRef = current.get(PDFName.of('Next'))
   }
@@ -2196,7 +2357,15 @@ function readOutlineChain(doc: PDFDocument): OutlineBookmark[] {
     return []
   }
   const items: OutlineBookmark[] = []
-  walkOutline(doc, doc.getPages(), outlines.get(PDFName.of('First')), 0, items, new Set())
+  walkOutline(
+    doc,
+    doc.getPages(),
+    outlines.get(PDFName.of('First')),
+    0,
+    items,
+    new Set(),
+    collectNamedDests(doc),
+  )
   return items
 }
 
@@ -2250,6 +2419,7 @@ async function writeOutlineBookmarks(
     const siblings = parent == null ? roots : childrenOf[parent]!
     const siblingAt = siblings.indexOf(index)
     const kids = childrenOf[index]!
+    const destName = item.destName && NAMED_DEST_NAME.test(item.destName) ? item.destName : ''
     const fields: {
       Title: PDFHexString
       Parent: PDFRef
@@ -2258,10 +2428,13 @@ async function writeOutlineBookmarks(
       Title: PDFHexString.fromText(item.title),
       Parent: parent == null ? rootRef : itemRefs[parent]!,
     }
-    if (kids.length === 0) {
+    if (kids.length === 0 && !destName) {
       fields.Dest = [page.ref, PDFName.of('XYZ'), null, null, null]
     }
     const outlineItem = context.obj(fields)
+    if (kids.length === 0 && destName) {
+      outlineItem.set(PDFName.of('Dest'), PDFName.of(destName))
+    }
     if (siblingAt > 0) {
       outlineItem.set(PDFName.of('Prev'), itemRefs[siblings[siblingAt - 1]!]!)
     }
@@ -2295,7 +2468,78 @@ async function writeOutlineBookmarks(
   )
   doc.catalog.set(PDFName.of('Outlines'), rootRef)
   doc.catalog.set(PDFName.of('PageMode'), PDFName.of('UseOutlines'))
+  writeCatalogNamedDests(
+    doc,
+    valid.flatMap((item, index) => {
+      const name = item.destName
+      if (!name || childrenOf[index]!.length > 0 || !NAMED_DEST_NAME.test(name)) {
+        return []
+      }
+      return [{ name, pageIndex: item.pageIndex }]
+    }),
+  )
   return new Uint8Array(await doc.save())
+}
+
+/** Named destinations from catalog `/Dests` and the `/Names` `/Dests` name tree. */
+export async function listNamedDests(bytes: Uint8Array): Promise<NamedDestination[]> {
+  const doc = await PDFDocument.load(bytes)
+  return [...collectNamedDests(doc).entries()]
+    .map(([name, pageIndex]) => ({ name, pageIndex }))
+    .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
+}
+
+/** Add or keep a catalog named destination for one page. Duplicate names on another page are refused. */
+export async function addNamedDest(
+  bytes: Uint8Array,
+  name: string,
+  pageIndex: number,
+): Promise<Uint8Array> {
+  const label = assertNamedDestName(name)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= count) {
+    throw new Error('Chọn một trang đích.')
+  }
+  const existing = collectNamedDests(doc)
+  const current = existing.get(label)
+  if (current != null && current !== pageIndex) {
+    throw new Error('Tên đích đã dùng.')
+  }
+  if (current == null && existing.size >= MAX_NAMED_DESTS) {
+    throw new Error(`Không thêm quá ${MAX_NAMED_DESTS} đích tên.`)
+  }
+  writeCatalogNamedDests(doc, [{ name: label, pageIndex }])
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Point a leaf bookmark at a named destination. Dest-less folders are refused.
+ * The name must already exist in the catalog.
+ */
+export async function setOutlineNamedDest(
+  bytes: Uint8Array,
+  index: number,
+  name: string,
+): Promise<Uint8Array> {
+  const label = assertNamedDestName(name)
+  const existing = await listOutlineBookmarks(bytes)
+  if (!Number.isInteger(index) || index < 0 || index >= existing.length) {
+    throw new Error('Chọn một mục lục.')
+  }
+  const depths = normalizeOutlineDepths(existing)
+  if (itemIsOutlineFolder(depths, index) || existing[index]!.destless) {
+    throw new Error('Thư mục không gắn trang đích.')
+  }
+  const dests = await listNamedDests(bytes)
+  const dest = dests.find((item) => item.name === label)
+  if (!dest) {
+    throw new Error('Chưa có đích tên này.')
+  }
+  const next = existing.map((item, at) =>
+    at === index ? cloneOutlineItem(item, { pageIndex: dest.pageIndex, destName: label }) : item,
+  )
+  return writeOutlineBookmarks(bytes, next)
 }
 
 export async function listOutlineBookmarks(bytes: Uint8Array): Promise<OutlineBookmark[]> {
@@ -2596,7 +2840,7 @@ export async function setOutlineDest(
     throw new Error('Chọn một trang đích.')
   }
   const next = existing.map((item, at) =>
-    at === index ? cloneOutlineItem(item, { pageIndex }) : item,
+    at === index ? cloneOutlineItem(item, { pageIndex, destName: undefined }) : item,
   )
   return writeOutlineBookmarks(bytes, next)
 }

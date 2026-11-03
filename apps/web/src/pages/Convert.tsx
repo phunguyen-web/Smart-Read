@@ -30,6 +30,8 @@ import {
   toTid,
   toTexinfo,
   toRoff,
+  toIpynb,
+  toBibtex,
   toJson,
   toJsonl,
   toLatex,
@@ -97,6 +99,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'tid', label: 'TiddlyWiki', hint: '! title + !! Trang n' },
   { id: 'texinfo', label: 'Texinfo', hint: '@settitle + @section Trang n' },
   { id: 'roff', label: 'roff', hint: '.TH + .SH Trang n' },
+  { id: 'ipynb', label: 'Jupyter', hint: 'Notebook .ipynb, một ô mỗi trang' },
+  { id: 'bib', label: 'BibTeX', hint: '@comment + @misc note mỗi trang' },
   { id: 'xlsx', label: 'XLSX', hint: 'Excel, cột trang + chữ' },
   { id: 'docx', label: 'DOCX', hint: 'Microsoft Word' },
   { id: 'doc', label: 'DOC', hint: 'Word (cùng nội dung DOCX)' },
@@ -420,6 +424,16 @@ export function Convert() {
           new Blob([toRoff(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
+      } else if (format === 'ipynb') {
+        downloadBlob(
+          new Blob([toIpynb(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'bib') {
+        downloadBlob(
+          new Blob([toBibtex(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
       } else if (format === 'docx' || format === 'doc') {
         const blob = await toDocx(title, pages)
         downloadBlob(blob, swapExtension(doc.name, extensionFor(format)))
@@ -478,9 +492,9 @@ export function Convert() {
       <header className="page-head">
         <h1>Chuyển đổi định dạng</h1>
         <p>
-          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, XLSX, DOCX/DOC,
+          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, XLSX, DOCX/DOC,
           ODT, ODS, PPTX, ODP, FB2, EPUB hoặc MOBI; hoặc raster từng trang thành PNG/JPEG/WEBP/CBZ. Có
-          thể mở TXT/Markdown/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2,
+          thể mở TXT/Markdown/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff/Jupyter/BibTeX, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2,
           EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang
           chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau. PDF khóa cần mật khẩu; bản làm việc được giải khóa.
         </p>
@@ -491,7 +505,7 @@ export function Convert() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chuyển đổi"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chuyển đổi"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -502,7 +516,7 @@ export function Convert() {
         </p>
       ) : (
         <p className="empty">
-          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chọn khoảng trang và định dạng xuất.
+          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chọn khoảng trang và định dạng xuất.
         </p>
       )}
       {error ? (

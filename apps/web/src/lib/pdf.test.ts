@@ -34,6 +34,9 @@ import {
   toTid,
   toTexinfo,
   toRoff,
+  toIpynb,
+  toBibtex,
+  escapeBibtex,
   escapeTypst,
   toJsonl,
   toLatex,
@@ -78,6 +81,8 @@ import {
   pagesFromTid,
   pagesFromTexinfo,
   pagesFromRoff,
+  pagesFromIpynb,
+  pagesFromBibtex,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -150,6 +155,7 @@ import {
   LETTER_WIDTH,
   addCoverPage,
   addHeaderFooter,
+  addNamedDest,
   addOutlineBookmarks,
   addOutlineFolder,
   bookletPreviewSheets,
@@ -169,6 +175,8 @@ import {
   renameOutlineItem,
   removeOutlineItem,
   setOutlineDest,
+  setOutlineNamedDest,
+  listNamedDests,
   setOutlineFolderOpen,
   setOutlineFoldersOpen,
   visibleOutlineItems,
@@ -792,6 +800,37 @@ describe('pdf edits', () => {
     expect(await listOutlineBookmarks(cleared)).toEqual([])
     await expect(clearOutline(bytes)).rejects.toThrow(/mục lục/)
 
+    const named = await addNamedDest(bytes, 'ChapTwo', 1)
+    expect(await listNamedDests(named)).toEqual([{ name: 'ChapTwo', pageIndex: 1 }])
+    expect(await listNamedDests(await addNamedDest(named, 'ChapTwo', 1))).toEqual([
+      { name: 'ChapTwo', pageIndex: 1 },
+    ])
+    await expect(addNamedDest(named, 'ChapTwo', 0)).rejects.toThrow(/đã dùng/)
+    await expect(addNamedDest(bytes, '  ', 0)).rejects.toThrow(/tên đích/)
+    await expect(addNamedDest(bytes, '1bad', 0)).rejects.toThrow(/chữ/)
+    await expect(addNamedDest(bytes, 'Chap', 9)).rejects.toThrow(/trang đích/)
+    const namedLeaf = await addOutlineBookmarks(named, [0], 'Mở đầu')
+    const linked = await setOutlineNamedDest(namedLeaf, 0, 'ChapTwo')
+    expect((await listOutlineBookmarks(linked))[0]).toEqual({
+      title: 'Mở đầu',
+      pageIndex: 1,
+      depth: 0,
+      destName: 'ChapTwo',
+    })
+    const linkedDoc = await PDFDocument.load(linked)
+    const linkedRoot = linkedDoc.catalog.lookup(PDFName.of('Outlines'), PDFDict)
+    const linkedItem = linkedDoc.context.lookup(linkedRoot.get(PDFName.of('First')), PDFDict)
+    expect(linkedItem.lookup(PDFName.of('Dest'), PDFName)).toEqual(PDFName.of('ChapTwo'))
+    const unlinked = await setOutlineDest(linked, 0, 0)
+    expect((await listOutlineBookmarks(unlinked))[0]).toEqual({
+      title: 'Mở đầu',
+      pageIndex: 0,
+      depth: 0,
+    })
+    await expect(setOutlineNamedDest(nested, 0, 'ChapTwo')).rejects.toThrow(/gắn trang đích/)
+    await expect(setOutlineNamedDest(namedLeaf, 0, 'Missing')).rejects.toThrow(/đích tên/)
+    await expect(setOutlineNamedDest(bytes, 0, 'ChapTwo')).rejects.toThrow(/mục lục/)
+
     expect(toRomanNumeral(2)).toBe('ii')
     expect(toRomanNumeral(4, true)).toBe('IV')
     expect(formatPageLabel('trang', 3)).toBe('Trang 3')
@@ -1382,6 +1421,28 @@ describe('conversion helpers', () => {
     expect(sourceKindFromFile(new File(['x'], 'notes.man', { type: 'text/troff' }))).toBe('roff')
     expect(swapExtension('notes.roff', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.man', 'pdf')).toBe('notes.pdf')
+    expect(toIpynb('Demo', ['Một', 'Hai\ndòng'])).toContain('"nbformat": 4')
+    expect(toIpynb('Demo', ['Một'])).toContain('## Trang 1')
+    expect(pagesFromIpynb(toIpynb('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('ipynb', toIpynb('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromIpynb('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.ipynb', { type: '' }))).toBe('ipynb')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.ipynb', { type: 'application/x-ipynb+json' })),
+    ).toBe('ipynb')
+    expect(swapExtension('notes.ipynb', 'pdf')).toBe('notes.pdf')
+    expect(escapeBibtex('a{b}')).toBe('a\\{b\\}')
+    expect(toBibtex('Demo', ['Một', 'Hai\ndòng'])).toContain('@comment{Demo}')
+    expect(toBibtex('Demo', ['Một'])).toContain('@misc{page1')
+    expect(pagesFromBibtex(toBibtex('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('bib', toBibtex('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromBibtex('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.bib', { type: '' }))).toBe('bib')
+    expect(sourceKindFromFile(new File(['x'], 'notes.bibtex', { type: 'application/x-bibtex' }))).toBe(
+      'bib',
+    )
+    expect(swapExtension('notes.bib', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.bibtex', 'pdf')).toBe('notes.pdf')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: '' }))).toBe('cbz')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: 'application/vnd.comicbook+zip' }))).toBe(
       'cbz',

@@ -34,6 +34,8 @@ export type ImportedTextKind =
   | 'tid'
   | 'texinfo'
   | 'roff'
+  | 'ipynb'
+  | 'bib'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -322,6 +324,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'roff') {
     return pagesFromRoff(text)
+  }
+  if (kind === 'ipynb') {
+    return pagesFromIpynb(text)
+  }
+  if (kind === 'bib') {
+    return pagesFromBibtex(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1111,6 +1119,78 @@ export function pagesFromTexinfo(text: string): string[] {
       .replace(/^@bye\s*$/im, '')
       .trim(),
   )
+}
+
+export function unescapeBibtex(value: string): string {
+  return value.replace(/\\([{}\\])/g, '$1')
+}
+
+export function pagesFromIpynb(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(trimmed)
+  } catch {
+    throw new Error('Notebook Jupyter không hợp lệ.')
+  }
+  if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { cells?: unknown }).cells)) {
+    const pages: string[] = []
+    for (const cell of (parsed as { cells: unknown[] }).cells) {
+      if (!cell || typeof cell !== 'object') {
+        continue
+      }
+      const record = cell as { cell_type?: unknown; source?: unknown }
+      if (record.cell_type !== 'markdown' && record.cell_type !== 'code') {
+        continue
+      }
+      const source = Array.isArray(record.source)
+        ? record.source.map((part) => String(part)).join('')
+        : typeof record.source === 'string'
+          ? record.source
+          : ''
+      const body = source
+        .replace(/^#\s+.*$/m, '')
+        .replace(/^##\s+Trang\s+\d+\s*$/m, '')
+        .trim()
+      if (body) {
+        pages.push(body)
+      }
+    }
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+    throw new Error('Notebook Jupyter không có ô chữ.')
+  }
+  return pagesFromJson(trimmed)
+}
+
+export function pagesFromBibtex(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const stripHeading = (entry: string): string => {
+    const note = entry.match(/\bnote\s*=\s*\{([\s\S]*?)\}/i)
+    if (note) {
+      return unescapeBibtex(note[1]!.trim())
+    }
+    const title = entry.match(/\btitle\s*=\s*\{([\s\S]*?)\}/i)
+    if (title && !/^Trang\s+\d+$/.test(title[1]!.trim())) {
+      return unescapeBibtex(title[1]!.trim())
+    }
+    return ''
+  }
+  if (/^@(?!comment\b)[A-Za-z]+\s*\{/m.test(trimmed)) {
+    const pages = trimmed
+      .split(/(?=^@[A-Za-z]+\s*\{)/m)
+      .filter((chunk) => /^@(?!comment\b)[A-Za-z]+\s*\{/m.test(chunk.trim()))
+      .map(stripHeading)
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  throw new Error('Tệp BibTeX cần các mục @entry.')
 }
 
 export function pagesFromRoff(text: string): string[] {

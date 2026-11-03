@@ -17,6 +17,7 @@ import {
   PAPER_LABELS,
   addCoverPage,
   addHeaderFooter,
+  addNamedDest,
   addOutlineBookmarks,
   addOutlineFolder,
   bookletPreviewSheets,
@@ -28,6 +29,7 @@ import {
   extractEmbeddedImages,
   frontMatterPageCount,
   indentOutlineItem,
+  listNamedDests,
   listOutlineBookmarks,
   listPageLabels,
   moveOutlineItem,
@@ -65,6 +67,7 @@ import {
   renameOutlineItem,
   removeOutlineItem,
   setOutlineDest,
+  setOutlineNamedDest,
   insertImages,
   interleaveHalvesOrder,
   isIdentityOrder,
@@ -99,6 +102,7 @@ import {
   unifyPageSizes,
   type CropMarginId,
   type MergeWhere,
+  type NamedDestination,
   type OverlayPosition,
   type OutlineBookmark,
   type OverlayPresetId,
@@ -235,8 +239,10 @@ export function Editor() {
   const [downloadConfirm, setDownloadConfirm] = useState('')
   const [openPassword, setOpenPassword] = useState('')
   const [bookmarkTitle, setBookmarkTitle] = useState('')
+  const [destName, setDestName] = useState('')
   const [outline, setOutline] = useState<OutlineBookmark[]>([])
   const [outlineAt, setOutlineAt] = useState<number | null>(null)
+  const [namedDests, setNamedDests] = useState<NamedDestination[]>([])
   const [showBookletPreview, setShowBookletPreview] = useState(false)
   const [pageLabelStyle, setPageLabelStyle] = useState<PageLabelStyle>('decimal')
   const [lockedPdf, setLockedPdf] = useState<{
@@ -318,12 +324,13 @@ export function Editor() {
       return
     }
     let cancelled = false
-    void listOutlineBookmarks(doc.bytes)
-      .then((items) => {
+    void Promise.all([listOutlineBookmarks(doc.bytes), listNamedDests(doc.bytes)])
+      .then(([items, dests]) => {
         if (cancelled) {
           return
         }
         setOutline(items)
+        setNamedDests(dests)
         setOutlineAt((current) =>
           current != null && current >= 0 && current < items.length ? current : null,
         )
@@ -331,6 +338,7 @@ export function Editor() {
       .catch(() => {
         if (!cancelled) {
           setOutline([])
+          setNamedDests([])
           setOutlineAt(null)
         }
       })
@@ -988,9 +996,9 @@ export function Editor() {
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục
-          (thư mục lồng 3 cấp không Dest, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang),
+          (thư mục lồng 3 cấp không Dest, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -1000,7 +1008,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -1993,7 +2001,7 @@ export function Editor() {
                           goToPage(item.pageIndex, 'replace')
                         }}
                       >
-                        {item.title}
+                        {item.destName ? `${item.title} (${item.destName})` : item.title}
                       </button>
                       {outlineItemIsFolder(outline, index) ? (
                         <button
@@ -2173,6 +2181,59 @@ export function Editor() {
                   Thụt ra
                 </button>
               </div>
+              <label className="overlay-field">
+                Tên đích
+                <input
+                  value={destName}
+                  onChange={(event) => setDestName(event.target.value)}
+                  aria-label="Tên đích PDF cho trang hiện tại"
+                />
+              </label>
+              <div className="preset-row" role="group" aria-label="Đích tên PDF">
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label={`Thêm đích tên ${destName || 'cho trang hiện tại'}`}
+                  onClick={() => void run((bytes) => addNamedDest(bytes, destName, page))}
+                >
+                  Thêm đích tên
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || outlineAt == null}
+                  aria-label={
+                    outlineAt == null
+                      ? 'Chọn một mục lục rồi gắn đích tên'
+                      : `Gắn mục lục ${outline[outlineAt]?.title ?? ''} vào đích ${destName || 'đã nhập'}`
+                  }
+                  onClick={() => {
+                    if (outlineAt == null) {
+                      return
+                    }
+                    void run((bytes) => setOutlineNamedDest(bytes, outlineAt, destName))
+                  }}
+                >
+                  Gắn đích tên
+                </button>
+              </div>
+              {namedDests.length > 0 ? (
+                <ol className="outline-list" aria-label="Danh sách đích tên">
+                  {namedDests.map((dest) => (
+                    <li key={dest.name} className="outline-row">
+                      <button
+                        type="button"
+                        aria-label={`Chọn đích tên ${dest.name}`}
+                        onClick={() => {
+                          setDestName(dest.name)
+                          goToPage(dest.pageIndex, 'replace')
+                        }}
+                      >
+                        {dest.name} · trang {dest.pageIndex + 1}
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
               <div className="preset-row" role="group" aria-label="Thu gọn hoặc xóa mục lục">
                 <button
                   type="button"

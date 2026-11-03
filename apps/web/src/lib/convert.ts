@@ -31,6 +31,8 @@ export type ExportFormat =
   | 'tid'
   | 'texinfo'
   | 'roff'
+  | 'ipynb'
+  | 'bib'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -550,6 +552,49 @@ export function toRoff(title: string, pages: string[]): string {
     })
     .join('\n\n')
   return `.TH ${heading}\n\n${body}\n`
+}
+
+export function toIpynb(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const cells = [
+    {
+      cell_type: 'markdown',
+      metadata: {},
+      source: [`# ${heading}\n`],
+    },
+    ...pages.map((text, index) => ({
+      cell_type: 'markdown',
+      metadata: {},
+      source: [`## Trang ${index + 1}\n`, '\n', `${text.trim() || '(không có chữ)'}\n`],
+    })),
+  ]
+  return `${JSON.stringify(
+    {
+      nbformat: 4,
+      nbformat_minor: 5,
+      metadata: {
+        kernelspec: { display_name: 'Python 3', language: 'python', name: 'python3' },
+      },
+      cells,
+    },
+    null,
+    2,
+  )}\n`
+}
+
+export function escapeBibtex(value: string): string {
+  return value.replace(/([{}\\])/g, '\\$1')
+}
+
+export function toBibtex(title: string, pages: string[]): string {
+  const heading = escapeBibtex((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const body = pages
+    .map((text, index) => {
+      const note = escapeBibtex(text.trim() || '(không có chữ)')
+      return `@misc{page${index + 1},\n  title = {Trang ${index + 1}},\n  note = {${note}}\n}`
+    })
+    .join('\n\n')
+  return `@comment{${heading}}\n\n${body}\n`
 }
 
 export function toLatex(title: string, pages: string[]): string {
@@ -1411,6 +1456,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-texinfo;charset=utf-8'
     case 'roff':
       return 'text/troff;charset=utf-8'
+    case 'ipynb':
+      return 'application/x-ipynb+json;charset=utf-8'
+    case 'bib':
+      return 'application/x-bibtex;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
