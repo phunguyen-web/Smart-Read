@@ -253,6 +253,10 @@ button:disabled {
   background: #efe4d4;
   padding: 1px 7px;
   border-radius: 999px;
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .thumb.selected {

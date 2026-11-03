@@ -18,10 +18,13 @@ import {
   addCoverPage,
   addHeaderFooter,
   addOutlineBookmarks,
+  addOutlineFolder,
   extractEmbeddedImages,
   frontMatterPageCount,
+  listPageLabels,
   PAGE_LABEL_LABELS,
   PAGE_LABEL_STYLES,
+  pageLabelsForCount,
   setFrontMatterPageLabels,
   setPageLabels,
   addPageBorder,
@@ -241,6 +244,7 @@ export function Editor() {
     note: string | null
   } | null>(null)
   const [gotoRaw, setGotoRaw] = useState('')
+  const [viewerLabels, setViewerLabels] = useState<string[]>([])
   const searchHits = useMemo(
     () => (searchRaw?.id === docId ? searchRaw.hits : []),
     [searchRaw, docId],
@@ -256,6 +260,34 @@ export function Editor() {
     [selected, page],
   )
   const frontCount = doc ? frontMatterPageCount(targets, doc.pageCount) : null
+  const currentLabel = doc
+    ? viewerLabels[page]?.trim() || String(page + 1)
+    : ''
+  const currentCaption =
+    currentLabel && currentLabel !== String(page + 1)
+      ? `${currentLabel} (trang ${page + 1})`
+      : `trang ${page + 1}`
+
+  useEffect(() => {
+    if (!doc) {
+      return
+    }
+    let cancelled = false
+    void listPageLabels(doc.bytes)
+      .then((ranges) => {
+        if (!cancelled) {
+          setViewerLabels(pageLabelsForCount(ranges, doc.pageCount))
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setViewerLabels([])
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [doc])
 
   const restore = useCallback((snapshot: EditorSnapshot): void => {
     setPage(snapshot.page)
@@ -495,14 +527,14 @@ export function Editor() {
     if (!doc) {
       return
     }
-    const parsed = parseGotoPage(gotoRaw, doc.pageCount)
+    const parsed = parseGotoPage(gotoRaw, doc.pageCount, viewerLabels)
     if (!parsed.ok) {
       setError(parsed.message)
       return
     }
     setError(null)
     goToPage(parsed.index, 'replace')
-  }, [doc, gotoRaw, goToPage])
+  }, [doc, gotoRaw, goToPage, viewerLabels])
 
   const removeBlankPages = useCallback(async (): Promise<void> => {
     if (!doc) {
@@ -907,7 +939,7 @@ export function Editor() {
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục,
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -917,7 +949,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -978,6 +1010,7 @@ export function Editor() {
             pageCount={doc.pageCount}
             current={page}
             selected={selected}
+            labels={viewerLabels}
             disabled={busy}
             onSelect={onThumbSelect}
             onReorder={(from, to) => {
@@ -986,7 +1019,7 @@ export function Editor() {
           />
           <div className="preview-card">
             <p className="meta" aria-live="polite">
-              {doc.name} · {doc.pageCount} trang · đang xem trang {page + 1}
+              {doc.name} · {doc.pageCount} trang · đang xem {currentCaption}
               {targets.length > 1 ? ` · đã chọn ${targets.length} trang` : ''}
             </p>
             <div className="preview-wrap">
@@ -994,7 +1027,7 @@ export function Editor() {
                 ref={canvasRef}
                 className="preview"
                 onClick={onPreviewClick}
-                aria-label={`Xem trước trang ${page + 1}. Nhấn để chọn vị trí chữ chèn.`}
+                aria-label={`Xem trước ${currentCaption}. Nhấn để chọn vị trí chữ chèn.`}
               />
               <span
                 className="overlay-mark"
@@ -1058,10 +1091,8 @@ export function Editor() {
                 <input
                   ref={gotoRef}
                   value={gotoRaw}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  placeholder={String(page + 1)}
-                  aria-label="Tới số trang"
+                  placeholder={currentLabel || String(page + 1)}
+                  aria-label="Tới số hoặc nhãn trang"
                   aria-keyshortcuts="Control+G"
                   onChange={(event) => setGotoRaw(event.target.value)}
                   onKeyDown={(event) => {
@@ -1839,6 +1870,18 @@ export function Editor() {
                 onClick={() => void run((bytes) => addOutlineBookmarks(bytes, targets, bookmarkTitle))}
               >
                 Đánh dấu {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={
+                  targets.length > 1
+                    ? `Thêm thư mục mục lục cho ${targets.length} trang đã chọn`
+                    : 'Thêm thư mục mục lục cho trang hiện tại'
+                }
+                onClick={() => void run((bytes) => addOutlineFolder(bytes, targets, bookmarkTitle))}
+              >
+                Thư mục {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
               </button>
             </fieldset>
             <fieldset className="crop-pack">

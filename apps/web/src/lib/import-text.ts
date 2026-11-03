@@ -22,6 +22,8 @@ export type ImportedTextKind =
   | 'rst'
   | 'textile'
   | 'wiki'
+  | 'dokuwiki'
+  | 'dbk'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -274,6 +276,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'wiki') {
     return pagesFromWiki(text)
+  }
+  if (kind === 'dokuwiki') {
+    return pagesFromDokuwiki(text)
+  }
+  if (kind === 'dbk') {
+    return pagesFromDocbook(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -727,6 +735,59 @@ export function pagesFromWiki(text: string): string[] {
     }
   }
   return pagesFromPlainText(trimmed)
+}
+
+export function pagesFromDokuwiki(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const stripTitle = (page: string): string =>
+    page.replace(/^={4,}[^\n]*$/m, '').replace(/^={4,}\s*$/m, '').trim()
+  if (/^===\s*Trang\s+\d+\s*===\s*$/m.test(trimmed)) {
+    return capPages(
+      trimmed
+        .split(/^===\s*Trang\s+\d+\s*===\s*$/m)
+        .map(stripTitle)
+        .filter((page) => page.length > 0),
+    )
+  }
+  if (/^===\s+.+\s*===\s*$/m.test(trimmed)) {
+    const pages = trimmed
+      .split(/(?=^===\s+.+\s*===\s*$)/m)
+      .map((part) => stripTitle(part.replace(/^===\s+.*$/m, '').trim()))
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  return pagesFromPlainText(trimmed)
+}
+
+export function pagesFromDocbook(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  if (/<FictionBook\b/i.test(trimmed)) {
+    return pagesFromFb2(trimmed)
+  }
+  const sections = [...trimmed.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/gi)]
+  if (sections.length > 0) {
+    const pages = sections
+      .map((match) => {
+        const body = match[1]!.replace(/<title\b[^>]*>[\s\S]*?<\/title>/i, '')
+        const paras = [...body.matchAll(/<para\b[^>]*>([\s\S]*?)<\/para>/gi)].map((para) =>
+          unescapeXml(para[1]!.replace(/<[^>]+>/g, '')),
+        )
+        return paras.join('\n').trim()
+      })
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  throw new Error('Tệp DocBook cần các mục <section>.')
 }
 
 export function pagesFromLatex(text: string): string[] {

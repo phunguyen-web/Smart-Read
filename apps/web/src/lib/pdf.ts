@@ -1915,6 +1915,8 @@ export const MAX_OUTLINE_TITLE = 120
 export type OutlineBookmark = {
   title: string
   pageIndex: number
+  /** 0 is a top-level item; 1+ nests under the previous shallower item. */
+  depth: number
 }
 
 export function assertOutlineTitle(text: string): string {
@@ -1950,15 +1952,39 @@ function pageIndexForDest(pages: { ref: PDFRef }[], dest: unknown): number {
   return pages.findIndex((page) => samePdfRef(page.ref, first))
 }
 
-function readOutlineChain(doc: PDFDocument): OutlineBookmark[] {
-  const outlines = doc.catalog.lookupMaybe(PDFName.of('Outlines'), PDFDict)
-  if (!outlines) {
-    return []
+function normalizeOutlineDepths(items: readonly OutlineBookmark[]): number[] {
+  const depths: number[] = []
+  for (let index = 0; index < items.length; index += 1) {
+    const raw = Math.trunc(items[index]!.depth)
+    const requested = Number.isInteger(raw) && raw > 0 ? raw : 0
+    const maxDepth = index === 0 ? 0 : depths[index - 1]! + 1
+    depths.push(Math.min(requested, maxDepth))
   }
-  const pages = doc.getPages()
-  const items: OutlineBookmark[] = []
-  const seen = new Set<number>()
-  let currentRef = outlines.get(PDFName.of('First'))
+  return depths
+}
+
+function outlineParentIndex(depths: readonly number[], index: number): number | null {
+  const depth = depths[index] ?? 0
+  if (depth <= 0) {
+    return null
+  }
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    if ((depths[cursor] ?? 0) < depth) {
+      return cursor
+    }
+  }
+  return null
+}
+
+function walkOutline(
+  doc: PDFDocument,
+  pages: { ref: PDFRef }[],
+  startRef: unknown,
+  depth: number,
+  items: OutlineBookmark[],
+  seen: Set<number>,
+): void {
+  let currentRef = startRef
   let guard = 0
   while (currentRef instanceof PDFRef && guard < 400) {
     guard += 1
@@ -1971,10 +1997,23 @@ function readOutlineChain(doc: PDFDocument): OutlineBookmark[] {
     const dest = current.lookupMaybe(PDFName.of('Dest'), PDFArray)
     const pageIndex = pageIndexForDest(pages, dest)
     if (title && pageIndex >= 0) {
-      items.push({ title, pageIndex })
+      items.push({ title, pageIndex, depth })
+    }
+    const first = current.get(PDFName.of('First'))
+    if (first instanceof PDFRef) {
+      walkOutline(doc, pages, first, depth + 1, items, seen)
     }
     currentRef = current.get(PDFName.of('Next'))
   }
+}
+
+function readOutlineChain(doc: PDFDocument): OutlineBookmark[] {
+  const outlines = doc.catalog.lookupMaybe(PDFName.of('Outlines'), PDFDict)
+  if (!outlines) {
+    return []
+  }
+  const items: OutlineBookmark[] = []
+  walkOutline(doc, doc.getPages(), outlines.get(PDFName.of('First')), 0, items, new Set())
   return items
 }
 
@@ -1995,22 +2034,47 @@ async function writeOutlineBookmarks(
   if (valid.length === 0) {
     throw new Error('Chọn ít nhất một trang để đánh dấu.')
   }
+  const depths = normalizeOutlineDepths(valid)
   const context = doc.context
   const rootRef = context.nextRef()
   const itemRefs = valid.map(() => context.nextRef())
+  const childrenOf: number[][] = valid.map(() => [])
+  const roots: number[] = []
+  for (let index = 0; index < valid.length; index += 1) {
+    const parent = outlineParentIndex(depths, index)
+    if (parent == null) {
+      roots.push(index)
+    } else {
+      childrenOf[parent]!.push(index)
+    }
+  }
+
+  function descendantCount(index: number): number {
+    return childrenOf[index]!.reduce((sum, child) => sum + 1 + descendantCount(child), 0)
+  }
+
   for (let index = 0; index < valid.length; index += 1) {
     const item = valid[index]!
     const page = pages[item.pageIndex]!
+    const parent = outlineParentIndex(depths, index)
+    const siblings = parent == null ? roots : childrenOf[parent]!
+    const siblingAt = siblings.indexOf(index)
+    const kids = childrenOf[index]!
     const outlineItem = context.obj({
       Title: PDFHexString.fromText(item.title),
-      Parent: rootRef,
+      Parent: parent == null ? rootRef : itemRefs[parent]!,
       Dest: [page.ref, PDFName.of('XYZ'), null, null, null],
     })
-    if (index > 0) {
-      outlineItem.set(PDFName.of('Prev'), itemRefs[index - 1]!)
+    if (siblingAt > 0) {
+      outlineItem.set(PDFName.of('Prev'), itemRefs[siblings[siblingAt - 1]!]!)
     }
-    if (index < valid.length - 1) {
-      outlineItem.set(PDFName.of('Next'), itemRefs[index + 1]!)
+    if (siblingAt >= 0 && siblingAt < siblings.length - 1) {
+      outlineItem.set(PDFName.of('Next'), itemRefs[siblings[siblingAt + 1]!]!)
+    }
+    if (kids.length > 0) {
+      outlineItem.set(PDFName.of('First'), itemRefs[kids[0]!]!)
+      outlineItem.set(PDFName.of('Last'), itemRefs[kids[kids.length - 1]!]!)
+      outlineItem.set(PDFName.of('Count'), PDFNumber.of(descendantCount(index)))
     }
     context.assign(itemRefs[index]!, outlineItem)
   }
@@ -2018,8 +2082,8 @@ async function writeOutlineBookmarks(
     rootRef,
     context.obj({
       Type: 'Outlines',
-      First: itemRefs[0],
-      Last: itemRefs[itemRefs.length - 1],
+      First: itemRefs[roots[0]!],
+      Last: itemRefs[roots[roots.length - 1]!],
       Count: valid.length,
     }),
   )
@@ -2048,8 +2112,30 @@ export async function addOutlineBookmarks(
   const added: OutlineBookmark[] = unique.map((pageIndex) => ({
     title: unique.length === 1 ? label : `${label} · ${pageIndex + 1}`,
     pageIndex,
+    depth: 0,
   }))
   return writeOutlineBookmarks(bytes, [...existing, ...added])
+}
+
+/** Append a folder bookmark whose children are the selected pages. */
+export async function addOutlineFolder(
+  bytes: Uint8Array,
+  pageIndexes: readonly number[],
+  title: string,
+): Promise<Uint8Array> {
+  const label = assertOutlineTitle(title)
+  const unique = uniqueSorted([...pageIndexes], false)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đánh dấu.')
+  }
+  const existing = await listOutlineBookmarks(bytes)
+  const folder: OutlineBookmark = { title: label, pageIndex: unique[0]!, depth: 0 }
+  const children: OutlineBookmark[] = unique.map((pageIndex) => ({
+    title: `${label} · ${pageIndex + 1}`,
+    pageIndex,
+    depth: 1,
+  }))
+  return writeOutlineBookmarks(bytes, [...existing, folder, ...children])
 }
 
 export const PAGE_LABEL_STYLES = ['decimal', 'roman', 'Roman', 'trang'] as const
@@ -2123,6 +2209,36 @@ export function formatPageLabel(style: PageLabelStyle, n: number): string {
     return toRomanNumeral(start, true)
   }
   return String(start)
+}
+
+/** Viewer label for a 0-based page, from `/PageLabels` ranges. Falls back to 1, 2, 3. */
+export function pageLabelForIndex(ranges: readonly PageLabelRange[], index: number): string {
+  if (!Number.isInteger(index) || index < 0) {
+    return '1'
+  }
+  let active: PageLabelRange | undefined
+  for (const range of ranges) {
+    if (range.startIndex <= index && (!active || range.startIndex >= active.startIndex)) {
+      active = range
+    }
+  }
+  if (!active) {
+    return String(index + 1)
+  }
+  const n = active.start + (index - active.startIndex)
+  if (active.style === 'trang') {
+    return formatPageLabel('trang', n)
+  }
+  const number = formatPageLabel(active.style, n)
+  return active.prefix ? `${active.prefix}${number}` : number
+}
+
+export function pageLabelsForCount(ranges: readonly PageLabelRange[], count: number): string[] {
+  const n = Math.max(0, Math.trunc(count))
+  if (!Number.isInteger(n)) {
+    return []
+  }
+  return Array.from({ length: n }, (_, index) => pageLabelForIndex(ranges, index))
 }
 
 export function assertPageLabelStart(style: PageLabelStyle, start: number): number {

@@ -19,6 +19,8 @@ export type ExportFormat =
   | 'rst'
   | 'textile'
   | 'wiki'
+  | 'dokuwiki'
+  | 'dbk'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -371,6 +373,36 @@ export function toWiki(title: string, pages: string[]): string {
     })
     .join('\n\n')
   return `= ${heading} =\n\n${body}\n`
+}
+
+export function toDokuwiki(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const body = pages
+    .map((text, index) => {
+      const content = text.trim() || '(không có chữ)'
+      return `=== Trang ${index + 1} ===\n\n${content}`
+    })
+    .join('\n\n')
+  return `====== ${heading} ======\n\n${body}\n`
+}
+
+export function toDocbook(title: string, pages: string[]): string {
+  const heading = escapeHtml(title.trim() || 'Tài liệu')
+  const body = pages
+    .map((text, index) => {
+      const paras = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `    <para>${escapeHtml(line)}</para>`)
+        .join('\n')
+      return `  <section>\n    <title>Trang ${index + 1}</title>\n${paras}\n  </section>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<article xmlns="http://docbook.org/ns/docbook" version="5.0" xml:lang="vi">
+  <title>${heading}</title>
+${body}
+</article>
+`
 }
 
 export function toLatex(title: string, pages: string[]): string {
@@ -1208,6 +1240,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-textile;charset=utf-8'
     case 'wiki':
       return 'text/x-mediawiki;charset=utf-8'
+    case 'dokuwiki':
+      return 'text/x-dokuwiki;charset=utf-8'
+    case 'dbk':
+      return 'application/docbook+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

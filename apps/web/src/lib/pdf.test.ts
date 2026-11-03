@@ -22,6 +22,8 @@ import {
   toRst,
   toTextile,
   toWiki,
+  toDokuwiki,
+  toDocbook,
   toJsonl,
   toLatex,
   toOrg,
@@ -53,6 +55,8 @@ import {
   imagesFromCbz,
   pagesFromTextile,
   pagesFromWiki,
+  pagesFromDokuwiki,
+  pagesFromDocbook,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -126,10 +130,13 @@ import {
   addCoverPage,
   addHeaderFooter,
   addOutlineBookmarks,
+  addOutlineFolder,
   extractEmbeddedImages,
   formatPageLabel,
   frontMatterPageCount,
   listPageLabels,
+  pageLabelForIndex,
+  pageLabelsForCount,
   setFrontMatterPageLabels,
   setPageLabels,
   toRomanNumeral,
@@ -538,15 +545,31 @@ describe('pdf edits', () => {
     await expect(decryptPdfForEdit(locked, '   ')).rejects.toThrow(/mật khẩu/)
 
     const marked = await addOutlineBookmarks(bytes, [1], 'Chương hai')
-    expect(await listOutlineBookmarks(marked)).toEqual([{ title: 'Chương hai', pageIndex: 1 }])
+    expect(await listOutlineBookmarks(marked)).toEqual([
+      { title: 'Chương hai', pageIndex: 1, depth: 0 },
+    ])
     const again = await addOutlineBookmarks(marked, [0, 1], 'Mục')
     expect(await listOutlineBookmarks(again)).toEqual([
-      { title: 'Chương hai', pageIndex: 1 },
-      { title: 'Mục · 1', pageIndex: 0 },
-      { title: 'Mục · 2', pageIndex: 1 },
+      { title: 'Chương hai', pageIndex: 1, depth: 0 },
+      { title: 'Mục · 1', pageIndex: 0, depth: 0 },
+      { title: 'Mục · 2', pageIndex: 1, depth: 0 },
     ])
     await expect(addOutlineBookmarks(bytes, [], 'X')).rejects.toThrow(/trang/)
     await expect(addOutlineBookmarks(bytes, [0], '  ')).rejects.toThrow(/mục lục/)
+    const nested = await addOutlineFolder(bytes, [0, 1], 'Phần A')
+    expect(await listOutlineBookmarks(nested)).toEqual([
+      { title: 'Phần A', pageIndex: 0, depth: 0 },
+      { title: 'Phần A · 1', pageIndex: 0, depth: 1 },
+      { title: 'Phần A · 2', pageIndex: 1, depth: 1 },
+    ])
+    const nestedAgain = await addOutlineBookmarks(nested, [1], 'Phụ lục')
+    expect(await listOutlineBookmarks(nestedAgain)).toEqual([
+      { title: 'Phần A', pageIndex: 0, depth: 0 },
+      { title: 'Phần A · 1', pageIndex: 0, depth: 1 },
+      { title: 'Phần A · 2', pageIndex: 1, depth: 1 },
+      { title: 'Phụ lục', pageIndex: 1, depth: 0 },
+    ])
+    await expect(addOutlineFolder(bytes, [], 'X')).rejects.toThrow(/trang/)
 
     expect(toRomanNumeral(2)).toBe('ii')
     expect(toRomanNumeral(4, true)).toBe('IV')
@@ -568,6 +591,12 @@ describe('pdf edits', () => {
       { startIndex: 0, style: 'roman', prefix: '', start: 1 },
       { startIndex: 1, style: 'decimal', prefix: '', start: 1 },
     ])
+    expect(pageLabelForIndex([], 0)).toBe('1')
+    expect(pageLabelForIndex([{ startIndex: 0, style: 'roman', prefix: '', start: 1 }], 1)).toBe(
+      'ii',
+    )
+    expect(pageLabelsForCount(await listPageLabels(split), 3)).toEqual(['i', '1', '2'])
+    expect(pageLabelsForCount(await listPageLabels(labeled), 2)).toEqual(['Trang 1', 'Trang 2'])
     await expect(setPageLabels(bytes, 'decimal', 0)).rejects.toThrow(/bắt đầu/)
     await expect(setFrontMatterPageLabels(bytes, 2)).rejects.toThrow(/mở đầu/)
     await expect(extractEmbeddedImages(bytes, [0])).rejects.toThrow(/ảnh nhúng/)
@@ -998,6 +1027,28 @@ describe('conversion helpers', () => {
     )
     expect(swapExtension('notes.wiki', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.mediawiki', 'pdf')).toBe('notes.pdf')
+    expect(toDokuwiki('Demo', ['Một', 'Hai\ndòng'])).toContain('====== Demo ======')
+    expect(toDokuwiki('Demo', ['Một'])).toContain('=== Trang 1 ===')
+    expect(pagesFromDokuwiki(toDokuwiki('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('dokuwiki', toDokuwiki('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromDokuwiki('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.dokuwiki', { type: '' }))).toBe('dokuwiki')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dw', { type: 'text/x-dokuwiki' }))).toBe(
+      'dokuwiki',
+    )
+    expect(swapExtension('notes.dokuwiki', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.dw', 'pdf')).toBe('notes.pdf')
+    expect(toDocbook('Demo', ['Một', 'Hai\ndòng'])).toContain('<article')
+    expect(toDocbook('Demo', ['Một'])).toContain('<title>Trang 1</title>')
+    expect(pagesFromDocbook(toDocbook('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('dbk', toDocbook('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromDocbook('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.dbk', { type: '' }))).toBe('dbk')
+    expect(sourceKindFromFile(new File(['x'], 'notes.docbook', { type: 'application/docbook+xml' }))).toBe(
+      'dbk',
+    )
+    expect(swapExtension('notes.dbk', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.docbook', 'pdf')).toBe('notes.pdf')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: '' }))).toBe('cbz')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: 'application/vnd.comicbook+zip' }))).toBe(
       'cbz',
@@ -1216,6 +1267,11 @@ describe('page selection', () => {
     expect(parseGotoPage('0', 4).ok).toBe(false)
     expect(parseGotoPage('9', 4).ok).toBe(false)
     expect(parseGotoPage('3', 4)).toEqual({ ok: true, index: 2 })
+    expect(parseGotoPage('ii', 4, ['i', 'ii', '1', '2'])).toEqual({ ok: true, index: 1 })
+    expect(parseGotoPage('1', 4, ['i', 'ii', '1', '2'])).toEqual({ ok: true, index: 2 })
+    expect(parseGotoPage('4', 4, ['i', 'ii', '1', '2'])).toEqual({ ok: true, index: 3 })
+    expect(parseGotoPage('Trang 2', 2, ['Trang 1', 'Trang 2'])).toEqual({ ok: true, index: 1 })
+    expect(parseGotoPage('iv', 4, ['i', 'ii', '1', '2']).ok).toBe(false)
   })
 
   it('caps undo snapshots and pops the latest first', () => {

@@ -191,8 +191,21 @@ export function indexesFromPageRange(fromPage: number, toPage: number): number[]
 
 export type GotoPageParse = { ok: true; index: number } | { ok: false; message: string }
 
-/** Validate a 1-based page number for jumping in the editor. */
-export function parseGotoPage(raw: string, pageCount: number): GotoPageParse {
+function foldGoto(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+/** Validate a 1-based page number, or a viewer page label, for jumping in the editor. */
+export function parseGotoPage(
+  raw: string,
+  pageCount: number,
+  labels?: readonly string[],
+): GotoPageParse {
   if (pageCount < 1) {
     return { ok: false, message: 'Tài liệu không có trang để tới.' }
   }
@@ -200,8 +213,21 @@ export function parseGotoPage(raw: string, pageCount: number): GotoPageParse {
   if (trimmed === '') {
     return { ok: false, message: 'Nhập số trang cần tới.' }
   }
+  if (labels && labels.length === pageCount) {
+    const folded = foldGoto(trimmed)
+    const hit = labels.findIndex((label) => foldGoto(label) === folded)
+    if (hit >= 0) {
+      return { ok: true, index: hit }
+    }
+  }
   if (!/^\d+$/.test(trimmed)) {
-    return { ok: false, message: 'Số trang phải là số nguyên.' }
+    return {
+      ok: false,
+      message:
+        labels && labels.length === pageCount
+          ? 'Không tìm thấy nhãn hoặc số trang.'
+          : 'Số trang phải là số nguyên.',
+    }
   }
   const page = Number(trimmed)
   if (page < 1) {

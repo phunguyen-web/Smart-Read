@@ -6,6 +6,7 @@ type PageThumbsProps = {
   pageCount: number
   current: number
   selected: readonly number[]
+  labels?: readonly string[]
   disabled?: boolean
   onSelect: (index: number, event: React.MouseEvent<HTMLButtonElement>) => void
   onReorder: (from: number, to: number) => void
@@ -16,6 +17,7 @@ export function PageThumbs({
   pageCount,
   current,
   selected,
+  labels,
   disabled,
   onSelect,
   onReorder,
@@ -72,6 +74,9 @@ export function PageThumbs({
       {Array.from({ length: pageCount }, (_, index) => {
         const isCurrent = index === current
         const isSelected = selectedSet.has(index)
+        const physical = String(index + 1)
+        const label = labels?.[index]?.trim() || physical
+        const labelNote = label !== physical ? `, nhãn ${label}` : ''
         return (
           <button
             key={index}
@@ -84,7 +89,7 @@ export function PageThumbs({
             draggable={!disabled}
             aria-selected={isSelected}
             aria-current={isCurrent ? 'page' : undefined}
-            aria-label={`Trang ${index + 1}${isSelected ? ', đã chọn' : ''}. ${
+            aria-label={`Trang ${index + 1}${labelNote}${isSelected ? ', đã chọn' : ''}. ${
               isSelected && selected.length > 1
                 ? 'Kéo để dời cả nhóm đã chọn.'
                 : 'Kéo để đổi thứ tự.'
@@ -122,7 +127,7 @@ export function PageThumbs({
             onDragEnd={clearDrag}
           >
             <canvas aria-hidden="true" />
-            <span>{index + 1}</span>
+            <span>{label}</span>
           </button>
         )
       })}
