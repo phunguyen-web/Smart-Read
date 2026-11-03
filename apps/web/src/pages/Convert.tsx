@@ -13,6 +13,8 @@ import {
   toIni,
   toAdoc,
   toRst,
+  toTextile,
+  toWiki,
   toJson,
   toJsonl,
   toLatex,
@@ -44,6 +46,8 @@ import {
 import { importNoteFor, pdfFromLoadedSource } from '../lib/open-source.ts'
 import { editorExportSelection, forgetHistory, formatPageList } from '../lib/persist.ts'
 import { indexesFromPageRange, parsePageRange } from '../lib/selection.ts'
+import { decryptPdfForEdit, isPdfPasswordError } from '../lib/encrypt.ts'
+import { pageCount } from '../lib/pdf.ts'
 import { downloadBlob, setDocument } from '../lib/document-store.ts'
 import { useDocument } from '../use-document.ts'
 
@@ -64,6 +68,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'ini', label: 'INI', hint: '[document] + [page.n] text' },
   { id: 'adoc', label: 'AsciiDoc', hint: '= title + == Trang n' },
   { id: 'rst', label: 'RST', hint: 'reStructuredText, một mục mỗi trang' },
+  { id: 'textile', label: 'Textile', hint: 'h1. title + h2. Trang n' },
+  { id: 'wiki', label: 'MediaWiki', hint: '= title = + == Trang n ==' },
   { id: 'xlsx', label: 'XLSX', hint: 'Excel, cột trang + chữ' },
   { id: 'docx', label: 'DOCX', hint: 'Microsoft Word' },
   { id: 'doc', label: 'DOC', hint: 'Word (cùng nội dung DOCX)' },
@@ -86,6 +92,8 @@ export function Convert() {
   const [note, setNote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [calibre, setCalibre] = useState(false)
+  const [openPassword, setOpenPassword] = useState('')
+  const [lockedPdf, setLockedPdf] = useState<{ name: string; bytes: Uint8Array } | null>(null)
   const docId = doc ? `${doc.name}:${doc.bytes.byteLength}:${doc.pageCount}` : ''
   const [range, setRange] = useState<{ id: string; fromPage: string; toPage: string } | null>(
     null,
@@ -120,9 +128,23 @@ export function Convert() {
     }
     setError(null)
     setNote(null)
+    setLockedPdf(null)
     try {
       const source = await readSourceFile(file)
       const next = await pdfFromLoadedSource(source)
+      if (source.kind === 'pdf') {
+        try {
+          await pageCount(next.bytes)
+        } catch (cause) {
+          if (isPdfPasswordError(cause)) {
+            setLockedPdf({ name: next.name, bytes: next.bytes })
+            setOpenPassword('')
+            setError('PDF này đang khóa. Nhập mật khẩu để mở. Bản làm việc sẽ được giải khóa.')
+            return
+          }
+          throw cause
+        }
+      }
       await forgetHistory()
       const loaded = await setDocument(next.name, next.bytes)
       const note = importNoteFor(source, loaded.pageCount)
@@ -131,6 +153,27 @@ export function Convert() {
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Không đọc được tệp.')
+    }
+  }
+
+  async function unlockPending(): Promise<void> {
+    if (!lockedPdf) {
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setNote(null)
+    try {
+      const unlocked = await decryptPdfForEdit(lockedPdf.bytes, openPassword)
+      await forgetHistory()
+      const loaded = await setDocument(lockedPdf.name, unlocked)
+      setLockedPdf(null)
+      setOpenPassword('')
+      setNote(`Đã mở PDF khóa (${loaded.pageCount} trang). Bản làm việc không còn mật khẩu.`)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không mở được PDF khóa.')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -267,6 +310,16 @@ export function Convert() {
           new Blob([toRst(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
+      } else if (format === 'textile') {
+        downloadBlob(
+          new Blob([toTextile(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'wiki') {
+        downloadBlob(
+          new Blob([toWiki(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
       } else if (format === 'docx' || format === 'doc') {
         const blob = await toDocx(title, pages)
         downloadBlob(blob, swapExtension(doc.name, extensionFor(format)))
@@ -325,11 +378,11 @@ export function Convert() {
       <header className="page-head">
         <h1>Chuyển đổi định dạng</h1>
         <p>
-          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, XLSX, DOCX/DOC,
+          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, XLSX, DOCX/DOC,
           ODT, ODS, PPTX, ODP, FB2, EPUB hoặc MOBI; hoặc raster từng trang thành PNG/JPEG/WEBP. Có
-          thể mở TXT/Markdown/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2,
+          thể mở TXT/Markdown/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2,
           EPUB hoặc PNG/JPEG/WEBP để tạo PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang
-          chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau.
+          chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau. PDF khóa cần mật khẩu; bản làm việc được giải khóa.
         </p>
       </header>
 
@@ -338,7 +391,7 @@ export function Convert() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chuyển đổi"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chuyển đổi"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -349,7 +402,7 @@ export function Convert() {
         </p>
       ) : (
         <p className="empty">
-          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chọn khoảng trang và định dạng xuất.
+          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chọn khoảng trang và định dạng xuất.
         </p>
       )}
       {error ? (
@@ -358,6 +411,45 @@ export function Convert() {
         </p>
       ) : null}
       {note ? <p className="note">{note}</p> : null}
+
+      {lockedPdf ? (
+        <fieldset className="meta-pack">
+          <legend>Mở PDF khóa</legend>
+          <p className="note">{lockedPdf.name} đang khóa. Bản làm việc sẽ được giải khóa trên máy này.</p>
+          <label className="overlay-field">
+            Mật khẩu mở
+            <input
+              type="password"
+              value={openPassword}
+              autoComplete="current-password"
+              onChange={(event) => setOpenPassword(event.target.value)}
+              aria-label="Mật khẩu để mở PDF khóa"
+            />
+          </label>
+          <div className="preset-row">
+            <button
+              type="button"
+              className="primary"
+              disabled={busy}
+              aria-label="Mở PDF đã khóa mật khẩu; bản làm việc sẽ không còn khóa"
+              onClick={() => void unlockPending()}
+            >
+              Mở PDF
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setLockedPdf(null)
+                setOpenPassword('')
+                setError(null)
+              }}
+            >
+              Hủy
+            </button>
+          </div>
+        </fieldset>
+      ) : null}
 
       {doc ? (
         <div className="page-range" role="group" aria-label="Khoảng trang xuất">

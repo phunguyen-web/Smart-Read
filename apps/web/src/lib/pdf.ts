@@ -1,4 +1,16 @@
-import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib'
+import {
+  PDFArray,
+  PDFDict,
+  PDFDocument,
+  PDFHexString,
+  PDFName,
+  PDFRef,
+  PDFString,
+  StandardFonts,
+  degrees,
+  rgb,
+} from 'pdf-lib'
+import { PdfPasswordRequiredError, isPdfPasswordError } from './encrypt.ts'
 
 export type OverlayPosition = {
   /** 0–1 from the left edge */
@@ -40,8 +52,15 @@ async function loadOverlayFontBytes(): Promise<Uint8Array | null> {
 }
 
 export async function pageCount(bytes: Uint8Array): Promise<number> {
-  const doc = await PDFDocument.load(bytes)
-  return doc.getPageCount()
+  try {
+    const doc = await PDFDocument.load(bytes)
+    return doc.getPageCount()
+  } catch (error) {
+    if (isPdfPasswordError(error)) {
+      throw new PdfPasswordRequiredError()
+    }
+    throw error
+  }
 }
 
 export async function rotatePagesBy(
@@ -1886,6 +1905,148 @@ function fitOverlayText(
         .trim() || 'WM'
     return { text: safe, width: font.widthOfTextAtSize(safe, size) }
   }
+}
+
+export const MAX_OUTLINE_TITLE = 120
+
+export type OutlineBookmark = {
+  title: string
+  pageIndex: number
+}
+
+export function assertOutlineTitle(text: string): string {
+  const label = text.normalize('NFC').replace(/\s+/g, ' ').trim()
+  if (!label) {
+    throw new Error('Nhập tên mục lục.')
+  }
+  if (label.length > MAX_OUTLINE_TITLE) {
+    throw new Error('Tên mục lục quá dài.')
+  }
+  return label
+}
+
+function decodeOutlineTitle(value: unknown): string {
+  if (value instanceof PDFHexString || value instanceof PDFString) {
+    return value.decodeText().trim()
+  }
+  return ''
+}
+
+function samePdfRef(left: PDFRef, right: PDFRef): boolean {
+  return left.objectNumber === right.objectNumber && left.generationNumber === right.generationNumber
+}
+
+function pageIndexForDest(pages: { ref: PDFRef }[], dest: unknown): number {
+  if (!(dest instanceof PDFArray) || dest.size() === 0) {
+    return -1
+  }
+  const first = dest.get(0)
+  if (!(first instanceof PDFRef)) {
+    return -1
+  }
+  return pages.findIndex((page) => samePdfRef(page.ref, first))
+}
+
+function readOutlineChain(doc: PDFDocument): OutlineBookmark[] {
+  const outlines = doc.catalog.lookupMaybe(PDFName.of('Outlines'), PDFDict)
+  if (!outlines) {
+    return []
+  }
+  const pages = doc.getPages()
+  const items: OutlineBookmark[] = []
+  const seen = new Set<number>()
+  let currentRef = outlines.get(PDFName.of('First'))
+  let guard = 0
+  while (currentRef instanceof PDFRef && guard < 400) {
+    guard += 1
+    if (seen.has(currentRef.objectNumber)) {
+      break
+    }
+    seen.add(currentRef.objectNumber)
+    const current = doc.context.lookup(currentRef, PDFDict)
+    const title = decodeOutlineTitle(current.lookupMaybe(PDFName.of('Title'), PDFString, PDFHexString))
+    const dest = current.lookupMaybe(PDFName.of('Dest'), PDFArray)
+    const pageIndex = pageIndexForDest(pages, dest)
+    if (title && pageIndex >= 0) {
+      items.push({ title, pageIndex })
+    }
+    currentRef = current.get(PDFName.of('Next'))
+  }
+  return items
+}
+
+async function writeOutlineBookmarks(
+  bytes: Uint8Array,
+  items: readonly OutlineBookmark[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const pages = doc.getPages()
+  const count = pages.length
+  const valid = items.filter(
+    (item) =>
+      item.title.trim().length > 0 &&
+      Number.isInteger(item.pageIndex) &&
+      item.pageIndex >= 0 &&
+      item.pageIndex < count,
+  )
+  if (valid.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đánh dấu.')
+  }
+  const context = doc.context
+  const rootRef = context.nextRef()
+  const itemRefs = valid.map(() => context.nextRef())
+  for (let index = 0; index < valid.length; index += 1) {
+    const item = valid[index]!
+    const page = pages[item.pageIndex]!
+    const outlineItem = context.obj({
+      Title: PDFHexString.fromText(item.title),
+      Parent: rootRef,
+      Dest: [page.ref, PDFName.of('XYZ'), null, null, null],
+    })
+    if (index > 0) {
+      outlineItem.set(PDFName.of('Prev'), itemRefs[index - 1]!)
+    }
+    if (index < valid.length - 1) {
+      outlineItem.set(PDFName.of('Next'), itemRefs[index + 1]!)
+    }
+    context.assign(itemRefs[index]!, outlineItem)
+  }
+  context.assign(
+    rootRef,
+    context.obj({
+      Type: 'Outlines',
+      First: itemRefs[0],
+      Last: itemRefs[itemRefs.length - 1],
+      Count: valid.length,
+    }),
+  )
+  doc.catalog.set(PDFName.of('Outlines'), rootRef)
+  doc.catalog.set(PDFName.of('PageMode'), PDFName.of('UseOutlines'))
+  return new Uint8Array(await doc.save())
+}
+
+export async function listOutlineBookmarks(bytes: Uint8Array): Promise<OutlineBookmark[]> {
+  const doc = await PDFDocument.load(bytes)
+  return readOutlineChain(doc)
+}
+
+/** Append outline bookmarks for selected pages. Empty indexes or an empty title are refused. */
+export async function addOutlineBookmarks(
+  bytes: Uint8Array,
+  pageIndexes: readonly number[],
+  title: string,
+): Promise<Uint8Array> {
+  const label = assertOutlineTitle(title)
+  const unique = uniqueSorted([...pageIndexes], false)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đánh dấu.')
+  }
+  const existing = await listOutlineBookmarks(bytes)
+  const added: OutlineBookmark[] = unique.map((pageIndex) => ({
+    title: unique.length === 1 ? label : `${label} · ${pageIndex + 1}`,
+    pageIndex,
+  }))
+  return writeOutlineBookmarks(bytes, [...existing, ...added])
 }
 
 function clamp(value: number, min: number, max: number): number {

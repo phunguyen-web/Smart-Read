@@ -17,6 +17,8 @@ export type ExportFormat =
   | 'ini'
   | 'adoc'
   | 'rst'
+  | 'textile'
+  | 'wiki'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -315,6 +317,28 @@ export function toRst(title: string, pages: string[]): string {
     })
     .join('\n\n')
   return `${heading}\n${titleRule}\n\n${body}\n`
+}
+
+export function toTextile(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const body = pages
+    .map((text, index) => {
+      const content = text.trim() || '(không có chữ)'
+      return `h2. Trang ${index + 1}\n\n${content}`
+    })
+    .join('\n\n')
+  return `h1. ${heading}\n\n${body}\n`
+}
+
+export function toWiki(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const body = pages
+    .map((text, index) => {
+      const content = text.trim() || '(không có chữ)'
+      return `== Trang ${index + 1} ==\n\n${content}`
+    })
+    .join('\n\n')
+  return `= ${heading} =\n\n${body}\n`
 }
 
 export function toLatex(title: string, pages: string[]): string {
@@ -1148,6 +1172,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/asciidoc;charset=utf-8'
     case 'rst':
       return 'text/x-rst;charset=utf-8'
+    case 'textile':
+      return 'text/x-textile;charset=utf-8'
+    case 'wiki':
+      return 'text/x-mediawiki;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

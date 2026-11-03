@@ -17,6 +17,7 @@ import {
   PAPER_LABELS,
   addCoverPage,
   addHeaderFooter,
+  addOutlineBookmarks,
   addPageBorder,
   addPageNumbers,
   addTextOverlay,
@@ -78,6 +79,7 @@ import {
   type WatermarkStyle,
 } from '../lib/pdf.ts'
 import { zipPdfParts } from '../lib/convert.ts'
+import { decryptPdfForEdit, isPdfPasswordError } from '../lib/encrypt.ts'
 import {
   ACCEPT_SOURCES,
   encryptedPdfName,
@@ -193,6 +195,13 @@ export function Editor() {
   const [pageBg, setPageBg] = useState<PageBgId>('cream')
   const [downloadPassword, setDownloadPassword] = useState('')
   const [downloadConfirm, setDownloadConfirm] = useState('')
+  const [openPassword, setOpenPassword] = useState('')
+  const [bookmarkTitle, setBookmarkTitle] = useState('')
+  const [lockedPdf, setLockedPdf] = useState<{
+    name: string
+    bytes: Uint8Array
+    purpose: 'open' | 'merge'
+  } | null>(null)
   const [metaTitle, setMetaTitle] = useState('')
   const [metaAuthor, setMetaAuthor] = useState('')
   const [metaSubject, setMetaSubject] = useState('')
@@ -708,8 +717,23 @@ export function Editor() {
     }
     setError(null)
     setMergePending(null)
+    setLockedPdf(null)
     try {
-      const next = await pdfFromLoadedSource(await readSourceFile(file))
+      const source = await readSourceFile(file)
+      const next = await pdfFromLoadedSource(source)
+      if (source.kind === 'pdf') {
+        try {
+          await pageCount(next.bytes)
+        } catch (cause) {
+          if (isPdfPasswordError(cause)) {
+            setLockedPdf({ name: next.name, bytes: next.bytes, purpose: 'open' })
+            setOpenPassword('')
+            setError('PDF này đang khóa. Nhập mật khẩu để mở. Bản làm việc sẽ được giải khóa.')
+            return
+          }
+          throw cause
+        }
+      }
       await forgetHistory()
       await setDocument(next.name, next.bytes)
       clearEditorView()
@@ -723,6 +747,38 @@ export function Editor() {
     }
   }
 
+  async function unlockPending(): Promise<void> {
+    if (!lockedPdf) {
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const unlocked = await decryptPdfForEdit(lockedPdf.bytes, openPassword)
+      if (lockedPdf.purpose === 'merge') {
+        const pages = await pageCount(unlocked)
+        setMergePending({ name: lockedPdf.name, bytes: unlocked, pages })
+        setLockedPdf(null)
+        setOpenPassword('')
+        return
+      }
+      await forgetHistory()
+      await setDocument(lockedPdf.name, unlocked)
+      clearEditorView()
+      setPage(0)
+      setSelected([0])
+      setAnchor(0)
+      setPast([])
+      setFuture([])
+      setLockedPdf(null)
+      setOpenPassword('')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không mở được PDF khóa.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function onMergePick(file: File | undefined): Promise<void> {
     if (!file) {
       return
@@ -730,8 +786,20 @@ export function Editor() {
     setError(null)
     try {
       const bytes = await readPdfFile(file)
-      const pages = await pageCount(bytes)
-      setMergePending({ name: file.name, bytes, pages })
+      try {
+        const pages = await pageCount(bytes)
+        setLockedPdf(null)
+        setMergePending({ name: file.name, bytes, pages })
+      } catch (cause) {
+        if (isPdfPasswordError(cause)) {
+          setMergePending(null)
+          setLockedPdf({ name: file.name, bytes, purpose: 'merge' })
+          setOpenPassword('')
+          setError('PDF gộp đang khóa. Nhập mật khẩu để mở, rồi gộp bản đã giải khóa.')
+          return
+        }
+        throw cause
+      }
     } catch (cause) {
       setMergePending(null)
       setError(cause instanceof Error ? cause.message : 'Không gộp được.')
@@ -821,8 +889,9 @@ export function Editor() {
           2/4 trang mỗi tờ, xếp sách gấp, lật ngang/dọc, cắt đôi trên/dưới hoặc trái/phải, xoay khổ
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
-          hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, RTF, DOCX, ODT, ODS, XLSX,
+          hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục,
+          mở PDF khóa bằng mật khẩu, rồi tải PDF
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -832,7 +901,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -841,6 +910,47 @@ export function Editor() {
         <p className="error" role="alert">
           {error}
         </p>
+      ) : null}
+
+      {lockedPdf ? (
+        <fieldset className="meta-pack">
+          <legend>{lockedPdf.purpose === 'merge' ? 'Gộp PDF khóa' : 'Mở PDF khóa'}</legend>
+          <p className="note">
+            {lockedPdf.name} đang khóa. Bản làm việc sẽ được giải khóa và giữ trên máy này.
+          </p>
+          <label className="overlay-field">
+            Mật khẩu mở
+            <input
+              type="password"
+              value={openPassword}
+              autoComplete="current-password"
+              onChange={(event) => setOpenPassword(event.target.value)}
+              aria-label="Mật khẩu để mở PDF khóa"
+            />
+          </label>
+          <div className="preset-row">
+            <button
+              type="button"
+              className="primary"
+              disabled={busy}
+              aria-label="Mở PDF đã khóa mật khẩu; bản làm việc sẽ không còn khóa"
+              onClick={() => void unlockPending()}
+            >
+              {lockedPdf.purpose === 'merge' ? 'Mở để gộp' : 'Mở PDF'}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setLockedPdf(null)
+                setOpenPassword('')
+                setError(null)
+              }}
+            >
+              Hủy
+            </button>
+          </div>
+        </fieldset>
       ) : null}
 
       {!doc ? (
@@ -1638,6 +1748,29 @@ export function Editor() {
                 }
               >
                 Thêm bìa
+              </button>
+            </fieldset>
+            <fieldset className="watermark-pack">
+              <legend>Mục lục</legend>
+              <label className="overlay-field">
+                Tên mục
+                <input
+                  value={bookmarkTitle}
+                  onChange={(event) => setBookmarkTitle(event.target.value)}
+                  aria-label="Tên mục lục cho trang đã chọn"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={
+                  targets.length > 1
+                    ? `Đánh dấu ${targets.length} trang đã chọn vào mục lục`
+                    : 'Đánh dấu trang hiện tại vào mục lục'
+                }
+                onClick={() => void run((bytes) => addOutlineBookmarks(bytes, targets, bookmarkTitle))}
+              >
+                Đánh dấu {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
               </button>
             </fieldset>
             <fieldset className="crop-pack">

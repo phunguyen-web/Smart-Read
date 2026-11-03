@@ -20,6 +20,8 @@ export type ImportedTextKind =
   | 'ini'
   | 'adoc'
   | 'rst'
+  | 'textile'
+  | 'wiki'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp'
@@ -210,6 +212,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'rst') {
     return pagesFromRst(text)
+  }
+  if (kind === 'textile') {
+    return pagesFromTextile(text)
+  }
+  if (kind === 'wiki') {
+    return pagesFromWiki(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -607,6 +615,56 @@ export function pagesFromRst(text: string): string[] {
     const pages = trimmed
       .split(splitHeading)
       .map((part) => part.replace(anyHeading, '').trim())
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  return pagesFromPlainText(trimmed)
+}
+
+export function pagesFromTextile(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  if (/^h2\.\s+Trang\s+\d+/m.test(trimmed)) {
+    return capPages(
+      trimmed
+        .split(/^h2\.\s+Trang\s+\d+\s*$/m)
+        .map((page) => page.replace(/^h1\.\s+.*$/m, '').trim())
+        .filter((page) => page.length > 0),
+    )
+  }
+  if (/^h2\.\s+/m.test(trimmed)) {
+    const pages = trimmed
+      .split(/(?=^h2\.\s+)/m)
+      .map((part) => part.replace(/^h2\.\s+.*$/m, '').replace(/^h1\.\s+.*$/m, '').trim())
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  return pagesFromPlainText(trimmed)
+}
+
+export function pagesFromWiki(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  if (/^==+\s*Trang\s+\d+\s*==+/m.test(trimmed)) {
+    return capPages(
+      trimmed
+        .split(/^==+\s*Trang\s+\d+\s*==+\s*$/m)
+        .map((page) => page.replace(/^=+\s+.*$/m, '').trim())
+        .filter((page) => page.length > 0),
+    )
+  }
+  if (/^==+\s+.+\s+==+/m.test(trimmed)) {
+    const pages = trimmed
+      .split(/(?=^==+\s+.+\s+==+\s*$)/m)
+      .map((part) => part.replace(/^==+\s+.*$/m, '').replace(/^=+\s+.*$/m, '').trim())
       .filter((page) => page.length > 0)
     if (pages.length > 0) {
       return capPages(pages)

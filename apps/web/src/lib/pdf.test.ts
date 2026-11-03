@@ -17,6 +17,8 @@ import {
   toIni,
   toAdoc,
   toRst,
+  toTextile,
+  toWiki,
   toJsonl,
   toLatex,
   toOrg,
@@ -45,6 +47,8 @@ import {
   pagesFromIni,
   pagesFromAdoc,
   pagesFromRst,
+  pagesFromTextile,
+  pagesFromWiki,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -84,7 +88,7 @@ import {
   thumbnailContrastForPage,
   thumbnailScaleForPage,
 } from './extract.ts'
-import { assertPdfPassword, encryptPdfForDownload } from './encrypt.ts'
+import { assertPdfPassword, decryptPdfForEdit, encryptPdfForDownload } from './encrypt.ts'
 import {
   decodeSnapshots,
   encodeSnapshots,
@@ -115,6 +119,7 @@ import {
   LETTER_WIDTH,
   addCoverPage,
   addHeaderFooter,
+  addOutlineBookmarks,
   addPageBorder,
   applyContentCrops,
   autoCropPages,
@@ -177,6 +182,7 @@ import {
   paperSizeForPage,
   PAPER_LABELS,
   pageCount,
+  listOutlineBookmarks,
   pageOrientation,
   displayedPageSize,
   readMetadata,
@@ -511,6 +517,23 @@ describe('pdf edits', () => {
     await expect(PDFDocument.load(locked)).rejects.toThrow(/encrypt/i)
     await expect(PDFDocument.load(bytes)).resolves.toBeTruthy()
     await expect(encryptPdfForDownload(bytes, '   ')).rejects.toThrow(/mật khẩu/)
+    await expect(pageCount(locked)).rejects.toThrow(/khóa/)
+    const opened = await decryptPdfForEdit(locked, 's3cret')
+    expect(await pageCount(opened)).toBe(2)
+    await expect(PDFDocument.load(opened)).resolves.toBeTruthy()
+    await expect(decryptPdfForEdit(locked, 'wrong')).rejects.toThrow(/không đúng/)
+    await expect(decryptPdfForEdit(locked, '   ')).rejects.toThrow(/mật khẩu/)
+
+    const marked = await addOutlineBookmarks(bytes, [1], 'Chương hai')
+    expect(await listOutlineBookmarks(marked)).toEqual([{ title: 'Chương hai', pageIndex: 1 }])
+    const again = await addOutlineBookmarks(marked, [0, 1], 'Mục')
+    expect(await listOutlineBookmarks(again)).toEqual([
+      { title: 'Chương hai', pageIndex: 1 },
+      { title: 'Mục · 1', pageIndex: 0 },
+      { title: 'Mục · 2', pageIndex: 1 },
+    ])
+    await expect(addOutlineBookmarks(bytes, [], 'X')).rejects.toThrow(/trang/)
+    await expect(addOutlineBookmarks(bytes, [0], '  ')).rejects.toThrow(/mục lục/)
 
     const pixels = new Uint8ClampedArray(4 * 4 * 4)
     pixels.fill(255)
@@ -905,6 +928,27 @@ describe('conversion helpers', () => {
     expect(sourceKindFromFile(new File(['x'], 'notes.rst', { type: '' }))).toBe('rst')
     expect(sourceKindFromFile(new File(['x'], 'notes.rest', { type: 'text/x-rst' }))).toBe('rst')
     expect(swapExtension('notes.rst', 'pdf')).toBe('notes.pdf')
+    expect(toTextile('Demo', ['Một', 'Hai\ndòng'])).toContain('h1. Demo')
+    expect(toTextile('Demo', ['Một'])).toContain('h2. Trang 1')
+    expect(pagesFromTextile(toTextile('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('textile', toTextile('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromTextile('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.textile', { type: '' }))).toBe('textile')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txtl', { type: 'text/x-textile' }))).toBe(
+      'textile',
+    )
+    expect(swapExtension('notes.textile', 'pdf')).toBe('notes.pdf')
+    expect(toWiki('Demo', ['Một', 'Hai\ndòng'])).toContain('= Demo =')
+    expect(toWiki('Demo', ['Một'])).toContain('== Trang 1 ==')
+    expect(pagesFromWiki(toWiki('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('wiki', toWiki('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromWiki('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.wiki', { type: '' }))).toBe('wiki')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mediawiki', { type: 'text/x-mediawiki' }))).toBe(
+      'wiki',
+    )
+    expect(swapExtension('notes.wiki', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.mediawiki', 'pdf')).toBe('notes.pdf')
     expect(sourceKindFromFile(new File(['x'], 'notes.yaml', { type: '' }))).toBe('yaml')
     expect(sourceKindFromFile(new File(['x'], 'notes.yml', { type: 'application/yaml' }))).toBe(
       'yaml',
