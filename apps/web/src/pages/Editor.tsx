@@ -31,6 +31,8 @@ import {
   indentOutlineItem,
   listNamedDests,
   listOutlineBookmarks,
+  renameNamedDest,
+  removeNamedDest,
   listPageLabels,
   moveOutlineItem,
   outlineIndexAfterIndent,
@@ -243,6 +245,7 @@ export function Editor() {
   const [outline, setOutline] = useState<OutlineBookmark[]>([])
   const [outlineAt, setOutlineAt] = useState<number | null>(null)
   const [namedDests, setNamedDests] = useState<NamedDestination[]>([])
+  const [namedDestAt, setNamedDestAt] = useState<string | null>(null)
   const [showBookletPreview, setShowBookletPreview] = useState(false)
   const [pageLabelStyle, setPageLabelStyle] = useState<PageLabelStyle>('decimal')
   const [lockedPdf, setLockedPdf] = useState<{
@@ -334,12 +337,16 @@ export function Editor() {
         setOutlineAt((current) =>
           current != null && current >= 0 && current < items.length ? current : null,
         )
+        setNamedDestAt((current) =>
+          current && dests.some((dest) => dest.name === current) ? current : null,
+        )
       })
       .catch(() => {
         if (!cancelled) {
           setOutline([])
           setNamedDests([])
           setOutlineAt(null)
+          setNamedDestAt(null)
         }
       })
     return () => {
@@ -996,9 +1003,9 @@ export function Editor() {
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục
-          (thư mục lồng 3 cấp không Dest, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên),
+          (thư mục lồng 3 cấp không Dest, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / đổi tên đích / xóa đích),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -1008,7 +1015,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -2215,6 +2222,44 @@ export function Editor() {
                 >
                   Gắn đích tên
                 </button>
+                <button
+                  type="button"
+                  disabled={busy || namedDestAt == null}
+                  aria-label={
+                    namedDestAt == null
+                      ? 'Chọn một đích tên rồi đổi tên'
+                      : `Đổi tên đích ${namedDestAt}`
+                  }
+                  onClick={() => {
+                    if (namedDestAt == null) {
+                      return
+                    }
+                    const from = namedDestAt
+                    void run(
+                      (bytes) => renameNamedDest(bytes, from, destName),
+                      () => setNamedDestAt(destName.normalize('NFC').trim()),
+                    )
+                  }}
+                >
+                  Đổi tên đích
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || namedDestAt == null}
+                  aria-label={
+                    namedDestAt == null ? 'Chọn một đích tên rồi xóa' : `Xóa đích tên ${namedDestAt}`
+                  }
+                  onClick={() => {
+                    if (namedDestAt == null) {
+                      return
+                    }
+                    void run((bytes) => removeNamedDest(bytes, namedDestAt), () => {
+                      setNamedDestAt(null)
+                    })
+                  }}
+                >
+                  Xóa đích tên
+                </button>
               </div>
               {namedDests.length > 0 ? (
                 <ol className="outline-list" aria-label="Danh sách đích tên">
@@ -2222,8 +2267,11 @@ export function Editor() {
                     <li key={dest.name} className="outline-row">
                       <button
                         type="button"
+                        className={namedDestAt === dest.name ? 'picked' : undefined}
+                        aria-pressed={namedDestAt === dest.name}
                         aria-label={`Chọn đích tên ${dest.name}`}
                         onClick={() => {
+                          setNamedDestAt(dest.name)
                           setDestName(dest.name)
                           goToPage(dest.pageIndex, 'replace')
                         }}

@@ -3,7 +3,7 @@ import type { ImportedTextKind, ZipImportKind } from './import-text.ts'
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 export const ACCEPT_SOURCES =
-  'application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,application/x-ipynb+json,.ipynb,application/x-bibtex,.bib,.bibtex,application/json,.json,application/jsonl,.jsonl,.ndjson,application/yaml,.yaml,.yml,text/yaml,application/xml,.xml,text/xml,text/csv,.csv,text/tab-separated-values,.tsv,application/toml,.toml,text/org,.org,application/x-tex,.tex,.latex,text/x-texinfo,.texinfo,.texi,.txi,text/troff,text/x-roff,.roff,.man,text/ini,.ini,.cfg,text/asciidoc,.adoc,.asciidoc,text/x-rst,.rst,.rest,text/x-textile,.textile,.txtl,text/x-mediawiki,.mediawiki,.wiki,text/x-dokuwiki,.dokuwiki,.dw,application/docbook+xml,.dbk,.docbook,text/x-opml,.opml,application/atom+xml,.atom,application/rss+xml,.rss,text/x-typst,.typ,text/gemini,.gmi,.gemini,text/x-pod,.pod,text/x-bbcode,.bbcode,.bb,text/x-fountain,.fountain,.spmd,text/x-tiddlywiki,.tid,.tiddlywiki,.tiddly,application/rtf,.rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,application/msword,.doc,application/vnd.oasis.opendocument.text,.odt,application/vnd.oasis.opendocument.spreadsheet,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pptx,application/vnd.oasis.opendocument.presentation,.odp,application/x-fictionbook+xml,.fb2,application/epub+zip,.epub,application/vnd.comicbook+zip,.cbz,image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp'
+  'application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,application/x-ipynb+json,.ipynb,application/x-bibtex,.bib,.bibtex,application/x-subrip,.srt,text/vtt,.vtt,application/json,.json,application/jsonl,.jsonl,.ndjson,application/yaml,.yaml,.yml,text/yaml,application/xml,.xml,text/xml,text/csv,.csv,text/tab-separated-values,.tsv,application/toml,.toml,text/org,.org,application/x-tex,.tex,.latex,text/x-texinfo,.texinfo,.texi,.txi,text/troff,text/x-roff,.roff,.man,text/ini,.ini,.cfg,text/asciidoc,.adoc,.asciidoc,text/x-rst,.rst,.rest,text/x-textile,.textile,.txtl,text/x-mediawiki,.mediawiki,.wiki,text/x-dokuwiki,.dokuwiki,.dw,application/docbook+xml,.dbk,.docbook,text/x-opml,.opml,application/atom+xml,.atom,application/rss+xml,.rss,text/x-typst,.typ,text/gemini,.gmi,.gemini,text/x-pod,.pod,text/x-bbcode,.bbcode,.bb,text/x-fountain,.fountain,.spmd,text/x-tiddlywiki,.tid,.tiddlywiki,.tiddly,application/rtf,.rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,application/msword,.doc,application/vnd.oasis.opendocument.text,.odt,application/vnd.oasis.opendocument.spreadsheet,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pptx,application/vnd.oasis.opendocument.presentation,.odp,application/x-fictionbook+xml,.fb2,application/epub+zip,.epub,application/vnd.comicbook+zip,.cbz,image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp'
 
 export type ImageKind = 'png' | 'jpg' | 'webp'
 export type EmbedImageKind = 'png' | 'jpg'
@@ -203,6 +203,18 @@ export function sourceKindFromFile(file: File): SourceKind {
     return 'bib'
   }
   if (
+    type === 'application/x-subrip' ||
+    type === 'application/x-srt' ||
+    type === 'text/srt' ||
+    type === 'text/x-srt' ||
+    name.endsWith('.srt')
+  ) {
+    return 'srt'
+  }
+  if (type === 'text/vtt' || type.startsWith('text/vtt;') || name.endsWith('.vtt')) {
+    return 'vtt'
+  }
+  if (
     type === 'application/xml' ||
     type === 'text/xml' ||
     (name.endsWith('.xml') && !name.endsWith('.fb2'))
@@ -378,7 +390,7 @@ export function sourceKindFromFile(file: File): SourceKind {
   try {
     return imageKindFromFile(file)
   } catch {
-    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP.')
+    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP.')
   }
 }
 
@@ -461,7 +473,7 @@ export async function readImageFiles(
 
 export function swapExtension(filename: string, ext: string): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|json|ya?ml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|json|ya?ml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
     'document'
   return `${base}.${ext}`
 }
@@ -506,7 +518,7 @@ export function imagePageName(
   ext: 'png' | 'jpg' | 'webp',
 ): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|json|ya?ml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|json|ya?ml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
     'document'
   const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
   return `${base}-trang-${page}.${ext}`
@@ -514,7 +526,7 @@ export function imagePageName(
 
 export function imageZipName(filename: string, ext: 'png' | 'jpg' | 'webp'): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|json|ya?ml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|json|ya?ml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
     'document'
   return `${base}-anh-${ext}.zip`
 }
@@ -526,7 +538,7 @@ export function embeddedImageName(
   ext: 'png' | 'jpg',
 ): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|json|ya?ml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|json|ya?ml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
     'document'
   const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
   const image = Number.isInteger(imageIndex) && imageIndex >= 0 ? imageIndex + 1 : 1
@@ -535,7 +547,7 @@ export function embeddedImageName(
 
 export function embeddedImageZipName(filename: string): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|json|ya?ml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|json|ya?ml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
     'document'
   return `${base}-anh-nhung.zip`
 }

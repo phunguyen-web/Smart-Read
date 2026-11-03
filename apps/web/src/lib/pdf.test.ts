@@ -37,6 +37,10 @@ import {
   toIpynb,
   toBibtex,
   escapeBibtex,
+  formatSrtTime,
+  formatVttTime,
+  toSrt,
+  toVtt,
   escapeTypst,
   toJsonl,
   toLatex,
@@ -83,6 +87,8 @@ import {
   pagesFromRoff,
   pagesFromIpynb,
   pagesFromBibtex,
+  pagesFromSrt,
+  pagesFromVtt,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -156,6 +162,8 @@ import {
   addCoverPage,
   addHeaderFooter,
   addNamedDest,
+  renameNamedDest,
+  removeNamedDest,
   addOutlineBookmarks,
   addOutlineFolder,
   bookletPreviewSheets,
@@ -831,6 +839,45 @@ describe('pdf edits', () => {
     await expect(setOutlineNamedDest(namedLeaf, 0, 'Missing')).rejects.toThrow(/đích tên/)
     await expect(setOutlineNamedDest(bytes, 0, 'ChapTwo')).rejects.toThrow(/mục lục/)
 
+    const namedDoc = await PDFDocument.load(named)
+    const namesTree = namedDoc.catalog.lookup(PDFName.of('Names'), PDFDict)
+    const destsTree = namesTree.lookup(PDFName.of('Dests'), PDFDict)
+    expect(destsTree.lookup(PDFName.of('Names'))).toBeTruthy()
+    expect(await listNamedDests(await renameNamedDest(named, 'ChapTwo', 'ChapTwo'))).toEqual([
+      { name: 'ChapTwo', pageIndex: 1 },
+    ])
+    const renamedDest = await renameNamedDest(linked, 'ChapTwo', 'Chap2')
+    expect(await listNamedDests(renamedDest)).toEqual([{ name: 'Chap2', pageIndex: 1 }])
+    expect((await listOutlineBookmarks(renamedDest))[0]).toEqual({
+      title: 'Mở đầu',
+      pageIndex: 1,
+      depth: 0,
+      destName: 'Chap2',
+    })
+    const renamedDoc = await PDFDocument.load(renamedDest)
+    expect(renamedDoc.catalog.lookupMaybe(PDFName.of('Dests'), PDFDict)?.get(PDFName.of('ChapTwo'))).toBeUndefined()
+    await expect(renameNamedDest(named, 'ChapTwo', '  ')).rejects.toThrow(/tên đích/)
+    await expect(renameNamedDest(named, 'Missing', 'Chap2')).rejects.toThrow(/đích tên/)
+    await expect(renameNamedDest(await addNamedDest(named, 'ChapOne', 0), 'ChapTwo', 'ChapOne')).rejects.toThrow(
+      /đã dùng/,
+    )
+    await expect(renameNamedDest(named, 'ChapTwo', '1bad')).rejects.toThrow(/chữ/)
+
+    const clearedDest = await removeNamedDest(linked, 'ChapTwo')
+    expect(await listNamedDests(clearedDest)).toEqual([])
+    expect((await listOutlineBookmarks(clearedDest))[0]).toEqual({
+      title: 'Mở đầu',
+      pageIndex: 1,
+      depth: 0,
+    })
+    const emptyDestDoc = await PDFDocument.load(clearedDest)
+    expect(emptyDestDoc.catalog.lookupMaybe(PDFName.of('Dests'), PDFDict)).toBeUndefined()
+    expect(
+      emptyDestDoc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)?.lookupMaybe(PDFName.of('Dests'), PDFDict),
+    ).toBeUndefined()
+    await expect(removeNamedDest(named, 'Missing')).rejects.toThrow(/đích tên/)
+    await expect(removeNamedDest(named, '  ')).rejects.toThrow(/tên đích/)
+
     expect(toRomanNumeral(2)).toBe('ii')
     expect(toRomanNumeral(4, true)).toBe('IV')
     expect(formatPageLabel('trang', 3)).toBe('Trang 3')
@@ -1443,6 +1490,27 @@ describe('conversion helpers', () => {
     )
     expect(swapExtension('notes.bib', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.bibtex', 'pdf')).toBe('notes.pdf')
+    expect(formatSrtTime(0)).toBe('00:00:00,000')
+    expect(formatSrtTime(4)).toBe('00:00:04,000')
+    expect(formatVttTime(4)).toBe('00:00:04.000')
+    expect(toSrt(['Một', 'Hai\ndòng'])).toContain('1\n00:00:00,000 --> 00:00:04,000\nMột')
+    expect(toSrt(['Một'])).toContain('00:00:00,000 --> 00:00:04,000')
+    expect(pagesFromSrt(toSrt(['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('srt', toSrt(['Hi']))).toEqual(['Hi'])
+    expect(pagesFromSrt('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.srt', { type: '' }))).toBe('srt')
+    expect(sourceKindFromFile(new File(['x'], 'notes.srt', { type: 'application/x-subrip' }))).toBe(
+      'srt',
+    )
+    expect(swapExtension('notes.srt', 'pdf')).toBe('notes.pdf')
+    expect(toVtt('Demo', ['Một', 'Hai\ndòng'])).toContain('WEBVTT')
+    expect(toVtt('Demo', ['Một'])).toContain('NOTE Demo')
+    expect(pagesFromVtt(toVtt('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vtt', toVtt('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVtt('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vtt', { type: '' }))).toBe('vtt')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vtt', { type: 'text/vtt' }))).toBe('vtt')
+    expect(swapExtension('notes.vtt', 'pdf')).toBe('notes.pdf')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: '' }))).toBe('cbz')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: 'application/vnd.comicbook+zip' }))).toBe(
       'cbz',

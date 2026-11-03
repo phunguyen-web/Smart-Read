@@ -36,6 +36,8 @@ export type ImportedTextKind =
   | 'roff'
   | 'ipynb'
   | 'bib'
+  | 'srt'
+  | 'vtt'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -330,6 +332,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'bib') {
     return pagesFromBibtex(text)
+  }
+  if (kind === 'srt') {
+    return pagesFromSrt(text)
+  }
+  if (kind === 'vtt') {
+    return pagesFromVtt(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1162,6 +1170,44 @@ export function pagesFromIpynb(text: string): string[] {
     throw new Error('Notebook Jupyter không có ô chữ.')
   }
   return pagesFromJson(trimmed)
+}
+
+function stripCaptionCue(block: string): string {
+  return block
+    .replace(/^WEBVTT\b.*$/im, '')
+    .replace(/^NOTE\s+.*$/m, '')
+    .replace(/^\d+\s*$/m, '')
+    .replace(/^\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,.]\d{3}.*$/m, '')
+    .trim()
+}
+
+export function pagesFromSrt(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  if (
+    /^\d+\s*\n\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->/m.test(trimmed) ||
+    /^\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->/m.test(trimmed)
+  ) {
+    const pages = trimmed
+      .split(/\n(?:\s*\n)+/)
+      .map(stripCaptionCue)
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  throw new Error('Tệp phụ đề cần các mục thời gian.')
+}
+
+export function pagesFromVtt(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const body = trimmed.replace(/^WEBVTT\b.*$/im, '').trim()
+  return pagesFromSrt(body)
 }
 
 export function pagesFromBibtex(text: string): string[] {

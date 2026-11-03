@@ -33,6 +33,8 @@ export type ExportFormat =
   | 'roff'
   | 'ipynb'
   | 'bib'
+  | 'srt'
+  | 'vtt'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -595,6 +597,48 @@ export function toBibtex(title: string, pages: string[]): string {
     })
     .join('\n\n')
   return `@comment{${heading}}\n\n${body}\n`
+}
+
+export const CUE_SECONDS = 4
+
+function padTimePart(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+export function formatSrtTime(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.trunc(totalSeconds))
+  const hours = Math.floor(clamped / 3600)
+  const minutes = Math.floor((clamped % 3600) / 60)
+  const seconds = clamped % 60
+  return `${padTimePart(hours)}:${padTimePart(minutes)}:${padTimePart(seconds)},000`
+}
+
+export function formatVttTime(totalSeconds: number): string {
+  return formatSrtTime(totalSeconds).replace(',', '.')
+}
+
+export function toSrt(pages: string[]): string {
+  return `${pages
+    .map((text, index) => {
+      const start = index * CUE_SECONDS
+      const end = (index + 1) * CUE_SECONDS
+      const content = text.trim() || '(không có chữ)'
+      return `${index + 1}\n${formatSrtTime(start)} --> ${formatSrtTime(end)}\n${content}`
+    })
+    .join('\n\n')}\n`
+}
+
+export function toVtt(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const cues = pages
+    .map((text, index) => {
+      const start = index * CUE_SECONDS
+      const end = (index + 1) * CUE_SECONDS
+      const content = text.trim() || '(không có chữ)'
+      return `${formatVttTime(start)} --> ${formatVttTime(end)}\n${content}`
+    })
+    .join('\n\n')
+  return `WEBVTT\n\nNOTE ${heading}\n\n${cues}\n`
 }
 
 export function toLatex(title: string, pages: string[]): string {
@@ -1460,6 +1504,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-ipynb+json;charset=utf-8'
     case 'bib':
       return 'application/x-bibtex;charset=utf-8'
+    case 'srt':
+      return 'application/x-subrip;charset=utf-8'
+    case 'vtt':
+      return 'text/vtt;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

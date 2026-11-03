@@ -2134,26 +2134,81 @@ function collectNamedDests(doc: PDFDocument): Map<string, number> {
   return dests
 }
 
+function destsFromMap(map: Map<string, number>): NamedDestination[] {
+  return [...map.entries()]
+    .map(([name, pageIndex]) => ({ name, pageIndex }))
+    .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
+}
+
+function destArrayForPage(doc: PDFDocument, pageIndex: number) {
+  const page = doc.getPages()[pageIndex]
+  if (!page) {
+    return null
+  }
+  return doc.context.obj([page.ref, PDFName.of('XYZ'), null, null, null])
+}
+
+/** Replace catalog `/Dests` and the `/Names` `/Dests` name tree. */
+function rewriteNamedDests(doc: PDFDocument, dests: readonly NamedDestination[]): void {
+  const pages = doc.getPages()
+  const unique = new Map<string, number>()
+  for (const dest of dests) {
+    if (
+      dest.name &&
+      NAMED_DEST_NAME.test(dest.name) &&
+      Number.isInteger(dest.pageIndex) &&
+      dest.pageIndex >= 0 &&
+      dest.pageIndex < pages.length
+    ) {
+      unique.set(dest.name, dest.pageIndex)
+    }
+  }
+  const items = destsFromMap(unique)
+
+  if (items.length === 0) {
+    doc.catalog.delete(PDFName.of('Dests'))
+    const names = doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)
+    if (names) {
+      names.delete(PDFName.of('Dests'))
+      if (names.keys().length === 0) {
+        doc.catalog.delete(PDFName.of('Names'))
+      }
+    }
+    return
+  }
+
+  const catalog = doc.context.obj({})
+  const namesArray = doc.context.obj([])
+  for (const dest of items) {
+    const destArray = destArrayForPage(doc, dest.pageIndex)
+    if (!destArray) {
+      continue
+    }
+    const destRef = doc.context.register(destArray)
+    catalog.set(PDFName.of(dest.name), destRef)
+    namesArray.push(PDFHexString.fromText(dest.name))
+    namesArray.push(destRef)
+  }
+  doc.catalog.set(PDFName.of('Dests'), catalog)
+  const tree = doc.context.obj({})
+  tree.set(PDFName.of('Names'), namesArray)
+  let namesDict = doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)
+  if (!namesDict) {
+    namesDict = doc.context.obj({})
+    doc.catalog.set(PDFName.of('Names'), namesDict)
+  }
+  namesDict.set(PDFName.of('Dests'), tree)
+}
+
 function writeCatalogNamedDests(
   doc: PDFDocument,
   dests: readonly NamedDestination[],
 ): void {
-  const pages = doc.getPages()
-  let dict = doc.catalog.lookupMaybe(PDFName.of('Dests'), PDFDict)
-  if (!dict) {
-    dict = doc.context.obj({})
-    doc.catalog.set(PDFName.of('Dests'), dict)
-  }
+  const merged = collectNamedDests(doc)
   for (const dest of dests) {
-    const page = pages[dest.pageIndex]
-    if (!page || !NAMED_DEST_NAME.test(dest.name)) {
-      continue
-    }
-    dict.set(
-      PDFName.of(dest.name),
-      doc.context.obj([page.ref, PDFName.of('XYZ'), null, null, null]),
-    )
+    merged.set(dest.name, dest.pageIndex)
   }
+  rewriteNamedDests(doc, destsFromMap(merged))
 }
 
 function outlineItemDest(
@@ -2511,6 +2566,64 @@ export async function addNamedDest(
   }
   writeCatalogNamedDests(doc, [{ name: label, pageIndex }])
   return new Uint8Array(await doc.save())
+}
+
+/** Rename a named destination and rewrite outline leaves that pointed at the old name. */
+export async function renameNamedDest(
+  bytes: Uint8Array,
+  from: string,
+  to: string,
+): Promise<Uint8Array> {
+  const oldLabel = assertNamedDestName(from)
+  const newLabel = assertNamedDestName(to)
+  const doc = await PDFDocument.load(bytes)
+  const dests = collectNamedDests(doc)
+  if (!dests.has(oldLabel)) {
+    throw new Error('Chưa có đích tên này.')
+  }
+  if (oldLabel !== newLabel && dests.has(newLabel)) {
+    throw new Error('Tên đích đã dùng.')
+  }
+  const pageIndex = dests.get(oldLabel)!
+  dests.delete(oldLabel)
+  dests.set(newLabel, pageIndex)
+  const outline = await listOutlineBookmarks(bytes)
+  rewriteNamedDests(doc, destsFromMap(dests))
+  const nextBytes = new Uint8Array(await doc.save())
+  if (!outline.some((item) => item.destName === oldLabel)) {
+    return nextBytes
+  }
+  return writeOutlineBookmarks(
+    nextBytes,
+    outline.map((item) =>
+      item.destName === oldLabel ? cloneOutlineItem(item, { destName: newLabel }) : item,
+    ),
+  )
+}
+
+/**
+ * Remove a named destination. Outline leaves keep the page as an explicit dest.
+ */
+export async function removeNamedDest(bytes: Uint8Array, name: string): Promise<Uint8Array> {
+  const label = assertNamedDestName(name)
+  const doc = await PDFDocument.load(bytes)
+  const dests = collectNamedDests(doc)
+  if (!dests.has(label)) {
+    throw new Error('Chưa có đích tên này.')
+  }
+  dests.delete(label)
+  const outline = await listOutlineBookmarks(bytes)
+  rewriteNamedDests(doc, destsFromMap(dests))
+  const nextBytes = new Uint8Array(await doc.save())
+  if (!outline.some((item) => item.destName === label)) {
+    return nextBytes
+  }
+  return writeOutlineBookmarks(
+    nextBytes,
+    outline.map((item) =>
+      item.destName === label ? cloneOutlineItem(item, { destName: undefined }) : item,
+    ),
+  )
 }
 
 /**
