@@ -11,6 +11,8 @@ import {
   toFb2,
   toHtml,
   toIni,
+  toAdoc,
+  toRst,
   toJson,
   toJsonl,
   toLatex,
@@ -60,6 +62,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'org', label: 'Org', hint: 'Org-mode, một mục mỗi trang' },
   { id: 'tex', label: 'LaTeX', hint: 'Tài liệu .tex, một section mỗi trang' },
   { id: 'ini', label: 'INI', hint: '[document] + [page.n] text' },
+  { id: 'adoc', label: 'AsciiDoc', hint: '= title + == Trang n' },
+  { id: 'rst', label: 'RST', hint: 'reStructuredText, một mục mỗi trang' },
   { id: 'xlsx', label: 'XLSX', hint: 'Excel, cột trang + chữ' },
   { id: 'docx', label: 'DOCX', hint: 'Microsoft Word' },
   { id: 'doc', label: 'DOC', hint: 'Word (cùng nội dung DOCX)' },
@@ -253,6 +257,16 @@ export function Convert() {
           new Blob([toIni(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
+      } else if (format === 'adoc') {
+        downloadBlob(
+          new Blob([toAdoc(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'rst') {
+        downloadBlob(
+          new Blob([toRst(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
       } else if (format === 'docx' || format === 'doc') {
         const blob = await toDocx(title, pages)
         downloadBlob(blob, swapExtension(doc.name, extensionFor(format)))
@@ -311,9 +325,9 @@ export function Convert() {
       <header className="page-head">
         <h1>Chuyển đổi định dạng</h1>
         <p>
-          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, XLSX, DOCX/DOC,
+          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, XLSX, DOCX/DOC,
           ODT, ODS, PPTX, ODP, FB2, EPUB hoặc MOBI; hoặc raster từng trang thành PNG/JPEG/WEBP. Có
-          thể mở TXT/Markdown/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2,
+          thể mở TXT/Markdown/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2,
           EPUB hoặc PNG/JPEG/WEBP để tạo PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang
           chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau.
         </p>
@@ -324,7 +338,7 @@ export function Convert() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chuyển đổi"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chuyển đổi"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -335,7 +349,7 @@ export function Convert() {
         </p>
       ) : (
         <p className="empty">
-          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chọn khoảng trang và định dạng xuất.
+          Chưa có tài liệu. Hãy tải PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chọn khoảng trang và định dạng xuất.
         </p>
       )}
       {error ? (

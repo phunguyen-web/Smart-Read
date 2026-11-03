@@ -3,7 +3,7 @@ import type { ImportedTextKind, ZipImportKind } from './import-text.ts'
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 export const ACCEPT_SOURCES =
-  'application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,application/json,.json,application/jsonl,.jsonl,.ndjson,application/yaml,.yaml,.yml,text/yaml,application/xml,.xml,text/xml,text/csv,.csv,text/tab-separated-values,.tsv,application/toml,.toml,text/org,.org,application/x-tex,.tex,.latex,text/ini,.ini,.cfg,application/rtf,.rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,application/msword,.doc,application/vnd.oasis.opendocument.text,.odt,application/vnd.oasis.opendocument.spreadsheet,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pptx,application/vnd.oasis.opendocument.presentation,.odp,application/x-fictionbook+xml,.fb2,application/epub+zip,.epub,image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp'
+  'application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,application/json,.json,application/jsonl,.jsonl,.ndjson,application/yaml,.yaml,.yml,text/yaml,application/xml,.xml,text/xml,text/csv,.csv,text/tab-separated-values,.tsv,application/toml,.toml,text/org,.org,application/x-tex,.tex,.latex,text/ini,.ini,.cfg,text/asciidoc,.adoc,.asciidoc,text/x-rst,.rst,.rest,application/rtf,.rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,application/msword,.doc,application/vnd.oasis.opendocument.text,.odt,application/vnd.oasis.opendocument.spreadsheet,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pptx,application/vnd.oasis.opendocument.presentation,.odp,application/x-fictionbook+xml,.fb2,application/epub+zip,.epub,image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp'
 
 export type ImageKind = 'png' | 'jpg' | 'webp'
 export type EmbedImageKind = 'png' | 'jpg'
@@ -152,6 +152,22 @@ export function sourceKindFromFile(file: File): SourceKind {
     return 'ini'
   }
   if (
+    type === 'text/asciidoc' ||
+    type === 'text/x-asciidoc' ||
+    name.endsWith('.asciidoc') ||
+    name.endsWith('.adoc')
+  ) {
+    return 'adoc'
+  }
+  if (
+    type === 'text/x-rst' ||
+    type === 'text/restructuredtext' ||
+    name.endsWith('.rst') ||
+    name.endsWith('.rest')
+  ) {
+    return 'rst'
+  }
+  if (
     type === 'application/rtf' ||
     type === 'text/rtf' ||
     name.endsWith('.rtf')
@@ -225,7 +241,7 @@ export function sourceKindFromFile(file: File): SourceKind {
   try {
     return imageKindFromFile(file)
   } catch {
-    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP.')
+    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP.')
   }
 }
 
@@ -307,9 +323,14 @@ export async function readImageFiles(
 
 export function swapExtension(filename: string, ext: string): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf)$/i, '') ||
     'document'
   return `${base}.${ext}`
+}
+
+export function encryptedPdfName(filename: string): string {
+  const base = filename.replace(/\.pdf$/i, '') || 'document'
+  return `${base}-khoa.pdf`
 }
 
 export function extractedPdfName(filename: string, pageIndexes: readonly number[]): string {
@@ -347,7 +368,7 @@ export function imagePageName(
   ext: 'png' | 'jpg' | 'webp',
 ): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf)$/i, '') ||
     'document'
   const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
   return `${base}-trang-${page}.${ext}`
@@ -355,7 +376,7 @@ export function imagePageName(
 
 export function imageZipName(filename: string, ext: 'png' | 'jpg' | 'webp'): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf)$/i, '') ||
     'document'
   return `${base}-anh-${ext}.zip`
 }

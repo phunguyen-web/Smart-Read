@@ -1499,6 +1499,74 @@ export async function tintPages(
   return new Uint8Array(await doc.save())
 }
 
+export const PAGE_BG_IDS = ['cream', 'yellow', 'blue', 'gray'] as const
+export type PageBgId = (typeof PAGE_BG_IDS)[number]
+export const PAGE_BG_LABELS: Record<PageBgId, string> = {
+  cream: 'Kem',
+  yellow: 'Vàng',
+  blue: 'Xanh',
+  gray: 'Xám',
+}
+export const PAGE_BACKGROUNDS: Record<PageBgId, { r: number; g: number; b: number }> = {
+  cream: { r: 0.98, g: 0.94, b: 0.82 },
+  yellow: { r: 1, g: 0.97, b: 0.72 },
+  blue: { r: 0.86, g: 0.92, b: 0.98 },
+  gray: { r: 0.9, g: 0.9, b: 0.9 },
+}
+
+export function isPageBgId(value: string): value is PageBgId {
+  return (PAGE_BG_IDS as readonly string[]).includes(value)
+}
+
+export function pageBackgroundFill(id: PageBgId): { r: number; g: number; b: number } {
+  if (!isPageBgId(id)) {
+    throw new Error('Màu nền không hỗ trợ.')
+  }
+  return PAGE_BACKGROUNDS[id]
+}
+
+/** Embed selected pages onto a same-size colored sheet. Distinct from reading tint. */
+export async function colorPageBackgrounds(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  color: PageBgId,
+): Promise<Uint8Array> {
+  const fill = pageBackgroundFill(color)
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  const unique = new Set(
+    uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count),
+  )
+  if (unique.size === 0) {
+    throw new Error('Chọn ít nhất một trang để phủ nền.')
+  }
+  const dst = await PDFDocument.create()
+  copyDocumentInfo(src, dst)
+  for (let index = 0; index < count; index += 1) {
+    if (!unique.has(index)) {
+      const [copied] = await dst.copyPages(src, [index])
+      dst.addPage(copied)
+      continue
+    }
+    const [embedded] = await dst.embedPages([src.getPage(index)])
+    const page = dst.addPage([embedded.width, embedded.height])
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width: embedded.width,
+      height: embedded.height,
+      color: rgb(fill.r, fill.g, fill.b),
+    })
+    page.drawPage(embedded, {
+      x: 0,
+      y: 0,
+      width: embedded.width,
+      height: embedded.height,
+    })
+  }
+  return new Uint8Array(await dst.save())
+}
+
 export const AUTO_CROP_PADDING = 8
 export const AUTO_CROP_THRESHOLD = 248
 

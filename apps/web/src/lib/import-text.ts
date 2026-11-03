@@ -18,6 +18,8 @@ export type ImportedTextKind =
   | 'tex'
   | 'jsonl'
   | 'ini'
+  | 'adoc'
+  | 'rst'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp'
@@ -202,6 +204,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'ini') {
     return pagesFromIni(text)
+  }
+  if (kind === 'adoc') {
+    return pagesFromAdoc(text)
+  }
+  if (kind === 'rst') {
+    return pagesFromRst(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -550,6 +558,61 @@ export function pagesFromIni(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp INI cần các mục text = trong [page.n].')
+}
+
+export function pagesFromAdoc(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  if (/^==+\s+Trang\s+\d+/m.test(trimmed)) {
+    return capPages(
+      trimmed
+        .split(/^==+\s+Trang\s+\d+\s*$/m)
+        .map((page) => page.replace(/^=+\s+.*$/m, '').trim())
+        .filter((page) => page.length > 0),
+    )
+  }
+  if (/^==+\s+/m.test(trimmed)) {
+    const pages = trimmed
+      .split(/(?=^==+\s+)/m)
+      .map((part) => part.replace(/^==+\s+.*$/m, '').replace(/^=+\s+.*$/m, '').trim())
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  return pagesFromPlainText(trimmed)
+}
+
+const RST_UNDERLINE = '[=\\-~.`:\'^"+*#]'
+
+export function pagesFromRst(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pageHeading = new RegExp(`^Trang\\s+\\d+\\s*\\n${RST_UNDERLINE}{3,}\\s*$`, 'm')
+  const anyHeading = new RegExp(`^.+\\n${RST_UNDERLINE}{3,}\\s*$`, 'm')
+  if (pageHeading.test(trimmed)) {
+    return capPages(
+      trimmed
+        .split(pageHeading)
+        .map((page) => page.replace(anyHeading, '').trim())
+        .filter((page) => page.length > 0),
+    )
+  }
+  if (anyHeading.test(trimmed)) {
+    const splitHeading = new RegExp(`(?=^.+\\n${RST_UNDERLINE}{3,}\\s*$)`, 'm')
+    const pages = trimmed
+      .split(splitHeading)
+      .map((part) => part.replace(anyHeading, '').trim())
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  return pagesFromPlainText(trimmed)
 }
 
 export function pagesFromLatex(text: string): string[] {

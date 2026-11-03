@@ -22,13 +22,13 @@ export function Home() {
           Dải thumbnail rõ nét, chọn lẻ/chẵn hoặc đảo chọn, xoay 90/180, đảo thứ tự, đan hai nửa
           (scan 2 mặt) hoặc tách lẻ/chẵn, gộp 2/4 trang mỗi tờ, xếp sách gấp, lật ngang/dọc, cắt đôi
           trên/dưới hoặc trái/phải, xoay khổ đứng/ngang, đổi tỷ lệ trang, đánh số trang, chữ mờ, cắt
-          hoặc thêm lề, đầu/cuối trang, đóng khung, thêm trang bìa, phủ màu đọc, cắt lề trắng, chuyển xám, tìm chữ, xóa trang không chữ hoặc trùng chữ, vừa khổ A4/Letter/A5, đồng khổ,
+          hoặc thêm lề, đầu/cuối trang, đóng khung, thêm trang bìa, phủ màu đọc, phủ nền trang, cắt lề trắng, chuyển xám, tìm chữ, xóa trang không chữ hoặc trùng chữ, vừa khổ A4/Letter/A5, đồng khổ,
           nhân bản, tách hoặc giữ trang, tách nhiều PDF, chèn trang trắng hoặc PNG/JPEG/WEBP, kéo cả
-          nhóm để sắp xếp, hoàn tác (giữ khi tải lại), thông tin tài liệu, gộp và chèn chữ
+          nhóm để sắp xếp, hoàn tác (giữ khi tải lại), thông tin tài liệu, khóa mật khẩu khi tải, gộp và chèn chữ
         </li>
         <li>
-          Xuất TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, MOBI, PNG/JPEG/WEBP
-          — và mở TXT/Markdown/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB hoặc PNG/JPEG/WEBP thành
+          Xuất TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, MOBI, PNG/JPEG/WEBP
+          — và mở TXT/Markdown/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB hoặc PNG/JPEG/WEBP thành
           PDF
         </li>
         <li>Không tài khoản, không lưu đám mây — tệp gần nhất và lịch sử hoàn tác được giữ trên trình duyệt này</li>

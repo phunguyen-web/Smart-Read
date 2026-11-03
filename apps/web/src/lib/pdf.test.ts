@@ -15,6 +15,8 @@ import {
   toTsv,
   escapeLatex,
   toIni,
+  toAdoc,
+  toRst,
   toJsonl,
   toLatex,
   toOrg,
@@ -41,6 +43,8 @@ import {
   pagesFromToml,
   pagesFromTsv,
   pagesFromIni,
+  pagesFromAdoc,
+  pagesFromRst,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -80,6 +84,7 @@ import {
   thumbnailContrastForPage,
   thumbnailScaleForPage,
 } from './extract.ts'
+import { assertPdfPassword, encryptPdfForDownload } from './encrypt.ts'
 import {
   decodeSnapshots,
   encodeSnapshots,
@@ -88,6 +93,7 @@ import {
   restoreEditorView,
 } from './persist.ts'
 import {
+  encryptedPdfName,
   extractedPdfName,
   imageKindFromFile,
   imagePageName,
@@ -118,6 +124,9 @@ import {
   TINTS,
   tintFill,
   tintPages,
+  PAGE_BACKGROUNDS,
+  pageBackgroundFill,
+  colorPageBackgrounds,
   addPageNumbers,
   borderBoxForPage,
   borderStrokeWidth,
@@ -480,6 +489,28 @@ describe('pdf edits', () => {
       (await PDFDocument.load(bytes)).getPage(1).getSize(),
     )
     await expect(tintPages(bytes, [], 'night')).rejects.toThrow(/màu đọc/)
+
+    expect(pageBackgroundFill('yellow')).toEqual(PAGE_BACKGROUNDS.yellow)
+    expect(() => pageBackgroundFill('pink' as 'cream')).toThrow(/Màu nền/)
+    const painted = await colorPageBackgrounds(bytes, [0], 'blue')
+    expect(await pageCount(painted)).toBe(2)
+    expect((await PDFDocument.load(painted)).getPage(0).getSize()).toEqual(
+      (await PDFDocument.load(bytes)).getPage(0).getSize(),
+    )
+    expect((await PDFDocument.load(painted)).getPage(1).getSize()).toEqual(
+      (await PDFDocument.load(bytes)).getPage(1).getSize(),
+    )
+    await expect(colorPageBackgrounds(bytes, [], 'gray')).rejects.toThrow(/phủ nền/)
+
+    expect(assertPdfPassword('  secret  ', 'secret')).toBe('secret')
+    expect(() => assertPdfPassword('   ')).toThrow(/mật khẩu/)
+    expect(() => assertPdfPassword('one', 'two')).toThrow(/không khớp/)
+    expect(encryptedPdfName('notes.pdf')).toBe('notes-khoa.pdf')
+    const locked = await encryptPdfForDownload(bytes, 's3cret', 's3cret')
+    expect(locked.byteLength).toBeGreaterThan(0)
+    await expect(PDFDocument.load(locked)).rejects.toThrow(/encrypt/i)
+    await expect(PDFDocument.load(bytes)).resolves.toBeTruthy()
+    await expect(encryptPdfForDownload(bytes, '   ')).rejects.toThrow(/mật khẩu/)
 
     const pixels = new Uint8ClampedArray(4 * 4 * 4)
     pixels.fill(255)
@@ -855,6 +886,25 @@ describe('conversion helpers', () => {
     expect(sourceKindFromFile(new File(['x'], 'notes.ini', { type: '' }))).toBe('ini')
     expect(sourceKindFromFile(new File(['x'], 'notes.cfg', { type: 'text/ini' }))).toBe('ini')
     expect(swapExtension('notes.ini', 'pdf')).toBe('notes.pdf')
+    expect(toAdoc('Demo', ['Một', 'Hai\ndòng'])).toContain('= Demo')
+    expect(toAdoc('Demo', ['Một'])).toContain('== Trang 1')
+    expect(pagesFromAdoc(toAdoc('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('adoc', toAdoc('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromAdoc('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.adoc', { type: '' }))).toBe('adoc')
+    expect(sourceKindFromFile(new File(['x'], 'notes.asciidoc', { type: 'text/asciidoc' }))).toBe(
+      'adoc',
+    )
+    expect(swapExtension('notes.adoc', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.asciidoc', 'pdf')).toBe('notes.pdf')
+    expect(toRst('Demo', ['Một', 'Hai\ndòng'])).toContain('Demo\n====')
+    expect(toRst('Demo', ['Một'])).toContain('Trang 1\n-------')
+    expect(pagesFromRst(toRst('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('rst', toRst('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromRst('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.rst', { type: '' }))).toBe('rst')
+    expect(sourceKindFromFile(new File(['x'], 'notes.rest', { type: 'text/x-rst' }))).toBe('rst')
+    expect(swapExtension('notes.rst', 'pdf')).toBe('notes.pdf')
     expect(sourceKindFromFile(new File(['x'], 'notes.yaml', { type: '' }))).toBe('yaml')
     expect(sourceKindFromFile(new File(['x'], 'notes.yml', { type: 'application/yaml' }))).toBe(
       'yaml',

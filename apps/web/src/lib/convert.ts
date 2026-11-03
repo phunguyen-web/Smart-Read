@@ -15,6 +15,8 @@ export type ExportFormat =
   | 'tex'
   | 'jsonl'
   | 'ini'
+  | 'adoc'
+  | 'rst'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -289,6 +291,30 @@ export function toIni(title: string, pages: string[]): string {
   const list = pages.length > 0 ? pages : ['']
   const blocks = list.map((text, index) => `[page.${index + 1}]\ntext = ${escapeIni(text)}`)
   return `[document]\ntitle = ${heading}\n\n${blocks.join('\n\n')}\n`
+}
+
+export function toAdoc(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const body = pages
+    .map((text, index) => {
+      const content = text.trim() || '(không có chữ)'
+      return `== Trang ${index + 1}\n\n${content}`
+    })
+    .join('\n\n')
+  return `= ${heading}\n\n${body}\n`
+}
+
+export function toRst(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const titleRule = '='.repeat(Math.max(3, heading.length))
+  const body = pages
+    .map((text, index) => {
+      const label = `Trang ${index + 1}`
+      const content = text.trim() || '(không có chữ)'
+      return `${label}\n${'-'.repeat(label.length)}\n\n${content}`
+    })
+    .join('\n\n')
+  return `${heading}\n${titleRule}\n\n${body}\n`
 }
 
 export function toLatex(title: string, pages: string[]): string {
@@ -1118,6 +1144,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/jsonl;charset=utf-8'
     case 'ini':
       return 'text/plain;charset=utf-8'
+    case 'adoc':
+      return 'text/asciidoc;charset=utf-8'
+    case 'rst':
+      return 'text/x-rst;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
