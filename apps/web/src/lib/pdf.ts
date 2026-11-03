@@ -748,6 +748,36 @@ export function bookletSheetCount(count: number): number {
   return bookletSlotOrder(count).length / 2
 }
 
+export type BookletSheetFace = {
+  left: number | null
+  right: number | null
+}
+
+export type BookletSheet = {
+  sheet: number
+  front: BookletSheetFace
+  back: BookletSheetFace
+}
+
+/** 1-based page number, or `trắng` for a booklet pad slot. */
+export function bookletSlotLabel(index: number | null): string {
+  return index == null ? 'trắng' : String(index + 1)
+}
+
+/** Physical sheets (front + back) in saddle-stitch order. Does not mutate the PDF. */
+export function bookletPreviewSheets(count: number): BookletSheet[] {
+  const slots = bookletSlotOrder(count)
+  const sheets: BookletSheet[] = []
+  for (let offset = 0; offset < slots.length; offset += 4) {
+    sheets.push({
+      sheet: sheets.length + 1,
+      front: { left: slots[offset] ?? null, right: slots[offset + 1] ?? null },
+      back: { left: slots[offset + 2] ?? null, right: slots[offset + 3] ?? null },
+    })
+  }
+  return sheets
+}
+
 /** 2-up A4 landscape sheets in saddle-stitch booklet order, with blank pads. */
 export async function imposeBooklet(bytes: Uint8Array): Promise<Uint8Array> {
   const src = await PDFDocument.load(bytes)
@@ -1919,6 +1949,11 @@ export type OutlineBookmark = {
   depth: number
   /** Folders only. `false` writes a negative `/Count` so viewers collapse children. */
   open?: boolean
+  /**
+   * Folders written without `/Dest`. `pageIndex` is the first child's page so the
+   * editor can still jump; viewers do not treat the folder as a page target.
+   */
+  destless?: true
 }
 
 /** Deepest outline item the editor will write (root 0, nested folder 1, its pages 2). */
@@ -1940,6 +1975,32 @@ function decodeOutlineTitle(value: unknown): string {
     return value.decodeText().trim()
   }
   return ''
+}
+
+function cloneOutlineItem(
+  item: OutlineBookmark,
+  patch: {
+    title?: string
+    pageIndex?: number
+    depth?: number
+    open?: boolean
+    destless?: boolean
+  } = {},
+): OutlineBookmark {
+  const next: OutlineBookmark = {
+    title: patch.title ?? item.title,
+    pageIndex: patch.pageIndex ?? item.pageIndex,
+    depth: patch.depth ?? item.depth,
+  }
+  const destless = patch.destless ?? item.destless
+  if (destless) {
+    next.destless = true
+  }
+  const open = Object.prototype.hasOwnProperty.call(patch, 'open') ? patch.open : item.open
+  if (open === false) {
+    next.open = false
+  }
+  return next
 }
 
 function samePdfRef(left: PDFRef, right: PDFRef): boolean {
@@ -2045,11 +2106,33 @@ function walkOutline(
     const pageIndex = pageIndexForDest(pages, dest)
     const count = current.lookupMaybe(PDFName.of('Count'), PDFNumber)
     const closed = count instanceof PDFNumber && count.asNumber() < 0
-    if (title && pageIndex >= 0) {
-      items.push(closed ? { title, pageIndex, depth, open: false } : { title, pageIndex, depth })
-    }
     const first = current.get(PDFName.of('First'))
-    if (first instanceof PDFRef) {
+    const hasKids = first instanceof PDFRef
+    const hasDest = pageIndex >= 0
+    if (title && (hasDest || hasKids)) {
+      const item: OutlineBookmark = {
+        title,
+        pageIndex: hasDest ? pageIndex : 0,
+        depth,
+      }
+      if (!hasDest) {
+        item.destless = true
+      }
+      if (closed) {
+        item.open = false
+      }
+      items.push(item)
+      const selfIndex = items.length - 1
+      if (hasKids) {
+        walkOutline(doc, pages, first, depth + 1, items, seen)
+      }
+      if (!hasDest) {
+        const child = items[selfIndex + 1]
+        if (child && child.depth > depth) {
+          items[selfIndex]!.pageIndex = child.pageIndex
+        }
+      }
+    } else if (hasKids) {
       walkOutline(doc, pages, first, depth + 1, items, seen)
     }
     currentRef = current.get(PDFName.of('Next'))
@@ -2116,11 +2199,18 @@ async function writeOutlineBookmarks(
     const siblings = parent == null ? roots : childrenOf[parent]!
     const siblingAt = siblings.indexOf(index)
     const kids = childrenOf[index]!
-    const outlineItem = context.obj({
+    const fields: {
+      Title: PDFHexString
+      Parent: PDFRef
+      Dest?: [PDFRef, ReturnType<typeof PDFName.of>, null, null, null]
+    } = {
       Title: PDFHexString.fromText(item.title),
       Parent: parent == null ? rootRef : itemRefs[parent]!,
-      Dest: [page.ref, PDFName.of('XYZ'), null, null, null],
-    })
+    }
+    if (kids.length === 0) {
+      fields.Dest = [page.ref, PDFName.of('XYZ'), null, null, null]
+    }
+    const outlineItem = context.obj(fields)
     if (siblingAt > 0) {
       outlineItem.set(PDFName.of('Prev'), itemRefs[siblings[siblingAt - 1]!]!)
     }
@@ -2208,7 +2298,12 @@ export async function addOutlineFolder(
     }
     insertAt = lastOutlineDescendantIndex(depths, parentIndex) + 1
   }
-  const folder: OutlineBookmark = { title: label, pageIndex: unique[0]!, depth: folderDepth }
+  const folder: OutlineBookmark = {
+    title: label,
+    pageIndex: unique[0]!,
+    depth: folderDepth,
+    destless: true,
+  }
   const children: OutlineBookmark[] = unique.map((pageIndex) => ({
     title: `${label} · ${pageIndex + 1}`,
     pageIndex,
@@ -2229,15 +2324,10 @@ export async function setOutlineFoldersOpen(
   let found = false
   const next = existing.map((item, index) => {
     if (!itemIsOutlineFolder(depths, index)) {
-      if (item.open === undefined) {
-        return item
-      }
-      return { title: item.title, pageIndex: item.pageIndex, depth: item.depth }
+      return cloneOutlineItem(item, { open: true })
     }
     found = true
-    return open
-      ? { title: item.title, pageIndex: item.pageIndex, depth: item.depth }
-      : { title: item.title, pageIndex: item.pageIndex, depth: item.depth, open: false }
+    return cloneOutlineItem(item, { open })
   })
   if (!found) {
     throw new Error('Không có thư mục mục lục.')
@@ -2263,10 +2353,53 @@ export async function setOutlineFolderOpen(
     if (index !== folderIndex) {
       return item
     }
-    return open
-      ? { title: item.title, pageIndex: item.pageIndex, depth: item.depth }
-      : { title: item.title, pageIndex: item.pageIndex, depth: item.depth, open: false }
+    return cloneOutlineItem(item, { open })
   })
+  return writeOutlineBookmarks(bytes, next)
+}
+
+/** Rename one outline row by its index in `listOutlineBookmarks`. */
+export async function renameOutlineItem(
+  bytes: Uint8Array,
+  index: number,
+  title: string,
+): Promise<Uint8Array> {
+  const label = assertOutlineTitle(title)
+  const existing = await listOutlineBookmarks(bytes)
+  if (!Number.isInteger(index) || index < 0 || index >= existing.length) {
+    throw new Error('Chọn một mục lục.')
+  }
+  const next = existing.map((item, at) => (at === index ? cloneOutlineItem(item, { title: label }) : item))
+  return writeOutlineBookmarks(bytes, next)
+}
+
+/**
+ * Remove one outline row. A folder is dropped and its children move up one level.
+ * Removing the last item clears the outline.
+ */
+export async function removeOutlineItem(bytes: Uint8Array, index: number): Promise<Uint8Array> {
+  const existing = await listOutlineBookmarks(bytes)
+  if (!Number.isInteger(index) || index < 0 || index >= existing.length) {
+    throw new Error('Chọn một mục lục.')
+  }
+  const depths = normalizeOutlineDepths(existing)
+  const last = itemIsOutlineFolder(depths, index)
+    ? lastOutlineDescendantIndex(depths, index)
+    : index
+  const next: OutlineBookmark[] = []
+  for (let at = 0; at < existing.length; at += 1) {
+    if (at === index) {
+      continue
+    }
+    if (at > index && at <= last) {
+      next.push(cloneOutlineItem(existing[at]!, { depth: Math.max(0, (depths[at] ?? 0) - 1) }))
+      continue
+    }
+    next.push(existing[at]!)
+  }
+  if (next.length === 0) {
+    return clearOutline(bytes)
+  }
   return writeOutlineBookmarks(bytes, next)
 }
 

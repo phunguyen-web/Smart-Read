@@ -3,7 +3,7 @@ import type { ImportedTextKind, ZipImportKind } from './import-text.ts'
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 export const ACCEPT_SOURCES =
-  'application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,application/json,.json,application/jsonl,.jsonl,.ndjson,application/yaml,.yaml,.yml,text/yaml,application/xml,.xml,text/xml,text/csv,.csv,text/tab-separated-values,.tsv,application/toml,.toml,text/org,.org,application/x-tex,.tex,.latex,text/ini,.ini,.cfg,text/asciidoc,.adoc,.asciidoc,text/x-rst,.rst,.rest,text/x-textile,.textile,.txtl,text/x-mediawiki,.mediawiki,.wiki,text/x-dokuwiki,.dokuwiki,.dw,application/docbook+xml,.dbk,.docbook,text/x-opml,.opml,application/atom+xml,.atom,application/rss+xml,.rss,text/x-typst,.typ,text/gemini,.gmi,.gemini,application/rtf,.rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,application/msword,.doc,application/vnd.oasis.opendocument.text,.odt,application/vnd.oasis.opendocument.spreadsheet,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pptx,application/vnd.oasis.opendocument.presentation,.odp,application/x-fictionbook+xml,.fb2,application/epub+zip,.epub,application/vnd.comicbook+zip,.cbz,image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp'
+  'application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,application/json,.json,application/jsonl,.jsonl,.ndjson,application/yaml,.yaml,.yml,text/yaml,application/xml,.xml,text/xml,text/csv,.csv,text/tab-separated-values,.tsv,application/toml,.toml,text/org,.org,application/x-tex,.tex,.latex,text/ini,.ini,.cfg,text/asciidoc,.adoc,.asciidoc,text/x-rst,.rst,.rest,text/x-textile,.textile,.txtl,text/x-mediawiki,.mediawiki,.wiki,text/x-dokuwiki,.dokuwiki,.dw,application/docbook+xml,.dbk,.docbook,text/x-opml,.opml,application/atom+xml,.atom,application/rss+xml,.rss,text/x-typst,.typ,text/gemini,.gmi,.gemini,text/x-pod,.pod,text/x-bbcode,.bbcode,.bb,application/rtf,.rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,application/msword,.doc,application/vnd.oasis.opendocument.text,.odt,application/vnd.oasis.opendocument.spreadsheet,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pptx,application/vnd.oasis.opendocument.presentation,.odp,application/x-fictionbook+xml,.fb2,application/epub+zip,.epub,application/vnd.comicbook+zip,.cbz,image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp'
 
 export type ImageKind = 'png' | 'jpg' | 'webp'
 export type EmbedImageKind = 'png' | 'jpg'
@@ -137,6 +137,17 @@ export function sourceKindFromFile(file: File): SourceKind {
     name.endsWith('.gemini')
   ) {
     return 'gmi'
+  }
+  if (type === 'text/x-pod' || type === 'application/x-perl' || name.endsWith('.pod')) {
+    return 'pod'
+  }
+  if (
+    type === 'text/x-bbcode' ||
+    type === 'text/bbcode' ||
+    name.endsWith('.bbcode') ||
+    name.endsWith('.bb')
+  ) {
+    return 'bbcode'
   }
   if (
     type === 'application/xml' ||
@@ -314,7 +325,7 @@ export function sourceKindFromFile(file: File): SourceKind {
   try {
     return imageKindFromFile(file)
   } catch {
-    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP.')
+    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP.')
   }
 }
 
@@ -397,7 +408,7 @@ export async function readImageFiles(
 
 export function swapExtension(filename: string, ext: string): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
     'document'
   return `${base}.${ext}`
 }
@@ -442,7 +453,7 @@ export function imagePageName(
   ext: 'png' | 'jpg' | 'webp',
 ): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
     'document'
   const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
   return `${base}-trang-${page}.${ext}`
@@ -450,7 +461,7 @@ export function imagePageName(
 
 export function imageZipName(filename: string, ext: 'png' | 'jpg' | 'webp'): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
     'document'
   return `${base}-anh-${ext}.zip`
 }
@@ -462,7 +473,7 @@ export function embeddedImageName(
   ext: 'png' | 'jpg',
 ): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
     'document'
   const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
   const image = Number.isInteger(imageIndex) && imageIndex >= 0 ? imageIndex + 1 : 1
@@ -471,7 +482,7 @@ export function embeddedImageName(
 
 export function embeddedImageZipName(filename: string): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|json|ya?ml|xml|csv|tsv|toml|org|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|cbz)$/i, '') ||
     'document'
   return `${base}-anh-nhung.zip`
 }

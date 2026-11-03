@@ -28,6 +28,8 @@ export type ImportedTextKind =
   | 'atom'
   | 'typ'
   | 'gmi'
+  | 'pod'
+  | 'bbcode'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -298,6 +300,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'gmi') {
     return pagesFromGemtext(text)
+  }
+  if (kind === 'pod') {
+    return pagesFromPod(text)
+  }
+  if (kind === 'bbcode') {
+    return pagesFromBbcode(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -926,6 +934,62 @@ export function pagesFromGemtext(text: string): string[] {
   if (/^##\s+/m.test(trimmed)) {
     const pages = trimmed
       .split(/(?=^##\s+)/m)
+      .map(stripHeading)
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  return pagesFromPlainText(trimmed)
+}
+
+export function pagesFromPod(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const stripCommands = (page: string): string =>
+    page
+      .replace(/^=(?:head\d|pod|cut|encoding)\b.*$/gim, '')
+      .trim()
+  if (/^=head2\s+Trang\s+\d+\s*$/m.test(trimmed)) {
+    return capPages(
+      trimmed
+        .split(/^=head2\s+Trang\s+\d+\s*$/m)
+        .map(stripCommands)
+        .filter((page) => page.length > 0),
+    )
+  }
+  if (/^=head2\s+/m.test(trimmed)) {
+    const pages = trimmed
+      .split(/(?=^=head2\s+)/m)
+      .map(stripCommands)
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  return pagesFromPlainText(trimmed)
+}
+
+export function pagesFromBbcode(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[\s*[{"]/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const stripHeading = (page: string): string =>
+    page.replace(/\[h[12]\][\s\S]*?\[\/h[12]\]/gi, '').trim()
+  if (/\[h2\]\s*Trang\s+\d+\s*\[\/h2\]/i.test(trimmed)) {
+    return capPages(
+      trimmed
+        .split(/\[h2\]\s*Trang\s+\d+\s*\[\/h2\]/i)
+        .map(stripHeading)
+        .filter((page) => page.length > 0),
+    )
+  }
+  if (/\[h2\]/i.test(trimmed)) {
+    const pages = trimmed
+      .split(/(?=\[h2\])/i)
       .map(stripHeading)
       .filter((page) => page.length > 0)
     if (pages.length > 0) {

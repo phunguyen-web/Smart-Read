@@ -28,6 +28,8 @@ import {
   toAtom,
   toTypst,
   toGemtext,
+  toPod,
+  toBbcode,
   escapeTypst,
   toJsonl,
   toLatex,
@@ -66,6 +68,8 @@ import {
   pagesFromAtom,
   pagesFromTypst,
   pagesFromGemtext,
+  pagesFromPod,
+  pagesFromBbcode,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -140,9 +144,13 @@ import {
   addHeaderFooter,
   addOutlineBookmarks,
   addOutlineFolder,
+  bookletPreviewSheets,
+  bookletSlotLabel,
   clearOutline,
   MAX_OUTLINE_DEPTH,
   outlineItemIsFolder,
+  renameOutlineItem,
+  removeOutlineItem,
   setOutlineFolderOpen,
   setOutlineFoldersOpen,
   visibleOutlineItems,
@@ -573,13 +581,18 @@ describe('pdf edits', () => {
     await expect(addOutlineBookmarks(bytes, [0], '  ')).rejects.toThrow(/mục lục/)
     const nested = await addOutlineFolder(bytes, [0, 1], 'Phần A')
     expect(await listOutlineBookmarks(nested)).toEqual([
-      { title: 'Phần A', pageIndex: 0, depth: 0 },
+      { title: 'Phần A', pageIndex: 0, depth: 0, destless: true },
       { title: 'Phần A · 1', pageIndex: 0, depth: 1 },
       { title: 'Phần A · 2', pageIndex: 1, depth: 1 },
     ])
+    const nestedDoc = await PDFDocument.load(nested)
+    const nestedRoot = nestedDoc.catalog.lookup(PDFName.of('Outlines'), PDFDict)
+    const nestedFolder = nestedDoc.context.lookup(nestedRoot.get(PDFName.of('First')), PDFDict)
+    expect(nestedFolder.has(PDFName.of('Dest'))).toBe(false)
+    expect(nestedFolder.has(PDFName.of('First'))).toBe(true)
     const nestedAgain = await addOutlineBookmarks(nested, [1], 'Phụ lục')
     expect(await listOutlineBookmarks(nestedAgain)).toEqual([
-      { title: 'Phần A', pageIndex: 0, depth: 0 },
+      { title: 'Phần A', pageIndex: 0, depth: 0, destless: true },
       { title: 'Phần A · 1', pageIndex: 0, depth: 1 },
       { title: 'Phần A · 2', pageIndex: 1, depth: 1 },
       { title: 'Phụ lục', pageIndex: 1, depth: 0 },
@@ -587,7 +600,7 @@ describe('pdf edits', () => {
     await expect(addOutlineFolder(bytes, [], 'X')).rejects.toThrow(/trang/)
     const collapsed = await setOutlineFoldersOpen(nested, false)
     expect(await listOutlineBookmarks(collapsed)).toEqual([
-      { title: 'Phần A', pageIndex: 0, depth: 0, open: false },
+      { title: 'Phần A', pageIndex: 0, depth: 0, destless: true, open: false },
       { title: 'Phần A · 1', pageIndex: 0, depth: 1 },
       { title: 'Phần A · 2', pageIndex: 1, depth: 1 },
     ])
@@ -595,9 +608,10 @@ describe('pdf edits', () => {
     const outlines = collapsedDoc.catalog.lookup(PDFName.of('Outlines'), PDFDict)
     const firstFolder = collapsedDoc.context.lookup(outlines.get(PDFName.of('First')), PDFDict)
     expect(firstFolder.lookup(PDFName.of('Count'), PDFNumber).asNumber()).toBe(-2)
+    expect(firstFolder.has(PDFName.of('Dest'))).toBe(false)
     const expanded = await setOutlineFoldersOpen(collapsed, true)
     expect(await listOutlineBookmarks(expanded)).toEqual([
-      { title: 'Phần A', pageIndex: 0, depth: 0 },
+      { title: 'Phần A', pageIndex: 0, depth: 0, destless: true },
       { title: 'Phần A · 1', pageIndex: 0, depth: 1 },
       { title: 'Phần A · 2', pageIndex: 1, depth: 1 },
     ])
@@ -605,10 +619,10 @@ describe('pdf edits', () => {
     expect(MAX_OUTLINE_DEPTH).toBe(2)
     const deep = await addOutlineFolder(nested, [1], 'Mục 1', 0)
     expect(await listOutlineBookmarks(deep)).toEqual([
-      { title: 'Phần A', pageIndex: 0, depth: 0 },
+      { title: 'Phần A', pageIndex: 0, depth: 0, destless: true },
       { title: 'Phần A · 1', pageIndex: 0, depth: 1 },
       { title: 'Phần A · 2', pageIndex: 1, depth: 1 },
-      { title: 'Mục 1', pageIndex: 1, depth: 1 },
+      { title: 'Mục 1', pageIndex: 1, depth: 1, destless: true },
       { title: 'Mục 1 · 2', pageIndex: 1, depth: 2 },
     ])
     expect(outlineItemIsFolder(await listOutlineBookmarks(deep), 0)).toBe(true)
@@ -618,10 +632,10 @@ describe('pdf edits', () => {
     await expect(addOutlineFolder(nested, [0], 'X', 9)).rejects.toThrow(/mục lục cha/)
     const oneClosed = await setOutlineFolderOpen(deep, 3, false)
     expect(await listOutlineBookmarks(oneClosed)).toEqual([
-      { title: 'Phần A', pageIndex: 0, depth: 0 },
+      { title: 'Phần A', pageIndex: 0, depth: 0, destless: true },
       { title: 'Phần A · 1', pageIndex: 0, depth: 1 },
       { title: 'Phần A · 2', pageIndex: 1, depth: 1 },
-      { title: 'Mục 1', pageIndex: 1, depth: 1, open: false },
+      { title: 'Mục 1', pageIndex: 1, depth: 1, destless: true, open: false },
       { title: 'Mục 1 · 2', pageIndex: 1, depth: 2 },
     ])
     expect(visibleOutlineItems(await listOutlineBookmarks(oneClosed)).map((row) => row.index)).toEqual([
@@ -632,12 +646,14 @@ describe('pdf edits', () => {
       title: 'Phần A',
       pageIndex: 0,
       depth: 0,
+      destless: true,
       open: false,
     })
     expect((await listOutlineBookmarks(parentClosed))[3]).toEqual({
       title: 'Mục 1',
       pageIndex: 1,
       depth: 1,
+      destless: true,
       open: false,
     })
     expect(visibleOutlineItems(await listOutlineBookmarks(parentClosed)).map((row) => row.index)).toEqual([
@@ -648,9 +664,32 @@ describe('pdf edits', () => {
       title: 'Phần A',
       pageIndex: 0,
       depth: 0,
+      destless: true,
     })
     await expect(setOutlineFolderOpen(deep, 4, false)).rejects.toThrow(/không phải thư mục/)
     await expect(setOutlineFolderOpen(deep, 9, false)).rejects.toThrow(/thư mục/)
+    const renamed = await renameOutlineItem(nested, 0, 'Chương A')
+    expect((await listOutlineBookmarks(renamed))[0]).toEqual({
+      title: 'Chương A',
+      pageIndex: 0,
+      depth: 0,
+      destless: true,
+    })
+    await expect(renameOutlineItem(nested, 9, 'X')).rejects.toThrow(/mục lục/)
+    await expect(renameOutlineItem(nested, 0, '  ')).rejects.toThrow(/mục lục/)
+    const removedLeaf = await removeOutlineItem(nested, 2)
+    expect(await listOutlineBookmarks(removedLeaf)).toEqual([
+      { title: 'Phần A', pageIndex: 0, depth: 0, destless: true },
+      { title: 'Phần A · 1', pageIndex: 0, depth: 1 },
+    ])
+    const removedFolder = await removeOutlineItem(nested, 0)
+    expect(await listOutlineBookmarks(removedFolder)).toEqual([
+      { title: 'Phần A · 1', pageIndex: 0, depth: 0 },
+      { title: 'Phần A · 2', pageIndex: 1, depth: 0 },
+    ])
+    const lastBookmark = await addOutlineBookmarks(bytes, [0], 'Một')
+    expect(await listOutlineBookmarks(await removeOutlineItem(lastBookmark, 0))).toEqual([])
+    await expect(removeOutlineItem(bytes, 0)).rejects.toThrow(/mục lục/)
     const cleared = await clearOutline(nested)
     expect(await listOutlineBookmarks(cleared)).toEqual([])
     await expect(clearOutline(bytes)).rejects.toThrow(/mục lục/)
@@ -872,6 +911,15 @@ describe('pdf edits', () => {
     expect(bookletSlotOrder(8)).toEqual([7, 0, 1, 6, 5, 2, 3, 4])
     expect(bookletSlotOrder(5)).toEqual([null, 0, 1, null, null, 2, 3, 4])
     expect(bookletSheetCount(5)).toBe(4)
+    expect(bookletSlotLabel(null)).toBe('trắng')
+    expect(bookletSlotLabel(0)).toBe('1')
+    expect(bookletPreviewSheets(4)).toEqual([
+      { sheet: 1, front: { left: 3, right: 0 }, back: { left: 1, right: 2 } },
+    ])
+    expect(bookletPreviewSheets(5)).toEqual([
+      { sheet: 1, front: { left: null, right: 0 }, back: { left: 1, right: null } },
+      { sheet: 2, front: { left: null, right: 2 }, back: { left: 3, right: 4 } },
+    ])
     const bytes = await samplePdf(['A', 'B', 'C', 'D'])
     const booklet = await imposeBooklet(bytes)
     const bookletDoc = await PDFDocument.load(booklet)
@@ -1175,6 +1223,23 @@ describe('conversion helpers', () => {
     expect(sourceKindFromFile(new File(['x'], 'notes.gemini', { type: 'text/gemini' }))).toBe('gmi')
     expect(swapExtension('notes.gmi', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.gemini', 'pdf')).toBe('notes.pdf')
+    expect(toPod('Demo', ['Một', 'Hai\ndòng'])).toContain('=head1 Demo')
+    expect(toPod('Demo', ['Một'])).toContain('=head2 Trang 1')
+    expect(pagesFromPod(toPod('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('pod', toPod('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromPod('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.pod', { type: '' }))).toBe('pod')
+    expect(sourceKindFromFile(new File(['x'], 'notes.pod', { type: 'text/x-pod' }))).toBe('pod')
+    expect(swapExtension('notes.pod', 'pdf')).toBe('notes.pdf')
+    expect(toBbcode('Demo', ['Một', 'Hai\ndòng'])).toContain('[h1]Demo[/h1]')
+    expect(toBbcode('Demo', ['Một'])).toContain('[h2]Trang 1[/h2]')
+    expect(pagesFromBbcode(toBbcode('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('bbcode', toBbcode('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromBbcode('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.bbcode', { type: '' }))).toBe('bbcode')
+    expect(sourceKindFromFile(new File(['x'], 'notes.bb', { type: 'text/x-bbcode' }))).toBe('bbcode')
+    expect(swapExtension('notes.bbcode', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.bb', 'pdf')).toBe('notes.pdf')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: '' }))).toBe('cbz')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: 'application/vnd.comicbook+zip' }))).toBe(
       'cbz',

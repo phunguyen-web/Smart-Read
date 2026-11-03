@@ -25,6 +25,8 @@ export type ExportFormat =
   | 'atom'
   | 'typ'
   | 'gmi'
+  | 'pod'
+  | 'bbcode'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -478,6 +480,28 @@ export function toGemtext(title: string, pages: string[]): string {
     })
     .join('\n\n')
   return `# ${heading}\n\n${body}\n`
+}
+
+export function toPod(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const body = pages
+    .map((text, index) => {
+      const content = text.trim() || '(không có chữ)'
+      return `=head2 Trang ${index + 1}\n\n${content}`
+    })
+    .join('\n\n')
+  return `=head1 ${heading}\n\n${body}\n\n=cut\n`
+}
+
+export function toBbcode(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const body = pages
+    .map((text, index) => {
+      const content = text.trim() || '(không có chữ)'
+      return `[h2]Trang ${index + 1}[/h2]\n\n${content}`
+    })
+    .join('\n\n')
+  return `[h1]${heading}[/h1]\n\n${body}\n`
 }
 
 export function toLatex(title: string, pages: string[]): string {
@@ -1327,6 +1351,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-typst;charset=utf-8'
     case 'gmi':
       return 'text/gemini;charset=utf-8'
+    case 'pod':
+      return 'text/x-pod;charset=utf-8'
+    case 'bbcode':
+      return 'text/x-bbcode;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

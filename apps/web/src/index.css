@@ -388,7 +388,8 @@ button:disabled {
   background: #efe4d4;
 }
 
-.outline-list {
+.outline-list,
+.booklet-preview {
   list-style: none;
   margin: 0;
   padding: 4px 0 0;
@@ -397,6 +398,11 @@ button:disabled {
   gap: 4px;
   max-height: 180px;
   overflow: auto;
+}
+
+.booklet-preview {
+  font-size: 13px;
+  color: #4a3f32;
 }
 
 .outline-row {

@@ -19,6 +19,8 @@ import {
   addHeaderFooter,
   addOutlineBookmarks,
   addOutlineFolder,
+  bookletPreviewSheets,
+  bookletSlotLabel,
   clearOutline,
   extractEmbeddedImages,
   frontMatterPageCount,
@@ -51,6 +53,8 @@ import {
   imagesToPdf,
   imposeBooklet,
   insertBlankPage,
+  renameOutlineItem,
+  removeOutlineItem,
   insertImages,
   interleaveHalvesOrder,
   isIdentityOrder,
@@ -223,6 +227,7 @@ export function Editor() {
   const [bookmarkTitle, setBookmarkTitle] = useState('')
   const [outline, setOutline] = useState<OutlineBookmark[]>([])
   const [outlineAt, setOutlineAt] = useState<number | null>(null)
+  const [showBookletPreview, setShowBookletPreview] = useState(false)
   const [pageLabelStyle, setPageLabelStyle] = useState<PageLabelStyle>('decimal')
   const [lockedPdf, setLockedPdf] = useState<{
     name: string
@@ -969,13 +974,13 @@ export function Editor() {
           phủ nền trang, cắt lề trắng, chuyển xám,
           tìm chữ, xóa trang không chữ hoặc trùng chữ, vừa khổ A4/Letter/A5, đồng khổ, thêm hoặc cắt lề, đóng khung,
           thêm trang bìa, gộp
-          2/4 trang mỗi tờ, xếp sách gấp, lật ngang/dọc, cắt đôi trên/dưới hoặc trái/phải, xoay khổ
+          2/4 trang mỗi tờ, xếp sách gấp (xem tờ in), lật ngang/dọc, cắt đôi trên/dưới hoặc trái/phải, xoay khổ
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục
-          (thư mục con, thu từng mục / xóa),
+          (thư mục con không Dest, thu từng mục, đổi tên / xóa mục),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -985,7 +990,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -1602,11 +1607,35 @@ export function Editor() {
                     setSelected([0])
                     setAnchor(0)
                     setSearchRaw(null)
+                    setShowBookletPreview(false)
                   })
                 }}
               >
                 Sách gấp
               </button>
+              <button
+                type="button"
+                aria-label={
+                  showBookletPreview
+                    ? 'Ẩn thứ tự tờ in sách gấp'
+                    : 'Xem thứ tự tờ in sách gấp, không đổi file'
+                }
+                aria-pressed={showBookletPreview}
+                onClick={() => setShowBookletPreview((open) => !open)}
+              >
+                {showBookletPreview ? 'Ẩn tờ in' : 'Xem tờ in'}
+              </button>
+              {showBookletPreview ? (
+                <ol className="booklet-preview" aria-label="Thứ tự tờ in sách gấp">
+                  {bookletPreviewSheets(doc.pageCount).map((sheet) => (
+                    <li key={sheet.sheet}>
+                      Tờ {sheet.sheet}: trước {bookletSlotLabel(sheet.front.left)} |{' '}
+                      {bookletSlotLabel(sheet.front.right)}; sau {bookletSlotLabel(sheet.back.left)} |{' '}
+                      {bookletSlotLabel(sheet.back.right)}
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
               <button
                 type="button"
                 disabled={busy}
@@ -1979,6 +2008,46 @@ export function Editor() {
                   ))}
                 </ol>
               ) : null}
+              <div className="preset-row" role="group" aria-label="Đổi tên hoặc xóa một mục lục">
+                <button
+                  type="button"
+                  disabled={busy || outlineAt == null}
+                  aria-label={
+                    outlineAt == null
+                      ? 'Chọn một mục lục rồi đổi tên'
+                      : `Đổi tên mục lục ${outline[outlineAt]?.title ?? ''}`
+                  }
+                  onClick={() => {
+                    if (outlineAt == null) {
+                      return
+                    }
+                    void run((bytes) => renameOutlineItem(bytes, outlineAt, bookmarkTitle))
+                  }}
+                >
+                  Đổi tên
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || outlineAt == null}
+                  aria-label={
+                    outlineAt == null
+                      ? 'Chọn một mục lục rồi xóa'
+                      : `Xóa mục lục ${outline[outlineAt]?.title ?? ''}`
+                  }
+                  onClick={() => {
+                    if (outlineAt == null) {
+                      return
+                    }
+                    const at = outlineAt
+                    void run(
+                      (bytes) => removeOutlineItem(bytes, at),
+                      () => setOutlineAt(null),
+                    )
+                  }}
+                >
+                  Xóa mục
+                </button>
+              </div>
               <div className="preset-row" role="group" aria-label="Thu gọn hoặc xóa mục lục">
                 <button
                   type="button"
