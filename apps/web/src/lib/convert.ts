@@ -11,6 +11,8 @@ export type ExportFormat =
   | 'csv'
   | 'tsv'
   | 'toml'
+  | 'org'
+  | 'tex'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -212,6 +214,69 @@ export function toMarkdown(title: string, pages: string[]): string {
     })
     .join('\n\n')
   return `${heading}\n\n${body}\n`
+}
+
+export function toOrg(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const body = pages
+    .map((text, index) => {
+      const content = text.trim() || '(không có chữ)'
+      return `** Trang ${index + 1}\n\n${content}`
+    })
+    .join('\n\n')
+  return `* ${heading}\n\n${body}\n`
+}
+
+export function escapeLatex(value: string): string {
+  let out = ''
+  for (const char of value) {
+    switch (char) {
+      case '\\':
+        out += '\\textbackslash{}'
+        break
+      case '{':
+        out += '\\{'
+        break
+      case '}':
+        out += '\\}'
+        break
+      case '$':
+        out += '\\$'
+        break
+      case '&':
+        out += '\\&'
+        break
+      case '#':
+        out += '\\#'
+        break
+      case '^':
+        out += '\\textasciicircum{}'
+        break
+      case '_':
+        out += '\\_'
+        break
+      case '~':
+        out += '\\textasciitilde{}'
+        break
+      case '%':
+        out += '\\%'
+        break
+      default:
+        out += char
+    }
+  }
+  return out
+}
+
+export function toLatex(title: string, pages: string[]): string {
+  const heading = escapeLatex(title.trim() || 'Tai lieu')
+  const body = pages
+    .map((text, index) => {
+      const content = escapeLatex(text.trim() || '(không có chữ)')
+      return `\\section*{Trang ${index + 1}}\n${content}\n`
+    })
+    .join('\n')
+  return `\\documentclass{article}\n\\begin{document}\n\\title{${heading}}\n\\maketitle\n\n${body}\\end{document}\n`
 }
 
 export function toHtml(title: string, pages: string[]): string {
@@ -1022,6 +1087,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/tab-separated-values;charset=utf-8'
     case 'toml':
       return 'application/toml;charset=utf-8'
+    case 'org':
+      return 'text/org;charset=utf-8'
+    case 'tex':
+      return 'application/x-tex;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

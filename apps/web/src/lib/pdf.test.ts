@@ -13,6 +13,9 @@ import {
   toCsv,
   toToml,
   toTsv,
+  escapeLatex,
+  toLatex,
+  toOrg,
   toEpub,
   toFb2,
   toHtml,
@@ -34,6 +37,8 @@ import {
   pagesFromCsv,
   pagesFromToml,
   pagesFromTsv,
+  pagesFromLatex,
+  pagesFromOrg,
   pagesFromDocx,
   pagesFromEpub,
   pagesFromFb2,
@@ -96,8 +101,12 @@ import {
   A5_WIDTH,
   LETTER_HEIGHT,
   LETTER_WIDTH,
+  addCoverPage,
   addHeaderFooter,
+  addPageBorder,
   addPageNumbers,
+  borderBoxForPage,
+  borderStrokeWidth,
   addTextOverlay,
   addWatermark,
   CROP_MARGINS,
@@ -421,6 +430,32 @@ describe('pdf edits', () => {
     await expect(unifyPageSizes(bytes, [])).rejects.toThrow(/đồng khổ/)
   })
 
+  it('adds an A4 cover page and strokes an inset border', async () => {
+    expect(borderBoxForPage({ width: 200, height: 280 }, 12)).toEqual({
+      x: 12,
+      y: 12,
+      width: 176,
+      height: 256,
+    })
+    expect(borderStrokeWidth(36)).toBeCloseTo(2)
+    expect(() => borderBoxForPage({ width: 40, height: 40 }, 12)).toThrow(/Lề cắt/)
+    expect(() => borderStrokeWidth(0)).toThrow(/Lề khung/)
+    const bytes = await samplePdf(['A', 'B'])
+    const bordered = await addPageBorder(bytes, [0], CROP_MARGINS.medium)
+    expect(await pageCount(bordered)).toBe(2)
+    expect((await PDFDocument.load(bordered)).getPage(1).getSize()).toEqual(
+      (await PDFDocument.load(bytes)).getPage(1).getSize(),
+    )
+    await expect(addPageBorder(bytes, [], 12)).rejects.toThrow(/đóng khung/)
+    await expect(addPageBorder(bytes, [0], 0)).rejects.toThrow(/Lề khung/)
+    const covered = await addCoverPage(bytes, { title: 'Báo cáo', subtitle: '2026' })
+    const coverDoc = await PDFDocument.load(covered)
+    expect(coverDoc.getPageCount()).toBe(3)
+    expect(coverDoc.getPage(0).getSize()).toEqual({ width: A4_WIDTH, height: A4_HEIGHT })
+    expect(coverDoc.getPage(1).getSize()).toEqual((await PDFDocument.load(bytes)).getPage(0).getSize())
+    await expect(addCoverPage(bytes, { title: '   ' })).rejects.toThrow(/tiêu đề trang bìa/)
+  })
+
   it('writes metadata and builds pages from PNG images', async () => {
     const bytes = await samplePdf(['A', 'B'])
     expect(trimMetadataField('  Xin   chào  ')).toBe('Xin chào')
@@ -696,6 +731,27 @@ describe('conversion helpers', () => {
       'toml',
     )
     expect(swapExtension('notes.toml', 'pdf')).toBe('notes.pdf')
+    expect(toOrg('Demo', ['Một', 'Hai\ndòng'])).toContain('* Demo')
+    expect(toOrg('Demo', ['Một'])).toContain('** Trang 1')
+    expect(pagesFromOrg(toOrg('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('org', toOrg('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromOrg('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.org', { type: '' }))).toBe('org')
+    expect(swapExtension('notes.org', 'pdf')).toBe('notes.pdf')
+    expect(toLatex('Demo', ['Một', 'Hai & ba'])).toContain('\\title{Demo}')
+    expect(toLatex('Demo', ['Một'])).toContain('\\section*{Trang 1}')
+    expect(escapeLatex('a&b_c')).toBe('a\\&b\\_c')
+    expect(pagesFromLatex(toLatex('Demo', ['Một', 'Hai & ba']))).toEqual(['Một', 'Hai & ba'])
+    expect(() => pagesFromLatex('\\documentclass{article}\\begin{document}\\end{document}')).toThrow(
+      /LaTeX/,
+    )
+    expect(pagesFromImportedText('tex', toLatex('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromLatex('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'paper.tex', { type: '' }))).toBe('tex')
+    expect(sourceKindFromFile(new File(['x'], 'paper.latex', { type: 'application/x-latex' }))).toBe(
+      'tex',
+    )
+    expect(swapExtension('paper.tex', 'pdf')).toBe('paper.pdf')
     expect(sourceKindFromFile(new File(['x'], 'notes.yaml', { type: '' }))).toBe('yaml')
     expect(sourceKindFromFile(new File(['x'], 'notes.yml', { type: 'application/yaml' }))).toBe(
       'yaml',

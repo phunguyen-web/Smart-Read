@@ -13,7 +13,9 @@ import {
   OVERLAY_PRESETS,
   PAPER_IDS,
   PAPER_LABELS,
+  addCoverPage,
   addHeaderFooter,
+  addPageBorder,
   addPageNumbers,
   addTextOverlay,
   addWatermark,
@@ -162,6 +164,8 @@ export function Editor() {
   const [watermarkStyle, setWatermarkStyle] = useState<WatermarkStyle>('diagonal')
   const [headerText, setHeaderText] = useState('')
   const [footerText, setFooterText] = useState('')
+  const [coverTitle, setCoverTitle] = useState('')
+  const [coverSubtitle, setCoverSubtitle] = useState('')
   const [cropMargin, setCropMargin] = useState<CropMarginId>('medium')
   const [metaTitle, setMetaTitle] = useState('')
   const [metaAuthor, setMetaAuthor] = useState('')
@@ -768,12 +772,13 @@ export function Editor() {
         <h1>Chỉnh sửa PDF</h1>
         <p>
           Xoay, đảo thứ tự, đan/tách trang lẻ-chẵn, đánh số trang, đóng chữ mờ, đầu/cuối trang, cắt lề, chuyển xám,
-          tìm chữ, xóa trang không chữ hoặc trùng chữ, vừa khổ A4/Letter/A5, đồng khổ, thêm hoặc cắt lề, gộp
+          tìm chữ, xóa trang không chữ hoặc trùng chữ, vừa khổ A4/Letter/A5, đồng khổ, thêm hoặc cắt lề, đóng khung,
+          thêm trang bìa, gộp
           2/4 trang mỗi tờ, xếp sách gấp, lật ngang/dọc, cắt đôi trên/dưới hoặc trái/phải, xoay khổ
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu và chèn chữ, rồi tải PDF
-          mới. Có thể mở TXT, Markdown, HTML, JSON, YAML, XML, CSV, TSV, TOML, RTF, DOCX, ODT, ODS, XLSX,
+          mới. Có thể mở TXT, Markdown, HTML, JSON, YAML, XML, CSV, TSV, TOML, Org, LaTeX, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -783,7 +788,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, YAML, XML, CSV, TSV, TOML, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, YAML, XML, CSV, TSV, TOML, Org, LaTeX, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -1551,6 +1556,46 @@ export function Editor() {
                 Đóng đầu/cuối {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
               </button>
             </fieldset>
+            <fieldset className="watermark-pack">
+              <legend>Trang bìa</legend>
+              <label className="overlay-field">
+                Tiêu đề
+                <input
+                  value={coverTitle}
+                  onChange={(event) => setCoverTitle(event.target.value)}
+                  aria-label="Tiêu đề trang bìa"
+                />
+              </label>
+              <label className="overlay-field">
+                Phụ đề
+                <input
+                  value={coverSubtitle}
+                  onChange={(event) => setCoverSubtitle(event.target.value)}
+                  aria-label="Phụ đề trang bìa"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={busy}
+                aria-label="Thêm trang bìa A4 vào đầu tài liệu"
+                onClick={() =>
+                  void run(
+                    (bytes) =>
+                      addCoverPage(bytes, {
+                        title: coverTitle,
+                        subtitle: coverSubtitle,
+                      }),
+                    () => {
+                      setPage(0)
+                      setSelected([0])
+                      setAnchor(0)
+                    },
+                  )
+                }
+              >
+                Thêm bìa
+              </button>
+            </fieldset>
             <fieldset className="crop-pack">
               <legend>Cắt hoặc thêm lề</legend>
               <div className="preset-row" role="group" aria-label="Độ rộng lề">
@@ -1600,6 +1645,20 @@ export function Editor() {
                   onClick={() => void run((bytes) => unifyPageSizes(bytes, targets))}
                 >
                   Đồng khổ {targets.length > 1 ? `${targets.length} trang` : ''}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label={
+                    targets.length > 1
+                      ? `Đóng khung ${targets.length} trang đã chọn`
+                      : 'Đóng khung trang hiện tại'
+                  }
+                  onClick={() =>
+                    void run((bytes) => addPageBorder(bytes, targets, CROP_MARGINS[cropMargin]))
+                  }
+                >
+                  Đóng khung {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
                 </button>
               </div>
             </fieldset>

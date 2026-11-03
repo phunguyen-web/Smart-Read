@@ -14,6 +14,8 @@ export type ImportedTextKind =
   | 'csv'
   | 'tsv'
   | 'toml'
+  | 'org'
+  | 'tex'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp'
@@ -186,6 +188,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'toml') {
     return pagesFromToml(text)
+  }
+  if (kind === 'org') {
+    return pagesFromOrg(text)
+  }
+  if (kind === 'tex') {
+    return pagesFromLatex(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -423,6 +431,75 @@ export function pagesFromToml(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp TOML cần các mục text = trong [[pages]].')
+}
+
+export function pagesFromOrg(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  if (/^\*{1,3}\s+Trang\s+\d+/m.test(trimmed)) {
+    return capPages(
+      trimmed
+        .split(/^\*{1,3}\s+Trang\s+\d+\s*$/m)
+        .map((page) => page.replace(/^\*\s+.*$/m, '').trim())
+        .filter((page) => page.length > 0),
+    )
+  }
+  if (/^\*{1,3}\s+/m.test(trimmed)) {
+    const pages = trimmed
+      .split(/(?=^\*{1,3}\s+)/m)
+      .map((part) => part.replace(/^\*{1,3}\s+.*$/m, '').trim())
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  return pagesFromPlainText(trimmed)
+}
+
+export function unescapeLatex(value: string): string {
+  return value
+    .replaceAll('\\textbackslash{}', '\u0000')
+    .replaceAll('\\textasciicircum{}', '^')
+    .replaceAll('\\textasciitilde{}', '~')
+    .replaceAll('\\{', '{')
+    .replaceAll('\\}', '}')
+    .replaceAll('\\$', '$')
+    .replaceAll('\\&', '&')
+    .replaceAll('\\#', '#')
+    .replaceAll('\\_', '_')
+    .replaceAll('\\%', '%')
+    .replaceAll('\u0000', '\\')
+}
+
+export function pagesFromLatex(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  let body = trimmed
+  const begin = body.search(/\\begin\{document\}/i)
+  if (begin >= 0) {
+    body = body.slice(begin).replace(/\\begin\{document\}/i, '')
+  }
+  body = body.replace(/\\end\{document\}[\s\S]*$/i, '')
+  body = body.replace(/\\title\{[^}]*\}/g, '')
+  body = body.replace(/\\maketitle/g, '')
+  if (/\\section\*?\{/i.test(body)) {
+    const pages = body
+      .split(/\\section\*?\{[^}]*\}/i)
+      .map((page) => unescapeLatex(page).trim())
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  const plain = unescapeLatex(body).trim()
+  if (!plain) {
+    throw new Error('Tệp LaTeX không có nội dung trang.')
+  }
+  return pagesFromPlainText(plain)
 }
 
 function pagesFromOfficeHeadings(text: string): string[] {

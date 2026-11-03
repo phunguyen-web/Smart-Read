@@ -18,14 +18,14 @@ export const PIPELINE_STAGES = [
     subagent: "pdf-editor",
     title: "PDF editor",
     summary:
-      "Implement in-browser PDF page operations: rotate, reverse, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, crop or pad margins, unify mixed page sizes, grayscale, find text, go to page, remove blank or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, and text overlay.",
+      "Implement in-browser PDF page operations: rotate, reverse, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, cover page, page border, crop or pad margins, unify mixed page sizes, grayscale, find text, go to page, remove blank or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, and text overlay.",
   },
   {
     id: "format-converter",
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, YAML, XML, CSV, TSV, TOML, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP; import TXT/MD/HTML/JSON/YAML/XML/CSV/TSV/TOML/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/PNG/JPEG/WEBP as PDF.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, YAML, XML, CSV, TSV, TOML, Org, LaTeX, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP; import TXT/MD/HTML/JSON/YAML/XML/CSV/TSV/TOML/Org/LaTeX/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/PNG/JPEG/WEBP as PDF.",
   },
   {
     id: "qa-reviewer",
@@ -106,13 +106,13 @@ export const SUPPORTED_FORMATS = [
     id: "pdf",
     label: "PDF",
     role: "edit",
-    notes: "Source format. Page rotate 90/180, reverse order, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, crop or pad margins, unify mixed page sizes, grayscale, find text, go to page, remove no-text or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split to ZIP, insert blank or PNG/JPEG/WEBP, reorder, merge, metadata, persist undo, and text overlay.",
+    notes: "Source format. Page rotate 90/180, reverse order, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, cover page, page border, crop or pad margins, unify mixed page sizes, grayscale, find text, go to page, remove no-text or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split to ZIP, insert blank or PNG/JPEG/WEBP, reorder, merge, metadata, persist undo, and text overlay.",
   },
   {
     id: "txt",
     label: "Plain text",
     role: "export",
-    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats. PNG/JPEG/WEBP, DOCX, ODT, ODS, XLSX, PPTX, ODP, EPUB, FB2, RTF, JSON, YAML, XML, CSV, TSV, and TOML uploads also become PDF pages.",
+    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats. PNG/JPEG/WEBP, DOCX, ODT, ODS, XLSX, PPTX, ODP, EPUB, FB2, RTF, JSON, YAML, XML, CSV, TSV, TOML, Org, and LaTeX uploads also become PDF pages.",
   },
   {
     id: "html",
@@ -169,6 +169,19 @@ export const SUPPORTED_FORMATS = [
     label: "TOML",
     role: "export",
     notes: "title plus [[pages]] tables with page and text. Uploading TOML builds a PDF from text = entries. JSON-shaped TOML uses pagesFromJson.",
+  },
+  {
+    id: "org",
+    label: "Org",
+    role: "export",
+    notes: "Org-mode outline with * title and ** Trang n headings. Uploading Org builds a PDF from those sections. JSON-shaped Org uses pagesFromJson.",
+  },
+  {
+    id: "tex",
+    label: "LaTeX",
+    aliases: ["latex"],
+    role: "export",
+    notes: "article document with one section per page. Uploading .tex/.latex builds a PDF from section bodies. JSON-shaped LaTeX uses pagesFromJson.",
   },
   {
     id: "xlsx",

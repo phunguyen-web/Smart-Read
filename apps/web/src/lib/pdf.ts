@@ -1355,6 +1355,98 @@ export async function unifyPageSizes(
   return new Uint8Array(await dst.save())
 }
 
+export const BORDER_INSETS = CROP_MARGINS
+export type BorderInsetId = CropMarginId
+
+/** Inset rectangle used to stroke a page frame. */
+export function borderBoxForPage(size: PageSize, inset: number): PageBox {
+  return cropBoxAfterMargin({ x: 0, y: 0, width: size.width, height: size.height }, inset)
+}
+
+export function borderStrokeWidth(inset: number): number {
+  const margin = Math.trunc(inset)
+  if (!Number.isInteger(margin) || margin < 1) {
+    throw new Error('Lề khung phải là số nguyên từ 1.')
+  }
+  return Math.max(0.75, Math.min(2.4, margin / 18))
+}
+
+/** Stroke a rectangle inset from each edge of the selected pages. */
+export async function addPageBorder(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  inset: number,
+): Promise<Uint8Array> {
+  const margin = Math.trunc(inset)
+  if (!Number.isInteger(margin) || margin < 1) {
+    throw new Error('Lề khung phải là số nguyên từ 1.')
+  }
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đóng khung.')
+  }
+  const stroke = borderStrokeWidth(margin)
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const box = borderBoxForPage(page.getSize(), margin)
+    page.drawRectangle({
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      borderWidth: stroke,
+      borderColor: rgb(0.16, 0.12, 0.1),
+    })
+  }
+  return new Uint8Array(await doc.save())
+}
+
+/** Insert an A4 title page at the start of the document. */
+export async function addCoverPage(
+  bytes: Uint8Array,
+  options: { title: string; subtitle?: string },
+): Promise<Uint8Array> {
+  const title = options.title.trim()
+  if (!title) {
+    throw new Error('Nhập tiêu đề trang bìa.')
+  }
+  const subtitle = (options.subtitle ?? '').trim()
+  const src = await PDFDocument.load(bytes)
+  if (src.getPageCount() < 1) {
+    throw new Error('Không có trang để thêm bìa.')
+  }
+  const dst = await PDFDocument.create()
+  copyDocumentInfo(src, dst)
+  const font = await embedOverlayFont(dst)
+  const page = dst.addPage([A4_WIDTH, A4_HEIGHT])
+  const titleSize = 28
+  const drawn = fitOverlayText(font, title, titleSize)
+  page.drawText(drawn.text, {
+    x: Math.max(48, (A4_WIDTH - drawn.width) / 2),
+    y: A4_HEIGHT * 0.62,
+    size: titleSize,
+    font,
+    color: rgb(0.16, 0.12, 0.1),
+  })
+  if (subtitle) {
+    const sub = fitOverlayText(font, subtitle, 14)
+    page.drawText(sub.text, {
+      x: Math.max(48, (A4_WIDTH - sub.width) / 2),
+      y: A4_HEIGHT * 0.62 - 42,
+      size: 14,
+      font,
+      color: rgb(0.32, 0.24, 0.2),
+    })
+  }
+  const copied = await dst.copyPages(src, src.getPageIndices())
+  for (const copiedPage of copied) {
+    dst.addPage(copiedPage)
+  }
+  return new Uint8Array(await dst.save())
+}
+
 export const MAX_METADATA_LENGTH = 200
 export const IMAGE_PAGE_MAX_EDGE = 792
 
