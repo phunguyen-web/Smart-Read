@@ -1447,6 +1447,194 @@ export async function addCoverPage(
   return new Uint8Array(await dst.save())
 }
 
+export const TINT_IDS = ['cream', 'sepia', 'night'] as const
+export type TintId = (typeof TINT_IDS)[number]
+export const TINT_LABELS: Record<TintId, string> = {
+  cream: 'Kem',
+  sepia: 'Nâu',
+  night: 'Đêm',
+}
+export const TINTS: Record<TintId, { r: number; g: number; b: number; opacity: number }> = {
+  cream: { r: 0.96, g: 0.9, b: 0.72, opacity: 0.28 },
+  sepia: { r: 0.72, g: 0.5, b: 0.22, opacity: 0.22 },
+  night: { r: 0.08, g: 0.12, b: 0.22, opacity: 0.38 },
+}
+
+export function isTintId(value: string): value is TintId {
+  return (TINT_IDS as readonly string[]).includes(value)
+}
+
+export function tintFill(id: TintId): { r: number; g: number; b: number; opacity: number } {
+  if (!isTintId(id)) {
+    throw new Error('Màu đọc không hỗ trợ.')
+  }
+  return TINTS[id]
+}
+
+/** Overlay a reading tint on selected pages. Empty `indexes` is refused. */
+export async function tintPages(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  tint: TintId,
+): Promise<Uint8Array> {
+  const fill = tintFill(tint)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để phủ màu đọc.')
+  }
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width,
+      height,
+      color: rgb(fill.r, fill.g, fill.b),
+      opacity: fill.opacity,
+    })
+  }
+  return new Uint8Array(await doc.save())
+}
+
+export const AUTO_CROP_PADDING = 8
+export const AUTO_CROP_THRESHOLD = 248
+
+export type PixelBounds = {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+}
+
+export type PageRaster = {
+  index: number
+  data: Uint8Array | Uint8ClampedArray
+  width: number
+  height: number
+}
+
+export function pageBoxEquals(a: PageBox, b: PageBox, epsilon = 0.5): boolean {
+  return (
+    Math.abs(a.x - b.x) <= epsilon &&
+    Math.abs(a.y - b.y) <= epsilon &&
+    Math.abs(a.width - b.width) <= epsilon &&
+    Math.abs(a.height - b.height) <= epsilon
+  )
+}
+
+/** Map a top-left pixel box onto a PDF crop box (origin bottom-left). */
+export function cropBoxFromContentBounds(
+  pageSize: PageSize,
+  pixelSize: PageSize,
+  bounds: PixelBounds,
+  padding = AUTO_CROP_PADDING,
+): PageBox {
+  const px = Math.max(1, pixelSize.width)
+  const py = Math.max(1, pixelSize.height)
+  const scaleX = pageSize.width / px
+  const scaleY = pageSize.height / py
+  const inset = Number.isFinite(padding) ? Math.max(0, padding) : AUTO_CROP_PADDING
+  const x = bounds.minX * scaleX - inset
+  const y = pageSize.height - (bounds.maxY + 1) * scaleY - inset
+  const width = (bounds.maxX - bounds.minX + 1) * scaleX + inset * 2
+  const height = (bounds.maxY - bounds.minY + 1) * scaleY + inset * 2
+  const box: PageBox = {
+    x: Math.max(0, x),
+    y: Math.max(0, y),
+    width: Math.min(pageSize.width, width),
+    height: Math.min(pageSize.height, height),
+  }
+  if (box.x + box.width > pageSize.width) {
+    box.width = pageSize.width - box.x
+  }
+  if (box.y + box.height > pageSize.height) {
+    box.height = pageSize.height - box.y
+  }
+  if (box.width < MIN_CROP_REMAINING || box.height < MIN_CROP_REMAINING) {
+    throw new Error('Nội dung quá nhỏ để cắt lề trắng.')
+  }
+  return box
+}
+
+export async function applyContentCrops(
+  bytes: Uint8Array,
+  crops: readonly { index: number; box: PageBox }[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  let changed = false
+  for (const crop of crops) {
+    if (!Number.isInteger(crop.index) || crop.index < 0 || crop.index >= count) {
+      continue
+    }
+    const page = doc.getPage(crop.index)
+    const current = page.getCropBox()
+    const next: PageBox = {
+      x: current.x + crop.box.x,
+      y: current.y + crop.box.y,
+      width: crop.box.width,
+      height: crop.box.height,
+    }
+    if (pageBoxEquals(current, next)) {
+      continue
+    }
+    if (next.width < MIN_CROP_REMAINING || next.height < MIN_CROP_REMAINING) {
+      throw new Error('Nội dung quá nhỏ để cắt lề trắng.')
+    }
+    page.setCropBox(next.x, next.y, next.width, next.height)
+    changed = true
+  }
+  if (!changed) {
+    return bytes
+  }
+  return new Uint8Array(await doc.save())
+}
+
+/** Crop selected pages to ink bounds from rasters. Empty `indexes` is refused. */
+export async function autoCropPages(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  rasters: readonly PageRaster[],
+  detectBounds: (
+    data: Uint8Array | Uint8ClampedArray,
+    width: number,
+    height: number,
+    threshold?: number,
+  ) => PixelBounds | null,
+): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để cắt lề trắng.')
+  }
+  const byIndex = new Map(rasters.map((raster) => [raster.index, raster]))
+  const crops: { index: number; box: PageBox }[] = []
+  for (const index of unique) {
+    const raster = byIndex.get(index)
+    if (!raster) {
+      continue
+    }
+    const bounds = detectBounds(raster.data, raster.width, raster.height, AUTO_CROP_THRESHOLD)
+    if (!bounds) {
+      continue
+    }
+    const page = src.getPage(index)
+    const size = page.getSize()
+    crops.push({
+      index,
+      box: cropBoxFromContentBounds(size, { width: raster.width, height: raster.height }, bounds),
+    })
+  }
+  if (crops.length === 0) {
+    throw new Error('Không tìm thấy nội dung để cắt lề trắng.')
+  }
+  return applyContentCrops(bytes, crops)
+}
+
 export const MAX_METADATA_LENGTH = 200
 export const IMAGE_PAGE_MAX_EDGE = 792
 

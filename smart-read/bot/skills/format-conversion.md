@@ -1,5 +1,5 @@
 ---
-description: Use when implementing or changing PDF export to TXT, HTML, Markdown, RTF, JSON, YAML, XML, CSV, TSV, TOML, Org, LaTeX, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, MOBI, PNG, JPEG, or WEBP.
+description: Use when implementing or changing PDF export to TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, MOBI, PNG, JPEG, or WEBP.
 ---
 
 # Format conversion
@@ -22,6 +22,8 @@ Extract text with `pdfjs-dist` (`getTextContent` per page), then build the targe
 | TOML | `toToml` / `escapeToml` — `title` plus `[[pages]]` with `text =`. Uploading TOML uses `pagesFromToml`. JSON-shaped TOML falls through to `pagesFromJson`. |
 | Org | `toOrg` — `* title` plus `** Trang n` sections. Uploading Org uses `pagesFromOrg`. JSON-shaped Org falls through to `pagesFromJson`. |
 | LaTeX | `toLatex` / `escapeLatex` — article with one `\\section*` per page. Uploading `.tex` / `.latex` uses `pagesFromLatex`. JSON-shaped LaTeX falls through to `pagesFromJson`. |
+| JSONL | `toJsonl` — one `{ page, text }` object per line. Uploading JSONL / NDJSON uses `pagesFromJsonl`. A single JSON array or `{ pages }` document falls through to `pagesFromJson`. |
+| INI | `toIni` / `escapeIni` — `[document]` title plus `[page.n]` `text =`. Uploading INI / `.cfg` uses `pagesFromIni`. JSON-shaped INI falls through to `pagesFromJson`. |
 | XLSX | `toXlsx` — Office Open XML workbook with `page,text` columns (`inlineStr`). Uploading XLSX uses `pagesFromXlsx`. Binary `.xls` is rejected. |
 | PNG / JPEG / WEBP | Raster each selected page with `renderPageToBlob`. One page is a single image; several pages are a ZIP (`imagePageName` / `imageZipName`). JPEG paints a white background. Uploading PNG/JPEG builds a PDF via `imagesToPdf`. WEBP import is decoded to PNG with `rasterToPng` first. |
 | DOCX / DOC | Dynamic `import('docx')` `Document` / `Packer`. Same bytes for `.doc` download name if the user picked DOC. Uploading DOCX uses `pagesFromDocx` (binary `.doc` is rejected). |
@@ -36,7 +38,7 @@ Extract text with `pdfjs-dist` (`getTextContent` per page), then build the targe
 ## Rules
 
 - Preserve page order. Validate the from–to range with `parsePageRange` (empty, non-integer, inverted, or out of bounds must show an error and block export). Slice extracted pages with `slicePageRange` only after the range is valid. If the editor has a multi-page subset selected, `slicePagesByIndexes` may export those pages instead (including a non-contiguous set).
-- TXT, Markdown, HTML, JSON, YAML, XML, CSV, TSV, TOML, Org, LaTeX, RTF, and FB2 uploads become a PDF via `pagesFromImportedText` + `textPagesToPdf` so they can then export to the other formats. DOCX, ODT, ODS, XLSX, PPTX, ODP, and EPUB uploads use `pagesFromDocx` / `pagesFromOdt` / `pagesFromOds` / `pagesFromXlsx` / `pagesFromPptx` / `pagesFromOdp` / `pagesFromEpub`. PNG and JPEG uploads become a PDF via `imagesToPdf`. WEBP uploads use `rasterToPng` then `imagesToPdf`. `pdfFromLoadedSource` is the shared entry. RTF import uses `rtfToPlain` / `pagesFromRtf`. YAML import uses `pagesFromYaml`. XML import uses `pagesFromXml`. TSV import uses `pagesFromTsv`. TOML import uses `pagesFromToml`. Org import uses `pagesFromOrg`. LaTeX import uses `pagesFromLatex`.
+- TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, RTF, and FB2 uploads become a PDF via `pagesFromImportedText` + `textPagesToPdf` so they can then export to the other formats. DOCX, ODT, ODS, XLSX, PPTX, ODP, and EPUB uploads use `pagesFromDocx` / `pagesFromOdt` / `pagesFromOds` / `pagesFromXlsx` / `pagesFromPptx` / `pagesFromOdp` / `pagesFromEpub`. PNG and JPEG uploads become a PDF via `imagesToPdf`. WEBP uploads use `rasterToPng` then `imagesToPdf`. `pdfFromLoadedSource` is the shared entry. RTF import uses `rtfToPlain` / `pagesFromRtf`. YAML import uses `pagesFromYaml`. XML import uses `pagesFromXml`. TSV import uses `pagesFromTsv`. TOML import uses `pagesFromToml`. Org import uses `pagesFromOrg`. LaTeX import uses `pagesFromLatex`. JSONL import uses `pagesFromJsonl`. INI import uses `pagesFromIni`.
 - Strip NULs and cap extracted text so a huge PDF cannot freeze the tab.
 - Name downloads from the source filename plus the new extension.
 - Never upload the file to a third-party conversion API.

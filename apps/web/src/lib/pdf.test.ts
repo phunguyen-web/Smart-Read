@@ -14,8 +14,11 @@ import {
   toToml,
   toTsv,
   escapeLatex,
+  toIni,
+  toJsonl,
   toLatex,
   toOrg,
+  escapeIni,
   toEpub,
   toFb2,
   toHtml,
@@ -37,6 +40,8 @@ import {
   pagesFromCsv,
   pagesFromToml,
   pagesFromTsv,
+  pagesFromIni,
+  pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
   pagesFromDocx,
@@ -68,6 +73,7 @@ import {
   findPagesWithText,
   foldSearch,
   repeatedPageIndexes,
+  contentBoundsFromRgba,
   grayscaleRgba,
   luma,
   previewScaleForPage,
@@ -104,6 +110,14 @@ import {
   addCoverPage,
   addHeaderFooter,
   addPageBorder,
+  applyContentCrops,
+  autoCropPages,
+  AUTO_CROP_PADDING,
+  cropBoxFromContentBounds,
+  pageBoxEquals,
+  TINTS,
+  tintFill,
+  tintPages,
   addPageNumbers,
   borderBoxForPage,
   borderStrokeWidth,
@@ -456,6 +470,74 @@ describe('pdf edits', () => {
     await expect(addCoverPage(bytes, { title: '   ' })).rejects.toThrow(/tiêu đề trang bìa/)
   })
 
+  it('overlays a reading tint and crops to ink bounds', async () => {
+    expect(tintFill('cream')).toEqual(TINTS.cream)
+    expect(() => tintFill('pink' as 'cream')).toThrow(/Màu đọc/)
+    const bytes = await samplePdf(['A', 'B'])
+    const tinted = await tintPages(bytes, [0], 'sepia')
+    expect(await pageCount(tinted)).toBe(2)
+    expect((await PDFDocument.load(tinted)).getPage(1).getSize()).toEqual(
+      (await PDFDocument.load(bytes)).getPage(1).getSize(),
+    )
+    await expect(tintPages(bytes, [], 'night')).rejects.toThrow(/màu đọc/)
+
+    const pixels = new Uint8ClampedArray(4 * 4 * 4)
+    pixels.fill(255)
+    pixels[4 * (1 * 4 + 1)] = 10
+    pixels[4 * (1 * 4 + 1) + 1] = 10
+    pixels[4 * (1 * 4 + 1) + 2] = 10
+    pixels[4 * (1 * 4 + 1) + 3] = 255
+    pixels[4 * (2 * 4 + 2)] = 20
+    pixels[4 * (2 * 4 + 2) + 1] = 20
+    pixels[4 * (2 * 4 + 2) + 2] = 20
+    pixels[4 * (2 * 4 + 2) + 3] = 255
+    expect(contentBoundsFromRgba(pixels, 4, 4)).toEqual({ minX: 1, minY: 1, maxX: 2, maxY: 2 })
+    expect(contentBoundsFromRgba(new Uint8ClampedArray(16).fill(255), 2, 2)).toBeNull()
+
+    const box = cropBoxFromContentBounds(
+      { width: 200, height: 280 },
+      { width: 4, height: 4 },
+      { minX: 1, minY: 1, maxX: 2, maxY: 2 },
+      0,
+    )
+    expect(box).toEqual({ x: 50, y: 70, width: 100, height: 140 })
+    expect(pageBoxEquals(box, { x: 50.2, y: 70.1, width: 100, height: 140 })).toBe(true)
+    expect(() =>
+      cropBoxFromContentBounds(
+        { width: 40, height: 40 },
+        { width: 40, height: 40 },
+        { minX: 18, minY: 18, maxX: 19, maxY: 19 },
+        0,
+      ),
+    ).toThrow(/quá nhỏ/)
+
+    const cropped = await autoCropPages(
+      bytes,
+      [0],
+      [{ index: 0, data: pixels, width: 4, height: 4 }],
+      contentBoundsFromRgba,
+    )
+    const cropDoc = await PDFDocument.load(cropped)
+    const next = cropDoc.getPage(0).getCropBox()
+    expect(next.width).toBeLessThan(200)
+    expect(next.height).toBeLessThan(280)
+    expect(cropDoc.getPage(1).getCropBox().width).toBe(200)
+    await expect(autoCropPages(bytes, [], [], contentBoundsFromRgba)).rejects.toThrow(/cắt lề trắng/)
+    await expect(
+      autoCropPages(
+        bytes,
+        [0],
+        [{ index: 0, data: new Uint8ClampedArray(16).fill(255), width: 2, height: 2 }],
+        contentBoundsFromRgba,
+      ),
+    ).rejects.toThrow(/Không tìm thấy nội dung/)
+    const same = await applyContentCrops(bytes, [
+      { index: 0, box: { x: 0, y: 0, width: 200, height: 280 } },
+    ])
+    expect(same).toBe(bytes)
+    expect(AUTO_CROP_PADDING).toBe(8)
+  })
+
   it('writes metadata and builds pages from PNG images', async () => {
     const bytes = await samplePdf(['A', 'B'])
     expect(trimMetadataField('  Xin   chào  ')).toBe('Xin chào')
@@ -752,6 +834,27 @@ describe('conversion helpers', () => {
       'tex',
     )
     expect(swapExtension('paper.tex', 'pdf')).toBe('paper.pdf')
+    expect(toJsonl(['Một', 'Hai\ndòng'])).toContain('"page":1')
+    expect(toJsonl(['Một'])).toContain('"text":"Một"')
+    expect(pagesFromJsonl(toJsonl(['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('jsonl', toJsonl(['Hi']))).toEqual(['Hi'])
+    expect(pagesFromJsonl('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(() => pagesFromJsonl('{"page":1}\nnot-json')).toThrow(/JSONL/)
+    expect(sourceKindFromFile(new File(['x'], 'notes.jsonl', { type: '' }))).toBe('jsonl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ndjson', { type: 'application/x-ndjson' }))).toBe(
+      'jsonl',
+    )
+    expect(swapExtension('notes.jsonl', 'pdf')).toBe('notes.pdf')
+    expect(toIni('Demo', ['Một', 'Hai\ndòng'])).toContain('[document]')
+    expect(toIni('Demo', ['Một'])).toContain('[page.1]')
+    expect(escapeIni('a"b')).toContain('\\"')
+    expect(pagesFromIni(toIni('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(() => pagesFromIni('[document]\ntitle = "Demo"\n')).toThrow(/INI/)
+    expect(pagesFromImportedText('ini', toIni('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromIni('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.ini', { type: '' }))).toBe('ini')
+    expect(sourceKindFromFile(new File(['x'], 'notes.cfg', { type: 'text/ini' }))).toBe('ini')
+    expect(swapExtension('notes.ini', 'pdf')).toBe('notes.pdf')
     expect(sourceKindFromFile(new File(['x'], 'notes.yaml', { type: '' }))).toBe('yaml')
     expect(sourceKindFromFile(new File(['x'], 'notes.yml', { type: 'application/yaml' }))).toBe(
       'yaml',

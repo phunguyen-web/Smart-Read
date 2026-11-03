@@ -16,6 +16,8 @@ export type ImportedTextKind =
   | 'toml'
   | 'org'
   | 'tex'
+  | 'jsonl'
+  | 'ini'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp'
@@ -194,6 +196,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'tex') {
     return pagesFromLatex(text)
+  }
+  if (kind === 'jsonl') {
+    return pagesFromJsonl(text)
+  }
+  if (kind === 'ini') {
+    return pagesFromIni(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -471,6 +479,77 @@ export function unescapeLatex(value: string): string {
     .replaceAll('\\_', '_')
     .replaceAll('\\%', '%')
     .replaceAll('\u0000', '\\')
+}
+
+export function pagesFromJsonl(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*[[]/.test(trimmed) || /^\s*\{[\s\S]*"pages"\s*:/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages: string[] = []
+  for (const line of trimmed.replace(/\r\n/g, '\n').split('\n')) {
+    const row = line.trim()
+    if (!row) {
+      continue
+    }
+    let data: unknown
+    try {
+      data = JSON.parse(row)
+    } catch {
+      throw new Error('Tệp JSONL có dòng không hợp lệ.')
+    }
+    if (typeof data === 'string') {
+      pages.push(data)
+      continue
+    }
+    if (data && typeof data === 'object' && typeof (data as { text?: unknown }).text === 'string') {
+      pages.push((data as { text: string }).text)
+      continue
+    }
+    pages.push('')
+  }
+  if (pages.length === 0) {
+    throw new Error('Tệp JSONL cần một đối tượng { text } mỗi dòng.')
+  }
+  return capPages(pages)
+}
+
+function unescapeIniValue(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed.length >= 2) {
+    const quote = trimmed[0]
+    if ((quote === '"' || quote === "'") && trimmed.endsWith(quote)) {
+      const inner = trimmed.slice(1, -1)
+      if (quote === "'") {
+        return inner.replaceAll("''", "'")
+      }
+      return inner
+        .replaceAll('\\n', '\n')
+        .replaceAll('\\t', '\t')
+        .replaceAll('\\"', '"')
+        .replaceAll('\\\\', '\\')
+    }
+  }
+  return trimmed
+}
+
+export function pagesFromIni(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || (/^\s*\[/.test(trimmed) && !/^\s*\[(document|page)\b/im.test(trimmed))) {
+    return pagesFromJson(trimmed)
+  }
+  const pages: string[] = []
+  for (const line of trimmed.replace(/\r\n/g, '\n').split('\n')) {
+    const match = line.match(/^\s*text\s*=\s*(.*)$/i)
+    if (!match) {
+      continue
+    }
+    pages.push(unescapeIniValue(match[1]!))
+  }
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp INI cần các mục text = trong [page.n].')
 }
 
 export function pagesFromLatex(text: string): string[] {

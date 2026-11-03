@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   blankPageIndexes,
+  contentBoundsFromRgba,
   extractPageTexts,
   findPagesWithText,
   grayscalePagePngs,
+  pageRgba,
   rasterToPng,
   renderPageToCanvas,
   repeatedPageIndexes,
@@ -20,6 +22,7 @@ import {
   addTextOverlay,
   addWatermark,
   applyPageOrder,
+  autoCropPages,
   cropPages,
   deinterleaveOddEvenOrder,
   deletePages,
@@ -57,6 +60,9 @@ import {
   setMetadata,
   splitEvery,
   splitPagesInHalf,
+  TINT_IDS,
+  TINT_LABELS,
+  tintPages,
   unifyPageSizes,
   type CropMarginId,
   type MergeWhere,
@@ -64,6 +70,7 @@ import {
   type OverlayPresetId,
   type PageNumberPosition,
   type PageNumberStyle,
+  type TintId,
   type WatermarkStyle,
 } from '../lib/pdf.ts'
 import { zipPdfParts } from '../lib/convert.ts'
@@ -142,6 +149,11 @@ const CROP_MARGIN_PRESETS: { id: CropMarginId; label: string }[] = [
   { id: 'wide', label: 'Rộng' },
 ]
 
+const TINT_PRESETS: { id: TintId; label: string }[] = TINT_IDS.map((id) => ({
+  id,
+  label: TINT_LABELS[id],
+}))
+
 function initialEditorView() {
   const current = getDocument()
   return current ? restoreEditorView(current.pageCount) : { page: 0, selected: [0], anchor: 0 }
@@ -167,6 +179,7 @@ export function Editor() {
   const [coverTitle, setCoverTitle] = useState('')
   const [coverSubtitle, setCoverSubtitle] = useState('')
   const [cropMargin, setCropMargin] = useState<CropMarginId>('medium')
+  const [readingTint, setReadingTint] = useState<TintId>('cream')
   const [metaTitle, setMetaTitle] = useState('')
   const [metaAuthor, setMetaAuthor] = useState('')
   const [metaSubject, setMetaSubject] = useState('')
@@ -771,14 +784,15 @@ export function Editor() {
       <header className="page-head">
         <h1>Chỉnh sửa PDF</h1>
         <p>
-          Xoay, đảo thứ tự, đan/tách trang lẻ-chẵn, đánh số trang, đóng chữ mờ, đầu/cuối trang, cắt lề, chuyển xám,
+          Xoay, đảo thứ tự, đan/tách trang lẻ-chẵn, đánh số trang, đóng chữ mờ, đầu/cuối trang, cắt lề, phủ màu đọc,
+          cắt lề trắng, chuyển xám,
           tìm chữ, xóa trang không chữ hoặc trùng chữ, vừa khổ A4/Letter/A5, đồng khổ, thêm hoặc cắt lề, đóng khung,
           thêm trang bìa, gộp
           2/4 trang mỗi tờ, xếp sách gấp, lật ngang/dọc, cắt đôi trên/dưới hoặc trái/phải, xoay khổ
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu và chèn chữ, rồi tải PDF
-          mới. Có thể mở TXT, Markdown, HTML, JSON, YAML, XML, CSV, TSV, TOML, Org, LaTeX, RTF, DOCX, ODT, ODS, XLSX,
+          mới. Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -788,7 +802,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, YAML, XML, CSV, TSV, TOML, Org, LaTeX, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -1660,7 +1674,51 @@ export function Editor() {
                 >
                   Đóng khung {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
                 </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label={
+                    targets.length > 1
+                      ? `Cắt lề trắng ${targets.length} trang đã chọn`
+                      : 'Cắt lề trắng trang hiện tại'
+                  }
+                  onClick={() =>
+                    void run(async (bytes) =>
+                      autoCropPages(bytes, targets, await pageRgba(bytes, targets), contentBoundsFromRgba),
+                    )
+                  }
+                >
+                  Cắt trắng {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+                </button>
               </div>
+            </fieldset>
+            <fieldset className="crop-pack">
+              <legend>Màu đọc</legend>
+              <div className="preset-row" role="group" aria-label="Màu đọc">
+                {TINT_PRESETS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={readingTint === item.id ? 'picked' : undefined}
+                    onClick={() => setReadingTint(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={
+                  targets.length > 1
+                    ? `Phủ màu đọc ${TINT_LABELS[readingTint]} cho ${targets.length} trang đã chọn`
+                    : `Phủ màu đọc ${TINT_LABELS[readingTint]} cho trang hiện tại`
+                }
+                onClick={() => void run((bytes) => tintPages(bytes, targets, readingTint))}
+              >
+                Phủ {TINT_LABELS[readingTint]}{' '}
+                {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+              </button>
             </fieldset>
             <div className="tool-row">
               <button

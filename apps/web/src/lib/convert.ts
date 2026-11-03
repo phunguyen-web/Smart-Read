@@ -13,6 +13,8 @@ export type ExportFormat =
   | 'toml'
   | 'org'
   | 'tex'
+  | 'jsonl'
+  | 'ini'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -266,6 +268,27 @@ export function escapeLatex(value: string): string {
     }
   }
   return out
+}
+
+export function toJsonl(pages: string[]): string {
+  const list = pages.length > 0 ? pages : ['']
+  return `${list.map((text, index) => JSON.stringify({ page: index + 1, text })).join('\n')}\n`
+}
+
+export function escapeIni(value: string): string {
+  return `"${value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('"', '\\"')
+    .replaceAll('\r', '')
+    .replaceAll('\n', '\\n')
+    .replaceAll('\t', '\\t')}"`
+}
+
+export function toIni(title: string, pages: string[]): string {
+  const heading = escapeIni(title.trim() || 'Tài liệu')
+  const list = pages.length > 0 ? pages : ['']
+  const blocks = list.map((text, index) => `[page.${index + 1}]\ntext = ${escapeIni(text)}`)
+  return `[document]\ntitle = ${heading}\n\n${blocks.join('\n\n')}\n`
 }
 
 export function toLatex(title: string, pages: string[]): string {
@@ -1091,6 +1114,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/org;charset=utf-8'
     case 'tex':
       return 'application/x-tex;charset=utf-8'
+    case 'jsonl':
+      return 'application/jsonl;charset=utf-8'
+    case 'ini':
+      return 'text/plain;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

@@ -348,6 +348,74 @@ export function grayscaleRgba(data: Uint8Array | Uint8ClampedArray): void {
   }
 }
 
+export const CONTENT_LUMA_THRESHOLD = 248
+
+/** Tight pixel box of non-white ink. Origin is top-left. */
+export function contentBoundsFromRgba(
+  data: Uint8Array | Uint8ClampedArray,
+  width: number,
+  height: number,
+  threshold = CONTENT_LUMA_THRESHOLD,
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  const cols = Math.max(0, Math.trunc(width))
+  const rows = Math.max(0, Math.trunc(height))
+  if (cols < 1 || rows < 1 || data.length < cols * rows * 4) {
+    return null
+  }
+  let minX = cols
+  let minY = rows
+  let maxX = -1
+  let maxY = -1
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < cols; x += 1) {
+      const offset = (y * cols + x) * 4
+      const alpha = data[offset + 3] ?? 0
+      if (alpha < 16) {
+        continue
+      }
+      if (luma(data[offset]!, data[offset + 1]!, data[offset + 2]!) >= threshold) {
+        continue
+      }
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+    }
+  }
+  if (maxX < 0) {
+    return null
+  }
+  return { minX, minY, maxX, maxY }
+}
+
+export async function pageRgba(
+  bytes: Uint8Array,
+  pageIndexes: readonly number[],
+): Promise<{ index: number; data: Uint8ClampedArray; width: number; height: number }[]> {
+  const unique = [
+    ...new Set(pageIndexes.filter((index) => Number.isInteger(index) && index >= 0)),
+  ].sort((a, b) => a - b)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để cắt lề trắng.')
+  }
+  const rasters: { index: number; data: Uint8ClampedArray; width: number; height: number }[] = []
+  for (const index of unique) {
+    const canvas = await renderPageToScratch(bytes, index + 1)
+    const context = canvas.getContext('2d')
+    if (!context) {
+      throw new Error('Không đọc được ảnh trang để cắt lề trắng.')
+    }
+    const image = context.getImageData(0, 0, canvas.width, canvas.height)
+    rasters.push({
+      index,
+      data: image.data,
+      width: canvas.width,
+      height: canvas.height,
+    })
+  }
+  return rasters
+}
+
 async function renderPageToScratch(
   bytes: Uint8Array,
   pageNumber: number,
