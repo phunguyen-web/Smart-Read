@@ -4,7 +4,7 @@ import { SUPPORTED_FORMATS } from "../lib/pipeline.js";
 
 export default defineTool({
   description:
-    "List the PDF edit surface and export formats Smart-Read supports (TXT, HTML, Markdown, RTF, JSON, YAML, XML, CSV, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, MOBI, PNG, JPEG, WEBP), including RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/JSON/YAML/XML/CSV/WEBP import.",
+    "List the PDF edit surface and export formats Smart-Read supports (TXT, HTML, Markdown, RTF, JSON, YAML, XML, CSV, TSV, TOML, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, MOBI, PNG, JPEG, WEBP), including RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/JSON/YAML/XML/CSV/TSV/TOML/WEBP import.",
   effect: "read",
   inputSchema: z.object({}),
   async execute() {

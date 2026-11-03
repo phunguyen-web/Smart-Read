@@ -18,14 +18,14 @@ export const PIPELINE_STAGES = [
     subagent: "pdf-editor",
     title: "PDF editor",
     summary:
-      "Implement in-browser PDF page operations: rotate, reverse, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, crop or pad margins, grayscale, find text, go to page, remove blank or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, and text overlay.",
+      "Implement in-browser PDF page operations: rotate, reverse, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, crop or pad margins, unify mixed page sizes, grayscale, find text, go to page, remove blank or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, and text overlay.",
   },
   {
     id: "format-converter",
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, YAML, XML, CSV, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP; import TXT/MD/HTML/JSON/YAML/XML/CSV/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/PNG/JPEG/WEBP as PDF.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, YAML, XML, CSV, TSV, TOML, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP; import TXT/MD/HTML/JSON/YAML/XML/CSV/TSV/TOML/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/PNG/JPEG/WEBP as PDF.",
   },
   {
     id: "qa-reviewer",
@@ -106,13 +106,13 @@ export const SUPPORTED_FORMATS = [
     id: "pdf",
     label: "PDF",
     role: "edit",
-    notes: "Source format. Page rotate 90/180, reverse order, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, crop or pad margins, grayscale, find text, go to page, remove no-text or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split to ZIP, insert blank or PNG/JPEG/WEBP, reorder, merge, metadata, persist undo, and text overlay.",
+    notes: "Source format. Page rotate 90/180, reverse order, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, crop or pad margins, unify mixed page sizes, grayscale, find text, go to page, remove no-text or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split to ZIP, insert blank or PNG/JPEG/WEBP, reorder, merge, metadata, persist undo, and text overlay.",
   },
   {
     id: "txt",
     label: "Plain text",
     role: "export",
-    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats. PNG/JPEG/WEBP, DOCX, ODT, ODS, XLSX, PPTX, ODP, EPUB, FB2, RTF, JSON, YAML, XML, and CSV uploads also become PDF pages.",
+    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats. PNG/JPEG/WEBP, DOCX, ODT, ODS, XLSX, PPTX, ODP, EPUB, FB2, RTF, JSON, YAML, XML, CSV, TSV, and TOML uploads also become PDF pages.",
   },
   {
     id: "html",
@@ -157,6 +157,18 @@ export const SUPPORTED_FORMATS = [
     label: "CSV",
     role: "export",
     notes: "page,text rows from extracted page text. Fields with commas are quoted. Uploading CSV builds a PDF first.",
+  },
+  {
+    id: "tsv",
+    label: "TSV",
+    role: "export",
+    notes: "Tab-separated page and text rows from extracted page text. Fields with tabs or quotes are quoted. Uploading TSV builds a PDF first.",
+  },
+  {
+    id: "toml",
+    label: "TOML",
+    role: "export",
+    notes: "title plus [[pages]] tables with page and text. Uploading TOML builds a PDF from text = entries. JSON-shaped TOML uses pagesFromJson.",
   },
   {
     id: "xlsx",

@@ -9,6 +9,8 @@ export type ExportFormat =
   | 'yaml'
   | 'xml'
   | 'csv'
+  | 'tsv'
+  | 'toml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -118,6 +120,35 @@ export function escapeCsv(value: string): string {
 
 export function toCsv(pages: string[]): string {
   return ['page,text', ...pages.map((text, index) => `${index + 1},${escapeCsv(text)}`)].join('\n')
+}
+
+export function escapeTsv(value: string): string {
+  if (/["\t\n\r]/.test(value)) {
+    return `"${value.replaceAll('"', '""')}"`
+  }
+  return value
+}
+
+export function toTsv(pages: string[]): string {
+  return ['page\ttext', ...pages.map((text, index) => `${index + 1}\t${escapeTsv(text)}`)].join('\n')
+}
+
+export function escapeToml(value: string): string {
+  return `"${value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('"', '\\"')
+    .replaceAll('\r', '')
+    .replaceAll('\n', '\\n')
+    .replaceAll('\t', '\\t')}"`
+}
+
+export function toToml(title: string, pages: string[]): string {
+  const heading = escapeToml(title.trim() || 'Tài liệu')
+  const list = pages.length > 0 ? pages : ['']
+  const blocks = list.map((text, index) => {
+    return `[[pages]]\npage = ${index + 1}\ntext = ${escapeToml(text)}`
+  })
+  return `title = ${heading}\n\n${blocks.join('\n\n')}\n`
 }
 
 export type JsonPage = {
@@ -987,6 +1018,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/xml;charset=utf-8'
     case 'csv':
       return 'text/csv;charset=utf-8'
+    case 'tsv':
+      return 'text/tab-separated-values;charset=utf-8'
+    case 'toml':
+      return 'application/toml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

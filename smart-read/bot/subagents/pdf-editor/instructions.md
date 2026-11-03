@@ -5,7 +5,7 @@ You are stage 3 of Smart-Read. Implement PDF mutations in `apps/web` with `pdf-l
 ## Do
 
 - Load the pdf-editing skill.
-- Rotate 90°/180°, reverse page order, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, stamp page numbers, watermark, crop or pad margins, grayscale, find text, go to page, remove no-text or duplicate-text pages, fit to A4/Letter/A5, odd/even/invert select, delete, duplicate, extract selected pages, keep only the selection, split every N pages to ZIP, insert a blank page or PNG/JPEG/WEBP, reorder a multi-select as one block (or send it to start/end), merge, metadata, forget the local copy, and draw a text overlay.
+- Rotate 90°/180°, reverse page order, interleave halves / split odd-even, 2-up / 4-up, booklet impose, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, stamp page numbers, watermark, header/footer, crop or pad margins, unify mixed page sizes, grayscale, find text, go to page, remove no-text or duplicate-text pages, fit to A4/Letter/A5, odd/even/invert select, delete, duplicate, extract selected pages, keep only the selection, split every N pages to ZIP, insert a blank page or PNG/JPEG/WEBP, reorder a multi-select as one block (or send it to start/end), merge, metadata, forget the local copy, and draw a text overlay.
 - Boost thumbnail contrast on sparse pages. Restore the last local PDF and undo stack from IndexedDB.
 - Refresh preview after every mutation and keep at least one page.
 - Download the edited file as `application/pdf`.

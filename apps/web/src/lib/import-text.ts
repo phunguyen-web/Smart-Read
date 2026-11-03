@@ -4,7 +4,18 @@ export const MAX_IMPORT_CHARS = 200_000
 export const MAX_IMPORT_PAGES = 80
 export const IMPORT_PAGE_CHARS = 1800
 
-export type ImportedTextKind = 'txt' | 'md' | 'html' | 'json' | 'yaml' | 'xml' | 'csv' | 'rtf' | 'fb2'
+export type ImportedTextKind =
+  | 'txt'
+  | 'md'
+  | 'html'
+  | 'json'
+  | 'yaml'
+  | 'xml'
+  | 'csv'
+  | 'tsv'
+  | 'toml'
+  | 'rtf'
+  | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp'
 
 function capPages(pages: string[]): string[] {
@@ -170,6 +181,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   if (kind === 'csv') {
     return pagesFromCsv(text)
   }
+  if (kind === 'tsv') {
+    return pagesFromTsv(text)
+  }
+  if (kind === 'toml') {
+    return pagesFromToml(text)
+  }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
   }
@@ -188,11 +205,12 @@ export function unescapeXml(value: string): string {
   )
 }
 
-export function parseCsv(text: string): string[][] {
+export function parseCsv(text: string, delimiter = ','): string[][] {
   const rows: string[][] = []
   let row: string[] = []
   let field = ''
   let quoted = false
+  const label = delimiter === '\t' ? 'TSV' : 'CSV'
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index]!
     if (quoted) {
@@ -212,7 +230,7 @@ export function parseCsv(text: string): string[][] {
       quoted = true
       continue
     }
-    if (char === ',') {
+    if (char === delimiter) {
       row.push(field)
       field = ''
       continue
@@ -227,7 +245,7 @@ export function parseCsv(text: string): string[][] {
     field += char
   }
   if (quoted) {
-    throw new Error('CSV thiếu dấu ngoặc đóng.')
+    throw new Error(`${label} thiếu dấu ngoặc đóng.`)
   }
   if (field.length > 0 || row.length > 0) {
     row.push(field)
@@ -343,18 +361,68 @@ export function pagesFromXml(text: string): string[] {
   throw new Error('Tệp XML cần các thẻ <page>.')
 }
 
-export function pagesFromCsv(text: string): string[] {
-  const rows = parseCsv(assertImportBudget(text)).filter((row) => row.some((cell) => cell.trim()))
+function pagesFromDelimited(text: string, delimiter: string, label: string): string[] {
+  const rows = parseCsv(assertImportBudget(text), delimiter).filter((row) =>
+    row.some((cell) => cell.trim()),
+  )
   if (rows.length === 0) {
-    throw new Error('Tệp CSV trống.')
+    throw new Error(`Tệp ${label} trống.`)
   }
   const header = rows[0] ?? []
   const start =
     header.length >= 2 && /^page$/i.test(header[0]!.trim()) && /^text$/i.test(header[1]!.trim())
       ? 1
       : 0
-  const pages = rows.slice(start).map((row) => (row.length >= 2 ? row.slice(1).join(',') : row[0] ?? ''))
+  const pages = rows
+    .slice(start)
+    .map((row) => (row.length >= 2 ? row.slice(1).join(delimiter) : (row[0] ?? '')))
   return capPages(pages)
+}
+
+export function pagesFromCsv(text: string): string[] {
+  return pagesFromDelimited(text, ',', 'CSV')
+}
+
+export function pagesFromTsv(text: string): string[] {
+  return pagesFromDelimited(text, '\t', 'TSV')
+}
+
+function unescapeTomlValue(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed.length >= 2) {
+    const quote = trimmed[0]
+    if (quote === '"' && trimmed.endsWith('"')) {
+      return trimmed
+        .slice(1, -1)
+        .replaceAll('\\n', '\n')
+        .replaceAll('\\t', '\t')
+        .replaceAll('\\"', '"')
+        .replaceAll('\\\\', '\\')
+    }
+    if (quote === "'" && trimmed.endsWith("'")) {
+      return trimmed.slice(1, -1)
+    }
+  }
+  return trimmed
+}
+
+export function pagesFromToml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || (/^\s*\[/.test(trimmed) && !/^\s*\[\[/.test(trimmed))) {
+    return pagesFromJson(trimmed)
+  }
+  const pages: string[] = []
+  for (const line of trimmed.replace(/\r\n/g, '\n').split('\n')) {
+    const match = line.match(/^\s*text\s*=\s*(.*)$/)
+    if (!match) {
+      continue
+    }
+    pages.push(unescapeTomlValue(match[1]!))
+  }
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp TOML cần các mục text = trong [[pages]].')
 }
 
 function pagesFromOfficeHeadings(text: string): string[] {

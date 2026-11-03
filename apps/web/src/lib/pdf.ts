@@ -1167,6 +1167,62 @@ export async function addWatermark(
   return new Uint8Array(await doc.save())
 }
 
+/** Stamp a header and/or footer on selected pages (distinct from watermark). */
+export async function addHeaderFooter(
+  bytes: Uint8Array,
+  options: {
+    header?: string
+    footer?: string
+    indexes?: readonly number[]
+  },
+): Promise<Uint8Array> {
+  const header = (options.header ?? '').trim()
+  const footer = (options.footer ?? '').trim()
+  if (!header && !footer) {
+    throw new Error('Nhập chữ đầu trang hoặc cuối trang.')
+  }
+  const doc = await PDFDocument.load(bytes)
+  const total = doc.getPageCount()
+  if (total < 1) {
+    throw new Error('Không có trang để đóng đầu/cuối trang.')
+  }
+  const requested = options.indexes
+  const unique = uniqueSorted(
+    requested && requested.length > 0 ? [...requested] : Array.from({ length: total }, (_, index) => index),
+    false,
+  ).filter((index) => index >= 0 && index < total)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đóng đầu/cuối trang.')
+  }
+  const font = await embedOverlayFont(doc)
+  const size = 13
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    if (header) {
+      const drawn = fitOverlayText(font, header, size)
+      page.drawText(drawn.text, {
+        x: Math.max(8, (width - drawn.width) / 2),
+        y: height - size - 14,
+        size,
+        font,
+        color: rgb(0.28, 0.18, 0.12),
+      })
+    }
+    if (footer) {
+      const drawn = fitOverlayText(font, footer, size)
+      page.drawText(drawn.text, {
+        x: Math.max(8, (width - drawn.width) / 2),
+        y: 16,
+        size,
+        font,
+        color: rgb(0.28, 0.18, 0.12),
+      })
+    }
+  }
+  return new Uint8Array(await doc.save())
+}
+
 export async function cropPages(
   bytes: Uint8Array,
   pageIndexes: number[],
@@ -1225,6 +1281,73 @@ export async function padPages(
     page.drawPage(embedded, {
       x: inset,
       y: inset,
+      width: embedded.width,
+      height: embedded.height,
+    })
+  }
+  return new Uint8Array(await dst.save())
+}
+
+/** Bounding box that covers every page size, used to unify mixed sheets. */
+export function unifiedPageSize(sizes: readonly PageSize[]): PageSize {
+  if (sizes.length < 1) {
+    throw new Error('Chọn ít nhất hai trang để đồng khổ.')
+  }
+  let width = 0
+  let height = 0
+  for (const size of sizes) {
+    width = Math.max(width, size.width)
+    height = Math.max(height, size.height)
+  }
+  if (width < 1 || height < 1) {
+    throw new Error('Chọn ít nhất hai trang để đồng khổ.')
+  }
+  if (width > MAX_PADDED_SIDE || height > MAX_PADDED_SIDE) {
+    throw new Error('Trang quá lớn để đồng khổ.')
+  }
+  return { width, height }
+}
+
+export function pageSizeEquals(a: PageSize, b: PageSize): boolean {
+  return a.width === b.width && a.height === b.height
+}
+
+/** Embed selected pages onto one shared size (max width and height), centered. */
+export async function unifyPageSizes(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length < 2) {
+    throw new Error('Chọn ít nhất hai trang để đồng khổ.')
+  }
+  const sizes = unique.map((index) => src.getPage(index).getSize())
+  const target = unifiedPageSize(sizes)
+  if (sizes.every((size) => pageSizeEquals(size, target))) {
+    return bytes
+  }
+  const selected = new Set(unique)
+  const dst = await PDFDocument.create()
+  copyDocumentInfo(src, dst)
+  for (let index = 0; index < count; index += 1) {
+    if (!selected.has(index)) {
+      const [copied] = await dst.copyPages(src, [index])
+      dst.addPage(copied)
+      continue
+    }
+    const current = src.getPage(index).getSize()
+    if (pageSizeEquals(current, target)) {
+      const [copied] = await dst.copyPages(src, [index])
+      dst.addPage(copied)
+      continue
+    }
+    const [embedded] = await dst.embedPages([src.getPage(index)])
+    const page = dst.addPage([target.width, target.height])
+    page.drawPage(embedded, {
+      x: (target.width - embedded.width) / 2,
+      y: (target.height - embedded.height) / 2,
       width: embedded.width,
       height: embedded.height,
     })

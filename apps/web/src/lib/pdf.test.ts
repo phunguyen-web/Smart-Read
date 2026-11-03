@@ -3,12 +3,16 @@ import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import {
   escapeCsv,
+  escapeToml,
+  escapeTsv,
   escapeHtml,
   escapeRtf,
   isImageFormat,
   slicePageRange,
   slicePagesByIndexes,
   toCsv,
+  toToml,
+  toTsv,
   toEpub,
   toFb2,
   toHtml,
@@ -28,6 +32,8 @@ import {
 } from './convert.ts'
 import {
   pagesFromCsv,
+  pagesFromToml,
+  pagesFromTsv,
   pagesFromDocx,
   pagesFromEpub,
   pagesFromFb2,
@@ -90,6 +96,7 @@ import {
   A5_WIDTH,
   LETTER_HEIGHT,
   LETTER_WIDTH,
+  addHeaderFooter,
   addPageNumbers,
   addTextOverlay,
   addWatermark,
@@ -132,6 +139,7 @@ import {
   movePage,
   movePages,
   orientPages,
+  pageSizeEquals,
   padPages,
   paddedPageSize,
   paperSizeForPage,
@@ -156,6 +164,8 @@ import {
   splitPagesInHalf,
   textPagesToPdf,
   trimMetadataField,
+  unifiedPageSize,
+  unifyPageSizes,
   wrapPdfText,
 } from './pdf.ts'
 import { MAX_EDITOR_HISTORY, popSnapshot, pushSnapshot, snapshotOf } from './history.ts'
@@ -361,6 +371,54 @@ describe('pdf edits', () => {
     })
     expect(paddedDoc.getPage(1).getSize()).toEqual({ width: 200, height: 280 })
     await expect(padPages(bytes, [], 12)).rejects.toThrow(/thêm lề/)
+    const headed = await addHeaderFooter(bytes, {
+      header: 'Báo cáo',
+      footer: 'Trang chân',
+      indexes: [0],
+    })
+    expect(await pageCount(headed)).toBe(2)
+    expect((await PDFDocument.load(headed)).getPage(1).getSize()).toEqual({
+      width: 200,
+      height: 280,
+    })
+    await expect(addHeaderFooter(bytes, { header: '  ', footer: '' })).rejects.toThrow(
+      /đầu trang hoặc cuối trang/,
+    )
+    await expect(addHeaderFooter(bytes, { header: 'Hi', indexes: [9] })).rejects.toThrow(
+      /đầu\/cuối trang/,
+    )
+  })
+
+  it('unifies mixed page sizes onto one sheet', async () => {
+    expect(unifiedPageSize([{ width: 200, height: 280 }, { width: 300, height: 240 }])).toEqual({
+      width: 300,
+      height: 280,
+    })
+    expect(pageSizeEquals({ width: 10, height: 10 }, { width: 10, height: 10 })).toBe(true)
+    expect(pageSizeEquals({ width: 10, height: 10 }, { width: 11, height: 10 })).toBe(false)
+    expect(() => unifiedPageSize([])).toThrow(/đồng khổ/)
+    expect(() =>
+      unifiedPageSize([{ width: MAX_PADDED_SIDE + 1, height: 40 }, { width: 12, height: 12 }]),
+    ).toThrow(/quá lớn/)
+    const mixed = await PDFDocument.create()
+    for (const size of [
+      [200, 280],
+      [300, 240],
+      [200, 280],
+    ] as const) {
+      const page = mixed.addPage([...size])
+      page.drawText('P', { x: 24, y: 140, size: 12 })
+    }
+    const bytes = new Uint8Array(await mixed.save())
+    const unified = await unifyPageSizes(bytes, [0, 1])
+    const doc = await PDFDocument.load(unified)
+    expect(doc.getPage(0).getSize()).toEqual({ width: 300, height: 280 })
+    expect(doc.getPage(1).getSize()).toEqual({ width: 300, height: 280 })
+    expect(doc.getPage(2).getSize()).toEqual({ width: 200, height: 280 })
+    const same = await unifyPageSizes(bytes, [0, 2])
+    expect(same).toBe(bytes)
+    await expect(unifyPageSizes(bytes, [0])).rejects.toThrow(/đồng khổ/)
+    await expect(unifyPageSizes(bytes, [])).rejects.toThrow(/đồng khổ/)
   })
 
   it('writes metadata and builds pages from PNG images', async () => {
@@ -620,6 +678,24 @@ describe('conversion helpers', () => {
     expect(() => pagesFromXml('<document/>')).toThrow(/XML/)
     expect(pagesFromImportedText('yaml', toYaml('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromImportedText('xml', toXml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(toTsv(['Một', 'Hai\tba'])).toContain('page\ttext')
+    expect(toTsv(['a"b'])).toContain('"a""b"')
+    expect(escapeTsv('a\tb')).toBe('"a\tb"')
+    expect(pagesFromTsv(toTsv(['Một', 'Hai\tba']))).toEqual(['Một', 'Hai\tba'])
+    expect(pagesFromImportedText('tsv', toTsv(['Hi']))).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.tsv', { type: '' }))).toBe('tsv')
+    expect(swapExtension('notes.tsv', 'pdf')).toBe('notes.pdf')
+    expect(toToml('Demo', ['Một', 'Hai\ndòng'])).toContain('title = "Demo"')
+    expect(toToml('Demo', ['Một'])).toContain('[[pages]]')
+    expect(escapeToml('a"b')).toContain('\\"')
+    expect(pagesFromToml(toToml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(() => pagesFromToml('title = "Demo"\n')).toThrow(/TOML/)
+    expect(pagesFromImportedText('toml', toToml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromToml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.toml', { type: 'application/toml' }))).toBe(
+      'toml',
+    )
+    expect(swapExtension('notes.toml', 'pdf')).toBe('notes.pdf')
     expect(sourceKindFromFile(new File(['x'], 'notes.yaml', { type: '' }))).toBe('yaml')
     expect(sourceKindFromFile(new File(['x'], 'notes.yml', { type: 'application/yaml' }))).toBe(
       'yaml',
