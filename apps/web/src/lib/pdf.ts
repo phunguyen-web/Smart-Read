@@ -2115,6 +2115,9 @@ export const NAMED_DEST_XYZ_EDGES = [
   'top-left',
   'top',
   'top-right',
+  'left',
+  'center',
+  'right',
   'bottom-left',
   'bottom',
   'bottom-right',
@@ -2126,13 +2129,18 @@ export function assertNamedDestXyzEdge(value: string): NamedDestXyzEdge {
     value === 'top-left' ||
     value === 'top' ||
     value === 'top-right' ||
+    value === 'left' ||
+    value === 'center' ||
+    value === 'right' ||
     value === 'bottom-left' ||
     value === 'bottom' ||
     value === 'bottom-right'
   ) {
     return value
   }
-  throw new Error('Mé XYZ chỉ là top-left, top, top-right, bottom-left, bottom hoặc bottom-right.')
+  throw new Error(
+    'Mé XYZ chỉ là top-left, top, top-right, left, center, right, bottom-left, bottom hoặc bottom-right.',
+  )
 }
 
 /** XYZ left/top from a page size. Zoom stays unset. Origin is PDF bottom-left. */
@@ -2148,6 +2156,15 @@ export function namedDestXyzFromPageSize(
   }
   if (style === 'top-right') {
     return { left: width, top: height, zoom: null }
+  }
+  if (style === 'left') {
+    return { left: 0, top: height / 2, zoom: null }
+  }
+  if (style === 'center') {
+    return { left: width / 2, top: height / 2, zoom: null }
+  }
+  if (style === 'right') {
+    return { left: width, top: height / 2, zoom: null }
   }
   if (style === 'bottom-left') {
     return { left: 0, top: 0, zoom: null }
@@ -2173,6 +2190,9 @@ export const NAMED_DEST_XYZ_EDGE_LABELS: Record<NamedDestXyzEdge, string> = {
   'top-left': 'Trái trên trang',
   top: 'Trên trang',
   'top-right': 'Phải trên trang',
+  left: 'Trái giữa trang',
+  center: 'Giữa trang',
+  right: 'Phải giữa trang',
   'bottom-left': 'Trái dưới trang',
   bottom: 'Dưới trang',
   'bottom-right': 'Phải dưới trang',

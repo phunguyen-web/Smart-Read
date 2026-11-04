@@ -82,6 +82,8 @@ import {
   toEnxml,
   toMods,
   toCff,
+  toDatacite,
+  toMarcxml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -159,6 +161,8 @@ import {
   pagesFromEnxml,
   pagesFromMods,
   pagesFromCff,
+  pagesFromDatacite,
+  pagesFromMarcxml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1422,6 +1426,36 @@ describe('pdf edits', () => {
       top: 0,
       zoom: null,
     })
+    expect(await namedDestXyzFromDestPage(named, 'ChapTwo', 'left')).toEqual({
+      left: 0,
+      top: 140,
+      zoom: null,
+    })
+    expect(await namedDestXyzFromDestPage(named, 'ChapTwo', 'center')).toEqual({
+      left: 100,
+      top: 140,
+      zoom: null,
+    })
+    expect(await namedDestXyzFromDestPage(named, 'ChapTwo', 'right')).toEqual({
+      left: 200,
+      top: 140,
+      zoom: null,
+    })
+    expect(namedDestXyzFromPageSize({ width: A4_WIDTH, height: A4_HEIGHT }, 'left')).toEqual({
+      left: 0,
+      top: A4_HEIGHT / 2,
+      zoom: null,
+    })
+    expect(namedDestXyzFromPageSize({ width: A4_WIDTH, height: A4_HEIGHT }, 'center')).toEqual({
+      left: A4_WIDTH / 2,
+      top: A4_HEIGHT / 2,
+      zoom: null,
+    })
+    expect(namedDestXyzFromPageSize({ width: LETTER_WIDTH, height: LETTER_HEIGHT }, 'right')).toEqual({
+      left: LETTER_WIDTH,
+      top: LETTER_HEIGHT / 2,
+      zoom: null,
+    })
     expect(namedDestXyzFromPageSize({ width: A4_WIDTH, height: A4_HEIGHT }, 'bottom-left')).toEqual({
       left: 0,
       top: 0,
@@ -1451,6 +1485,15 @@ describe('pdf edits', () => {
         ),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 0, top: 0, zoom: null } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          named,
+          'ChapTwo',
+          await namedDestXyzFromDestPage(named, 'ChapTwo', 'center'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 100, top: 140, zoom: null } }])
     await expect(namedDestXyzFromDestPage(named, 'Missing', 'top')).rejects.toThrow(/đích tên/)
 
     expect(toRomanNumeral(2)).toBe('ii')
@@ -2386,6 +2429,44 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toBe('cff')
     expect(swapExtension('notes.cff', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.citation.cff', 'pdf')).toBe('notes.pdf')
+
+    expect(toDatacite('Demo', ['Một', 'Hai\ndòng'])).toContain('<resources')
+    expect(toDatacite('Demo', ['Một'])).toContain('<publisher>Demo</publisher>')
+    expect(toDatacite('Demo', ['Một'])).toContain('<description descriptionType="Other">Một</description>')
+    expect(pagesFromDatacite(toDatacite('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('datacite', toDatacite('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromDatacite('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromDatacite('<resources><resource><title>Một</title></resource></resources>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.datacite', { type: '' }))).toBe('datacite')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.datacite.xml', { type: 'application/vnd.datacite.datacite+xml' }),
+      ),
+    ).toBe('datacite')
+    expect(swapExtension('notes.datacite', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.datacite.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toMarcxml('Demo', ['Một', 'Hai\ndòng'])).toContain('<collection')
+    expect(toMarcxml('Demo', ['Một'])).toContain('<subfield code="a">Demo</subfield>')
+    expect(toMarcxml('Demo', ['Một'])).toContain('<datafield tag="520"')
+    expect(pagesFromMarcxml(toMarcxml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('marcxml', toMarcxml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromMarcxml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromMarcxml(
+        '<collection><record><datafield tag="245" ind1="0" ind2="0"><subfield code="a">Một</subfield></datafield></record></collection>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.marcxml', { type: '' }))).toBe('marcxml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.mrcx', { type: 'application/marcxml+xml' })),
+    ).toBe('marcxml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.marc.xml', { type: '' }))).toBe('marcxml')
+    expect(swapExtension('notes.marcxml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.mrcx', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.marc.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

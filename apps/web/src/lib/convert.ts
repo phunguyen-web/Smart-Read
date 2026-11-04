@@ -60,6 +60,8 @@ export type ExportFormat =
   | 'enxml'
   | 'mods'
   | 'cff'
+  | 'datacite'
+  | 'marcxml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1234,6 +1236,63 @@ ${refs}
 `
 }
 
+export function toDatacite(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <resource>
+    <identifier identifierType="Other">page-${index + 1}</identifier>
+    <creators>
+      <creator>
+        <creatorName nameType="Organizational">Smart-Read</creatorName>
+      </creator>
+    </creators>
+    <titles>
+      <title>Trang ${index + 1}</title>
+    </titles>
+    <publisher>${heading}</publisher>
+    <publicationYear>2026</publicationYear>
+    <resourceType resourceTypeGeneral="Text">Page</resourceType>
+    <descriptions>
+      <description descriptionType="Other">${note}</description>
+    </descriptions>
+  </resource>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<resources xmlns="http://datacite.org/schema/kernel-4">
+${records}
+</resources>
+`
+}
+
+export function toMarcxml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <record>
+    <leader>00000nam a2200000 a 4500</leader>
+    <datafield tag="245" ind1="0" ind2="0">
+      <subfield code="a">Trang ${index + 1}</subfield>
+    </datafield>
+    <datafield tag="490" ind1="0" ind2=" ">
+      <subfield code="a">${heading}</subfield>
+    </datafield>
+    <datafield tag="520" ind1="8" ind2=" ">
+      <subfield code="a">${note}</subfield>
+    </datafield>
+  </record>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<collection xmlns="http://www.loc.gov/MARC21/slim">
+${records}
+</collection>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2151,6 +2210,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/mods+xml;charset=utf-8'
     case 'cff':
       return 'application/citation-file+yaml;charset=utf-8'
+    case 'datacite':
+      return 'application/vnd.datacite.datacite+xml;charset=utf-8'
+    case 'marcxml':
+      return 'application/marcxml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

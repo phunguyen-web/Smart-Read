@@ -63,6 +63,8 @@ export type ImportedTextKind =
   | 'enxml'
   | 'mods'
   | 'cff'
+  | 'datacite'
+  | 'marcxml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -438,6 +440,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'cff') {
     return pagesFromCff(text)
+  }
+  if (kind === 'datacite') {
+    return pagesFromDatacite(text)
+  }
+  if (kind === 'marcxml') {
+    return pagesFromMarcxml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -2019,6 +2027,80 @@ export function pagesFromCff(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp CFF cần các mục notes / abstract / title.')
+}
+
+export function pagesFromDatacite(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<resource\b(?!s)[^>]*>([\s\S]*?)<\/resource>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const note = xmlTagText(record, 'description')
+      if (note) {
+        return note
+      }
+      const abs = xmlTagText(record, 'abstract')
+      if (abs) {
+        return abs
+      }
+      const title = xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp DataCite cần các mục <resource> / <description>.')
+}
+
+function marcSubfieldA(record: string, tag: string): string {
+  const field = record.match(
+    new RegExp(`<datafield\\b[^>]*\\btag=["']?${tag}["']?[^>]*>([\\s\\S]*?)</datafield>`, 'i'),
+  )
+  if (!field) {
+    return ''
+  }
+  const sub = field[1]!.match(/<subfield\b[^>]*\bcode=["']?a["']?[^>]*>([\s\S]*?)<\/subfield>/i)
+  if (!sub) {
+    return ''
+  }
+  return unescapeXml(sub[1]!.replace(/<[^>]+>/g, '')).trim()
+}
+
+export function pagesFromMarcxml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<record\b[^>]*>([\s\S]*?)<\/record>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const note = marcSubfieldA(record, '520')
+      if (note) {
+        return note
+      }
+      const abs = marcSubfieldA(record, '500') || xmlTagText(record, 'abstract')
+      if (abs) {
+        return abs
+      }
+      const title = marcSubfieldA(record, '245') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp MARCXML cần các mục <record> / datafield 520.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
