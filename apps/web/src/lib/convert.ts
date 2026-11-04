@@ -50,6 +50,8 @@ export type ExportFormat =
   | 'mpl'
   | 'djvu'
   | 'ps'
+  | 'tei'
+  | 'ris'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1020,6 +1022,59 @@ ${bodies}
 `
 }
 
+export function toTei(title: string, pages: string[]): string {
+  const heading = escapeHtml(title.trim() || 'Tài liệu')
+  const body = pages
+    .map((text, index) => {
+      const paras = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `        <p>${escapeHtml(line)}</p>`)
+        .join('\n')
+      return `      <div type="page" n="${index + 1}">
+        <head>Trang ${index + 1}</head>
+${paras}
+      </div>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0" xml:lang="vi">
+  <teiHeader>
+    <fileDesc>
+      <titleStmt>
+        <title>${heading}</title>
+      </titleStmt>
+      <publicationStmt>
+        <p>Smart-Read</p>
+      </publicationStmt>
+      <sourceDesc>
+        <p>Exported from Smart-Read</p>
+      </sourceDesc>
+    </fileDesc>
+  </teiHeader>
+  <text>
+    <body>
+${body}
+    </body>
+  </text>
+</TEI>
+`
+}
+
+export function escapeRis(value: string): string {
+  return value.replace(/\r?\n/g, '|')
+}
+
+export function toRis(title: string, pages: string[]): string {
+  const heading = escapeRis((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const body = pages
+    .map((text, index) => {
+      const note = escapeRis(text.trim() || '(không có chữ)')
+      return `TY  - GEN\nT2  - ${heading}\nTI  - Trang ${index + 1}\nN1  - ${note}\nER  - `
+    })
+    .join('\n\n')
+  return `${body}\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -1917,6 +1972,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'image/vnd.djvu;charset=utf-8'
     case 'ps':
       return 'application/postscript;charset=utf-8'
+    case 'tei':
+      return 'application/tei+xml;charset=utf-8'
+    case 'ris':
+      return 'application/x-research-info-systems;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

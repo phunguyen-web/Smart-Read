@@ -72,7 +72,10 @@ import {
   toMpl,
   toDjvu,
   toPs,
+  toTei,
+  toRis,
   escapePs,
+  escapeRis,
   escapeTypst,
   toJsonl,
   toLatex,
@@ -136,6 +139,8 @@ import {
   pagesFromMpl,
   pagesFromDjvu,
   pagesFromPs,
+  pagesFromTei,
+  pagesFromRis,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1193,6 +1198,38 @@ describe('pdf edits', () => {
       { name: 'ChapBleed', pageIndex: 1, view: 'FitB' },
       { name: 'ChapTwo', pageIndex: 1, view: 'FitB' },
     ])
+    const fitBhDest = await setNamedDestView(named, 'ChapTwo', 'FitBH')
+    expect(await listNamedDests(fitBhDest)).toEqual([{ name: 'ChapTwo', pageIndex: 1, view: 'FitBH' }])
+    const fitBhDoc = await PDFDocument.load(fitBhDest)
+    const fitBhArray = fitBhDoc.context.lookup(
+      fitBhDoc.catalog.lookup(PDFName.of('Dests'), PDFDict).get(PDFName.of('ChapTwo')),
+      PDFArray,
+    )
+    expect(fitBhArray.get(1)).toEqual(PDFName.of('FitBH'))
+    expect(fitBhArray.size()).toBe(3)
+    expect(await listNamedDests(await setNamedDestPage(fitBhDest, 'ChapTwo', 0))).toEqual([
+      { name: 'ChapTwo', pageIndex: 0, view: 'FitBH' },
+    ])
+    expect(await listNamedDests(await duplicateNamedDest(fitBhDest, 'ChapTwo', 'ChapWide'))).toEqual([
+      { name: 'ChapTwo', pageIndex: 1, view: 'FitBH' },
+      { name: 'ChapWide', pageIndex: 1, view: 'FitBH' },
+    ])
+    const fitBvDest = await setNamedDestView(named, 'ChapTwo', 'FitBV')
+    expect(await listNamedDests(fitBvDest)).toEqual([{ name: 'ChapTwo', pageIndex: 1, view: 'FitBV' }])
+    const fitBvDoc = await PDFDocument.load(fitBvDest)
+    const fitBvArray = fitBvDoc.context.lookup(
+      fitBvDoc.catalog.lookup(PDFName.of('Dests'), PDFDict).get(PDFName.of('ChapTwo')),
+      PDFArray,
+    )
+    expect(fitBvArray.get(1)).toEqual(PDFName.of('FitBV'))
+    expect(fitBvArray.size()).toBe(3)
+    expect(await listNamedDests(await setNamedDestPage(fitBvDest, 'ChapTwo', 0))).toEqual([
+      { name: 'ChapTwo', pageIndex: 0, view: 'FitBV' },
+    ])
+    expect(await listNamedDests(await duplicateNamedDest(fitBvDest, 'ChapTwo', 'ChapTall'))).toEqual([
+      { name: 'ChapTall', pageIndex: 1, view: 'FitBV' },
+      { name: 'ChapTwo', pageIndex: 1, view: 'FitBV' },
+    ])
     const foreignFit = await PDFDocument.load(bytes)
     const foreignFitPages = foreignFit.getPages()
     const fitRef = foreignFit.context.register(
@@ -1220,9 +1257,9 @@ describe('pdf edits', () => {
     expect(await listNamedDests(new Uint8Array(await foreignFit.save()))).toEqual([
       { name: 'Bleed', pageIndex: 0, view: 'FitB' },
       { name: 'Rect', pageIndex: 1, view: 'FitR' },
-      { name: 'Tall', pageIndex: 0, view: 'FitV' },
+      { name: 'Tall', pageIndex: 0, view: 'FitBV' },
       { name: 'Whole', pageIndex: 0, view: 'Fit' },
-      { name: 'Wide', pageIndex: 1, view: 'FitH' },
+      { name: 'Wide', pageIndex: 1, view: 'FitBH' },
     ])
     await expect(setNamedDestView(named, 'Missing', 'Fit')).rejects.toThrow(/đích tên/)
     await expect(setNamedDestView(named, 'ChapTwo', 'Zoom')).rejects.toThrow(/XYZ/)
@@ -2017,6 +2054,32 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.ps', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.eps', 'pdf')).toBe('notes.pdf')
+
+    expect(toTei('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.tei-c.org/ns/1.0"')
+    expect(toTei('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toTei('Demo', ['Một'])).toContain('type="page"')
+    expect(pagesFromTei(toTei('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('tei', toTei('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromTei('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.tei', { type: '' }))).toBe('tei')
+    expect(sourceKindFromFile(new File(['x'], 'notes.tei', { type: 'application/tei+xml' }))).toBe(
+      'tei',
+    )
+    expect(swapExtension('notes.tei', 'pdf')).toBe('notes.pdf')
+
+    expect(escapeRis('Hai\ndòng')).toBe('Hai|dòng')
+    expect(toRis('Demo', ['Một', 'Hai\ndòng'])).toContain('TY  - GEN')
+    expect(toRis('Demo', ['Một'])).toContain('T2  - Demo')
+    expect(toRis('Demo', ['Một'])).toContain('N1  - Một')
+    expect(pagesFromRis(toRis('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('ris', toRis('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromRis('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.ris', { type: '' }))).toBe('ris')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.ris', { type: 'application/x-research-info-systems' })),
+    ).toBe('ris')
+    expect(swapExtension('notes.ris', 'pdf')).toBe('notes.pdf')
+
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
     expect(toTtml('Demo', ['Một'])).toContain('<title>Demo</title>')

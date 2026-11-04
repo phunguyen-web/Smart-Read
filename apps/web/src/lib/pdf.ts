@@ -1958,9 +1958,9 @@ export type OutlineBookmark = {
   destName?: string
 }
 
-export type NamedDestView = 'XYZ' | 'Fit' | 'FitH' | 'FitV' | 'FitR' | 'FitB'
+export type NamedDestView = 'XYZ' | 'Fit' | 'FitH' | 'FitV' | 'FitR' | 'FitB' | 'FitBH' | 'FitBV'
 
-export const NAMED_DEST_VIEWS = ['XYZ', 'Fit', 'FitH', 'FitV', 'FitR', 'FitB'] as const
+export const NAMED_DEST_VIEWS = ['XYZ', 'Fit', 'FitH', 'FitV', 'FitR', 'FitB', 'FitBH', 'FitBV'] as const
 
 export type NamedDestination = {
   name: string
@@ -2081,11 +2081,13 @@ export function assertNamedDestView(value: string): NamedDestView {
     value === 'FitH' ||
     value === 'FitV' ||
     value === 'FitR' ||
-    value === 'FitB'
+    value === 'FitB' ||
+    value === 'FitBH' ||
+    value === 'FitBV'
   ) {
     return value
   }
-  throw new Error('Kiểu xem đích chỉ là XYZ, Fit, FitH, FitV, FitR hoặc FitB.')
+  throw new Error('Kiểu xem đích chỉ là XYZ, Fit, FitH, FitV, FitR, FitB, FitBH hoặc FitBV.')
 }
 
 export function namedDestViewOf(dest: NamedDestination | undefined): NamedDestView {
@@ -2162,10 +2164,16 @@ function destViewFromArray(dest: unknown): NamedDestView {
   if (raw === 'FitB') {
     return 'FitB'
   }
-  if (raw === 'FitH' || raw === 'FitBH') {
+  if (raw === 'FitBH') {
+    return 'FitBH'
+  }
+  if (raw === 'FitBV') {
+    return 'FitBV'
+  }
+  if (raw === 'FitH') {
     return 'FitH'
   }
-  if (raw === 'FitV' || raw === 'FitBV') {
+  if (raw === 'FitV') {
     return 'FitV'
   }
   if (raw === 'FitR') {
@@ -2261,6 +2269,12 @@ function destArrayForPage(doc: PDFDocument, pageIndex: number, view: NamedDestVi
   }
   if (view === 'FitB') {
     return doc.context.obj([page.ref, PDFName.of('FitB')])
+  }
+  if (view === 'FitBH') {
+    return doc.context.obj([page.ref, PDFName.of('FitBH'), null])
+  }
+  if (view === 'FitBV') {
+    return doc.context.obj([page.ref, PDFName.of('FitBV'), null])
   }
   return doc.context.obj([page.ref, PDFName.of('XYZ'), null, null, null])
 }
@@ -2949,7 +2963,7 @@ export async function setNamedDestPage(
   return new Uint8Array(await doc.save())
 }
 
-/** Set XYZ, Fit, FitH, FitV, FitR, or FitB on an existing named destination. Same view is a no-op write. */
+/** Set XYZ, Fit, FitH, FitV, FitR, FitB, FitBH, or FitBV on an existing named destination. Same view is a no-op write. */
 export async function setNamedDestView(
   bytes: Uint8Array,
   name: string,

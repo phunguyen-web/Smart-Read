@@ -53,6 +53,8 @@ export type ImportedTextKind =
   | 'mpl'
   | 'djvu'
   | 'ps'
+  | 'tei'
+  | 'ris'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -398,6 +400,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'ps') {
     return pagesFromPs(text)
+  }
+  if (kind === 'tei') {
+    return pagesFromTei(text)
+  }
+  if (kind === 'ris') {
+    return pagesFromRis(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1660,6 +1668,63 @@ export function pagesFromPs(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp PostScript cần các dòng (text) =.')
+}
+
+export function pagesFromTei(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pageDivs = [...trimmed.matchAll(/<div\b[^>]*\btype\s*=\s*["']page["'][^>]*>([\s\S]*?)<\/div>/gi)]
+  const blocks = pageDivs.length > 0 ? pageDivs : [...trimmed.matchAll(/<div\b[^>]*>([\s\S]*?)<\/div>/gi)]
+  if (blocks.length > 0) {
+    const pages = blocks
+      .map((match) => {
+        const body = match[1]!.replace(/<head\b[^>]*>[\s\S]*?<\/head>/i, '')
+        const paras = [...body.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map((para) =>
+          unescapeXml(para[1]!.replace(/<[^>]+>/g, '')),
+        )
+        return paras.join('\n').trim()
+      })
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  throw new Error('Tệp TEI cần các mục <div type="page">.')
+}
+
+export function unescapeRis(value: string): string {
+  return value.replace(/\|/g, '\n')
+}
+
+export function pagesFromRis(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = trimmed.split(/^\s*ER\s+-\s*$/m)
+  const pages = records
+    .map((record) => {
+      const note = record.match(/^\s*N1\s+-\s+(.*)$/m)
+      if (note) {
+        return unescapeRis(note[1]!.trim())
+      }
+      const abs = record.match(/^\s*AB\s+-\s+(.*)$/m)
+      if (abs) {
+        return unescapeRis(abs[1]!.trim())
+      }
+      const title = record.match(/^\s*TI\s+-\s+(.*)$/m)
+      if (title && !/^Trang\s+\d+$/.test(title[1]!.trim())) {
+        return unescapeRis(title[1]!.trim())
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp RIS cần các mục TY / ER.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
