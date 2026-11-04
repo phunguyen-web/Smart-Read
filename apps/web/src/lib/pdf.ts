@@ -2245,14 +2245,21 @@ export const NAMED_DEST_XYZ_ZOOM_LABELS: Record<NamedDestXyzZoomPreset, string> 
   keep: 'Giữ zoom',
 }
 
-export const NAMED_DEST_XYZ_AXIS_PRESETS = ['keep-left', 'keep-top', 'zero-left', 'zero-top'] as const
+export const NAMED_DEST_XYZ_AXIS_PRESETS = [
+  'keep-left',
+  'keep-top',
+  'zero-left',
+  'zero-top',
+  'origin',
+  'home',
+] as const
 export type NamedDestXyzAxisPreset = (typeof NAMED_DEST_XYZ_AXIS_PRESETS)[number]
 
 export function assertNamedDestXyzAxisPreset(value: string): NamedDestXyzAxisPreset {
   if ((NAMED_DEST_XYZ_AXIS_PRESETS as readonly string[]).includes(value)) {
     return value as NamedDestXyzAxisPreset
   }
-  throw new Error('Trục XYZ chỉ là keep-left, keep-top, zero-left hoặc zero-top.')
+  throw new Error('Trục XYZ chỉ là keep-left, keep-top, zero-left, zero-top, origin hoặc home.')
 }
 
 export const NAMED_DEST_XYZ_AXIS_LABELS: Record<NamedDestXyzAxisPreset, string> = {
@@ -2260,9 +2267,11 @@ export const NAMED_DEST_XYZ_AXIS_LABELS: Record<NamedDestXyzAxisPreset, string> 
   'keep-top': 'Giữ trên',
   'zero-left': 'Trái 0',
   'zero-top': 'Trên 0',
+  origin: 'Gốc',
+  home: 'Về gốc',
 }
 
-/** Keep-left leaves left null and keeps top/zoom. Keep-top leaves top null and keeps left/zoom. Zero-left sets left 0 and keeps top/zoom. Zero-top sets top 0 and keeps left/zoom. Does not need dest page size. */
+/** Keep-left leaves left null and keeps top/zoom. Keep-top leaves top null and keeps left/zoom. Zero-left sets left 0 and keeps top/zoom. Zero-top sets top 0 and keeps left/zoom. Origin sets left 0 and top 0 and keeps zoom. Home sets left 0, top 0, and zoom 1. Does not need dest page size. */
 export function namedDestXyzFromAxisPreset(
   preset: NamedDestXyzAxisPreset,
   base: NamedDestXyz = { left: null, top: null, zoom: null },
@@ -2277,7 +2286,13 @@ export function namedDestXyzFromAxisPreset(
   if (style === 'zero-left') {
     return { left: 0, top: base.top ?? null, zoom: base.zoom ?? null }
   }
-  return { left: base.left ?? null, top: 0, zoom: base.zoom ?? null }
+  if (style === 'zero-top') {
+    return { left: base.left ?? null, top: 0, zoom: base.zoom ?? null }
+  }
+  if (style === 'origin') {
+    return { left: 0, top: 0, zoom: base.zoom ?? null }
+  }
+  return { left: 0, top: 0, zoom: 1 }
 }
 
 const NAMED_DEST_XYZ_ZOOM_SCALE: Record<

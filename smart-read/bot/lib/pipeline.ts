@@ -25,7 +25,7 @@ export const PIPELINE_STAGES = [
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, FOXML, EDM, LIDO, VRA, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP/CBZ; import TXT/MD/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff/Jupyter/BibTeX/SRT/VTT/LRC/ICS/CUE/ASS/TTML/SBV/SAMI/SUB/STL/SCC/USF/RT/MPL/DjVu/PS/TEI/JATS/RIS/ENW/CSL-JSON/NBIB/CSL-YAML/EndNote XML/MODS/CFF/DataCite/MARCXML/Dublin Core/ONIX/Unixref/BibJSON/PubMed/JSON-LD/BIBFRAME/Crossref/EAD/METS/PREMIS/MIX/ALTO/PAGE/FOXML/EDM/LIDO/VRA/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/CBZ/PNG/JPEG/WEBP as PDF.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, FOXML, EDM, LIDO, VRA, CDWA Lite, SPECTRUM, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP/CBZ; import TXT/MD/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff/Jupyter/BibTeX/SRT/VTT/LRC/ICS/CUE/ASS/TTML/SBV/SAMI/SUB/STL/SCC/USF/RT/MPL/DjVu/PS/TEI/JATS/RIS/ENW/CSL-JSON/NBIB/CSL-YAML/EndNote XML/MODS/CFF/DataCite/MARCXML/Dublin Core/ONIX/Unixref/BibJSON/PubMed/JSON-LD/BIBFRAME/Crossref/EAD/METS/PREMIS/MIX/ALTO/PAGE/FOXML/EDM/LIDO/VRA/CDWA Lite/SPECTRUM/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/CBZ/PNG/JPEG/WEBP as PDF.",
   },
   {
     id: "qa-reviewer",
@@ -639,6 +639,20 @@ export const SUPPORTED_FORMATS = [
     aliases: ["vra.xml", "vracore", "vracore.xml"],
     role: "export",
     notes: "VRA Core XML (<work> + agent name title + title Trang n + description body). Uploading .vra / .vra.xml / .vracore / .vracore.xml builds a PDF from description (then note, then title). JSON-shaped VRA uses pagesFromJson. Match .vra / .vra.xml / .vracore / .vracore.xml before generic XML. <vra\\b> does not match as a <work> record.",
+  },
+  {
+    id: "cdwa",
+    label: "CDWA Lite",
+    aliases: ["cdwa.xml", "cdwalite", "cdwalite.xml"],
+    role: "export",
+    notes: "CDWA Lite museum XML (<object> + displayCreator title + title Trang n + descriptiveNote body). Uploading .cdwa / .cdwa.xml / .cdwalite / .cdwalite.xml builds a PDF from descriptiveNote (then indexingNote, then title). JSON-shaped CDWA uses pagesFromJson. Match .cdwa / .cdwa.xml / .cdwalite / .cdwalite.xml before generic XML. <cdwalite\\b> does not match as an <object> record.",
+  },
+  {
+    id: "spectrum",
+    label: "SPECTRUM",
+    aliases: ["spectrum.xml"],
+    role: "export",
+    notes: "SPECTRUM museum XML (<record> + objectName title + objectNumber Trang n + briefDescription body). Uploading .spectrum / .spectrum.xml builds a PDF from briefDescription (then description, then objectName). JSON-shaped SPECTRUM uses pagesFromJson. Match .spectrum / .spectrum.xml before generic XML. <spectrum\\b> does not match as a <record> record.",
   },
   {
     id: "xlsx",

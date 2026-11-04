@@ -83,6 +83,8 @@ export type ImportedTextKind =
   | 'edm'
   | 'lido'
   | 'vra'
+  | 'cdwa'
+  | 'spectrum'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -518,6 +520,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'vra') {
     return pagesFromVra(text)
+  }
+  if (kind === 'cdwa') {
+    return pagesFromCdwa(text)
+  }
+  if (kind === 'spectrum') {
+    return pagesFromSpectrum(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -2794,6 +2802,76 @@ export function pagesFromVra(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp VRA cần các mục <work> / <description>.')
+}
+
+export function pagesFromCdwa(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<(?:cdwa(?:lite)?:)?object\b(?!:)[^>]*>([\s\S]*?)<\/(?:cdwa(?:lite)?:)?object>/gi),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value =
+        xmlTagText(record, 'cdwalite:descriptiveNote') ||
+        xmlTagText(record, 'cdwa:descriptiveNote') ||
+        xmlTagText(record, 'descriptiveNote')
+      if (value) {
+        return value
+      }
+      const note =
+        xmlTagText(record, 'cdwalite:indexingNote') ||
+        xmlTagText(record, 'cdwa:indexingNote') ||
+        xmlTagText(record, 'indexingNote')
+      if (note) {
+        return note
+      }
+      const title =
+        xmlTagText(record, 'cdwalite:title') || xmlTagText(record, 'cdwa:title') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp CDWA Lite cần các mục <object> / <descriptiveNote>.')
+}
+
+export function pagesFromSpectrum(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<(?:spectrum:)?record\b[^>]*>([\s\S]*?)<\/(?:spectrum:)?record>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value =
+        xmlTagText(record, 'spectrum:briefDescription') || xmlTagText(record, 'briefDescription')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'spectrum:description') || xmlTagText(record, 'description')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'spectrum:objectName') || xmlTagText(record, 'objectName')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp SPECTRUM cần các mục <record> / <briefDescription>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

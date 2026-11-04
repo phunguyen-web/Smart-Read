@@ -102,6 +102,8 @@ import {
   toEdm,
   toLido,
   toVra,
+  toCdwa,
+  toSpectrum,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -199,6 +201,8 @@ import {
   pagesFromEdm,
   pagesFromLido,
   pagesFromVra,
+  pagesFromCdwa,
+  pagesFromSpectrum,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1621,6 +1625,26 @@ describe('pdf edits', () => {
       top: 0,
       zoom: null,
     })
+    expect(namedDestXyzFromAxisPreset('origin', { left: 10, top: 20, zoom: 2 })).toEqual({
+      left: 0,
+      top: 0,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('home', { left: 10, top: 20, zoom: 2 })).toEqual({
+      left: 0,
+      top: 0,
+      zoom: 1,
+    })
+    expect(namedDestXyzFromAxisPreset('origin')).toEqual({
+      left: 0,
+      top: 0,
+      zoom: null,
+    })
+    expect(namedDestXyzFromAxisPreset('home')).toEqual({
+      left: 0,
+      top: 0,
+      zoom: 1,
+    })
     expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
     expect(namedDestXyzZoomFromPreset('75')).toBe(0.75)
     expect(namedDestXyzZoomFromPreset('100')).toBe(1)
@@ -1715,6 +1739,24 @@ describe('pdf edits', () => {
         ),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 0, zoom: 2 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          namedDestXyzFromAxisPreset('origin', { left: 10, top: 20, zoom: 2 }),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 0, top: 0, zoom: 2 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          namedDestXyzFromAxisPreset('home', { left: 10, top: 20, zoom: 2 }),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 0, top: 0, zoom: 1 } }])
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
       top: 20,
@@ -3150,6 +3192,43 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(swapExtension('notes.vra.xml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.vracore', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.vracore.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toCdwa('Demo', ['Một', 'Hai\ndòng'])).toContain('<cdwalite')
+    expect(toCdwa('Demo', ['Một'])).toContain('<displayCreator>Demo</displayCreator>')
+    expect(toCdwa('Demo', ['Một'])).toContain('<descriptiveNote>Một</descriptiveNote>')
+    expect(pagesFromCdwa(toCdwa('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('cdwa', toCdwa('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromCdwa('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromCdwa('<cdwalite><object><title>Một</title></object></cdwalite>')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.cdwa', { type: '' }))).toBe('cdwa')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.cdwa.xml', { type: 'application/cdwa+xml' })),
+    ).toBe('cdwa')
+    expect(sourceKindFromFile(new File(['x'], 'notes.cdwalite', { type: '' }))).toBe('cdwa')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromCdwa('<cdwalite></cdwalite>')).toThrow(/<object>/)
+    expect(swapExtension('notes.cdwa', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.cdwa.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.cdwalite', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.cdwalite.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toSpectrum('Demo', ['Một', 'Hai\ndòng'])).toContain('<spectrum')
+    expect(toSpectrum('Demo', ['Một'])).toContain('<objectName>Demo</objectName>')
+    expect(toSpectrum('Demo', ['Một'])).toContain('<briefDescription>Một</briefDescription>')
+    expect(pagesFromSpectrum(toSpectrum('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('spectrum', toSpectrum('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromSpectrum('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromSpectrum('<spectrum><record><objectName>Một</objectName></record></spectrum>')).toEqual([
+      'Một',
+    ])
+    expect(sourceKindFromFile(new File(['x'], 'notes.spectrum', { type: '' }))).toBe('spectrum')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.spectrum.xml', { type: 'application/spectrum+xml' })),
+    ).toBe('spectrum')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromSpectrum('<spectrum></spectrum>')).toThrow(/<record>/)
+    expect(swapExtension('notes.spectrum', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.spectrum.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

@@ -80,6 +80,8 @@ export type ExportFormat =
   | 'edm'
   | 'lido'
   | 'vra'
+  | 'cdwa'
+  | 'spectrum'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1759,6 +1761,44 @@ ${records}
 `
 }
 
+export function toCdwa(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <object>
+    <displayCreator>${heading}</displayCreator>
+    <title>Trang ${index + 1}</title>
+    <descriptiveNote>${note}</descriptiveNote>
+  </object>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<cdwalite xmlns="http://www.getty.edu/CDWA/CDWALite">
+${records}
+</cdwalite>
+`
+}
+
+export function toSpectrum(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <record>
+    <objectName>${heading}</objectName>
+    <objectNumber>Trang ${index + 1}</objectNumber>
+    <briefDescription>${note}</briefDescription>
+  </record>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<spectrum>
+${records}
+</spectrum>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2716,6 +2756,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/lido+xml;charset=utf-8'
     case 'vra':
       return 'application/vra+xml;charset=utf-8'
+    case 'cdwa':
+      return 'application/cdwa+xml;charset=utf-8'
+    case 'spectrum':
+      return 'application/spectrum+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
