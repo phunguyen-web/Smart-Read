@@ -1,0 +1,11 @@
+node_modules
+dist
+.agent-serve
+memory
+.env
+.env.local
+*.tsbuildinfo
+.DS_Store
+apps/web/node_modules
+smart-read/node_modules
+smart-read/.agent-serve
