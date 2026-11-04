@@ -40,9 +40,12 @@ import {
   namedDestXyzOf,
   namedDestXyzFromPaper,
   namedDestXyzFromPageSize,
+  namedDestXyzFromZoomPreset,
   NAMED_DEST_VIEWS,
   NAMED_DEST_XYZ_EDGES,
   NAMED_DEST_XYZ_EDGE_LABELS,
+  NAMED_DEST_XYZ_ZOOM_PRESETS,
+  NAMED_DEST_XYZ_ZOOM_LABELS,
   listPageSizes,
   renameNamedDest,
   removeNamedDest,
@@ -1036,9 +1039,9 @@ export function Editor() {
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục
-          (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích / kiểu xem XYZ Fit FitH FitV FitR FitB FitBH FitBV / gắn XYZ trái đỉnh zoom / khổ A4 Letter A5 trái trên / mé trái trên / trên / phải trên / trái giữa / giữa / phải giữa / trái dưới / dưới / phải dưới theo khổ trang đích / đích trên thumbnail, bấm tên đích để chọn),
+          (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích / kiểu xem XYZ Fit FitH FitV FitR FitB FitBH FitBV / gắn XYZ trái đỉnh zoom / khổ A4 Letter A5 trái trên / mé trái trên / trên / phải trên / trái giữa / giữa / phải giữa / trái dưới / dưới / phải dưới theo khổ trang đích / zoom 100% / vừa rộng / đích trên thumbnail, bấm tên đích để chọn),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -1048,7 +1051,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -2419,6 +2422,47 @@ export function Editor() {
                     }}
                   >
                     {NAMED_DEST_XYZ_EDGE_LABELS[edge]}
+                  </button>
+                ))}
+                {NAMED_DEST_XYZ_ZOOM_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    disabled={
+                      busy ||
+                      namedDestAt == null ||
+                      (preset === 'fit-width' && destPageSize == null)
+                    }
+                    aria-label={
+                      namedDestAt == null
+                        ? `Chọn một đích tên rồi gắn XYZ ${NAMED_DEST_XYZ_ZOOM_LABELS[preset]}`
+                        : preset === 'fit-width' && destPageSize == null
+                          ? 'Chưa đọc được khổ trang đích'
+                          : `Gắn XYZ ${NAMED_DEST_XYZ_ZOOM_LABELS[preset]} cho đích ${namedDestAt}`
+                    }
+                    onClick={() => {
+                      if (namedDestAt == null) {
+                        return
+                      }
+                      if (preset === 'fit-width' && destPageSize == null) {
+                        return
+                      }
+                      const current = namedDestXyzOf(
+                        namedDests.find((dest) => dest.name === namedDestAt),
+                      )
+                      const xyz = namedDestXyzFromZoomPreset(
+                        preset,
+                        current,
+                        destPageSize?.width,
+                      )
+                      void run((bytes) => setNamedDestXyz(bytes, namedDestAt, xyz), () => {
+                        setDestLeft(xyz.left == null ? '' : String(xyz.left))
+                        setDestTop(xyz.top == null ? '' : String(xyz.top))
+                        setDestZoom(xyz.zoom == null ? '' : String(xyz.zoom))
+                      })
+                    }}
+                  >
+                    {NAMED_DEST_XYZ_ZOOM_LABELS[preset]}
                   </button>
                 ))}
                 <button

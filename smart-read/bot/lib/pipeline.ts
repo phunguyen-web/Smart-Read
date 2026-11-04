@@ -18,14 +18,14 @@ export const PIPELINE_STAGES = [
     subagent: "pdf-editor",
     title: "PDF editor",
     summary:
-      "Implement in-browser PDF page operations: rotate, reverse, interleave halves / split odd-even, 2-up / 4-up, booklet impose with a print-sheet preview, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, cover page, page border, crop or pad margins, unify mixed page sizes, reading tint, page background color, auto-crop whitespace, grayscale, find text, go to page (number, viewer label, or dest name), remove blank or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, text overlay, outline bookmarks (including dest-less nested folders (depth 3, per-folder collapse, rename/remove, move up/down, indent/outdent, retarget dest, named destinations via addNamedDest / listNamedDests / renameNamedDest / setNamedDestPage / parseNamedDestPageInput / setNamedDestView / setNamedDestXyz / parseNamedDestXyzInput / namedDestXyzFromPaper / namedDestXyzFromDestPage / destNamesForPage / duplicateNamedDest / addNamedDestsForSelection / namedDestNameForPage / clearNamedDests / removeNamedDest / setOutlineNamedDest) that can collapse or clear), page labels (shown on thumbnails), extract embedded images, open a password-protected PDF, and password-protect a download copy.",
+      "Implement in-browser PDF page operations: rotate, reverse, interleave halves / split odd-even, 2-up / 4-up, booklet impose with a print-sheet preview, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, cover page, page border, crop or pad margins, unify mixed page sizes, reading tint, page background color, auto-crop whitespace, grayscale, find text, go to page (number, viewer label, or dest name), remove blank or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, text overlay, outline bookmarks (including dest-less nested folders (depth 3, per-folder collapse, rename/remove, move up/down, indent/outdent, retarget dest, named destinations via addNamedDest / listNamedDests / renameNamedDest / setNamedDestPage / parseNamedDestPageInput / setNamedDestView / setNamedDestXyz / parseNamedDestXyzInput / namedDestXyzFromPaper / namedDestXyzFromDestPage / namedDestXyzFromZoomPreset / namedDestXyzZoomFromDestPage / destNamesForPage / duplicateNamedDest / addNamedDestsForSelection / namedDestNameForPage / clearNamedDests / removeNamedDest / setOutlineNamedDest) that can collapse or clear), page labels (shown on thumbnails), extract embedded images, open a password-protected PDF, and password-protect a download copy.",
   },
   {
     id: "format-converter",
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP/CBZ; import TXT/MD/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff/Jupyter/BibTeX/SRT/VTT/LRC/ICS/CUE/ASS/TTML/SBV/SAMI/SUB/STL/SCC/USF/RT/MPL/DjVu/PS/TEI/JATS/RIS/ENW/CSL-JSON/NBIB/CSL-YAML/EndNote XML/MODS/CFF/DataCite/MARCXML/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/CBZ/PNG/JPEG/WEBP as PDF.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP/CBZ; import TXT/MD/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff/Jupyter/BibTeX/SRT/VTT/LRC/ICS/CUE/ASS/TTML/SBV/SAMI/SUB/STL/SCC/USF/RT/MPL/DjVu/PS/TEI/JATS/RIS/ENW/CSL-JSON/NBIB/CSL-YAML/EndNote XML/MODS/CFF/DataCite/MARCXML/Dublin Core/ONIX/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/CBZ/PNG/JPEG/WEBP as PDF.",
   },
   {
     id: "qa-reviewer",
@@ -513,6 +513,20 @@ export const SUPPORTED_FORMATS = [
     aliases: ["mrcx", "marc.xml"],
     role: "export",
     notes: "MARCXML records (<record> + 490 title + 245 Trang n + 520 body). Uploading .marcxml / .mrcx / .marc.xml builds a PDF from 520 (then 500, then 245). JSON-shaped MARCXML uses pagesFromJson. Match .marcxml / .mrcx / .marc.xml before generic XML.",
+  },
+  {
+    id: "dublincore",
+    label: "Dublin Core",
+    aliases: ["dublincore.xml", "dc.xml"],
+    role: "export",
+    notes: "Dublin Core XML records (<dc> + dc:publisher title + dc:title Trang n + dc:description body). Uploading .dublincore / .dublincore.xml / .dc.xml builds a PDF from description (then abstract, then title). JSON-shaped Dublin Core uses pagesFromJson. Match .dublincore / .dublincore.xml / .dc.xml before generic XML.",
+  },
+  {
+    id: "onix",
+    label: "ONIX",
+    aliases: ["onix.xml"],
+    role: "export",
+    notes: "ONIX XML products (<Product> + Collection TitleText title + TitleText Trang n + Text body). Uploading .onix / .onix.xml builds a PDF from Text (then Annotation, then TitleText). JSON-shaped ONIX uses pagesFromJson. Match .onix / .onix.xml before generic XML.",
   },
   {
     id: "xlsx",

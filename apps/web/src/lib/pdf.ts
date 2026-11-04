@@ -2198,6 +2198,49 @@ export const NAMED_DEST_XYZ_EDGE_LABELS: Record<NamedDestXyzEdge, string> = {
   'bottom-right': 'Phải dưới trang',
 }
 
+export const NAMED_DEST_XYZ_ZOOM_PRESETS = ['100', 'fit-width'] as const
+export type NamedDestXyzZoomPreset = (typeof NAMED_DEST_XYZ_ZOOM_PRESETS)[number]
+
+export function assertNamedDestXyzZoomPreset(value: string): NamedDestXyzZoomPreset {
+  if (value === '100' || value === 'fit-width') {
+    return value
+  }
+  throw new Error('Zoom XYZ chỉ là 100 hoặc fit-width.')
+}
+
+export const NAMED_DEST_XYZ_ZOOM_LABELS: Record<NamedDestXyzZoomPreset, string> = {
+  '100': '100%',
+  'fit-width': 'Vừa rộng',
+}
+
+/** 100% is zoom 1. Fit-width is Letter portrait width divided by the page width. */
+export function namedDestXyzZoomFromPreset(
+  preset: NamedDestXyzZoomPreset,
+  pageWidth?: number,
+): number {
+  const style = assertNamedDestXyzZoomPreset(preset)
+  if (style === 'fit-width') {
+    const width =
+      pageWidth != null && Number.isFinite(pageWidth) && pageWidth > 0 ? pageWidth : LETTER_WIDTH
+    return LETTER_WIDTH / width
+  }
+  return 1
+}
+
+/** XYZ zoom preset. 100% keeps left/top. Fit-width pins left to 0. */
+export function namedDestXyzFromZoomPreset(
+  preset: NamedDestXyzZoomPreset,
+  base: NamedDestXyz = { left: null, top: null, zoom: null },
+  pageWidth?: number,
+): NamedDestXyz {
+  assertNamedDestXyzZoomPreset(preset)
+  return {
+    left: preset === 'fit-width' ? 0 : (base.left ?? null),
+    top: base.top ?? null,
+    zoom: namedDestXyzZoomFromPreset(preset, pageWidth),
+  }
+}
+
 /** Displayed size of every page, after rotation. */
 export async function listPageSizes(bytes: Uint8Array): Promise<PageSize[]> {
   try {
@@ -2227,6 +2270,24 @@ export async function namedDestXyzFromDestPage(
     throw new Error('Không đọc được khổ trang đích.')
   }
   return namedDestXyzFromPageSize(size, edge)
+}
+
+/** XYZ zoom from the dest's current left/top and its displayed page width. */
+export async function namedDestXyzZoomFromDestPage(
+  bytes: Uint8Array,
+  destName: string,
+  preset: NamedDestXyzZoomPreset,
+): Promise<NamedDestXyz> {
+  const dests = await listNamedDests(bytes)
+  const dest = dests.find((item) => item.name === destName)
+  if (!dest) {
+    throw new Error('Chưa có đích tên này.')
+  }
+  const size = (await listPageSizes(bytes))[dest.pageIndex]
+  if (!size) {
+    throw new Error('Không đọc được khổ trang đích.')
+  }
+  return namedDestXyzFromZoomPreset(preset, namedDestXyzOf(dest), size.width)
 }
 
 function compactNamedDestXyz(xyz: NamedDestXyz | undefined): NamedDestXyz | undefined {

@@ -84,6 +84,8 @@ import {
   toCff,
   toDatacite,
   toMarcxml,
+  toDublincore,
+  toOnix,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -163,6 +165,8 @@ import {
   pagesFromCff,
   pagesFromDatacite,
   pagesFromMarcxml,
+  pagesFromDublincore,
+  pagesFromOnix,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -244,6 +248,9 @@ import {
   namedDestXyzFromPageSize,
   namedDestXyzFromPaper,
   namedDestXyzFromDestPage,
+  namedDestXyzFromZoomPreset,
+  namedDestXyzZoomFromPreset,
+  namedDestXyzZoomFromDestPage,
   listPageSizes,
   clearNamedDests,
   duplicateNamedDest,
@@ -1496,6 +1503,60 @@ describe('pdf edits', () => {
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 100, top: 140, zoom: null } }])
     await expect(namedDestXyzFromDestPage(named, 'Missing', 'top')).rejects.toThrow(/đích tên/)
 
+    expect(namedDestXyzFromZoomPreset('100')).toEqual({
+      left: null,
+      top: null,
+      zoom: 1,
+    })
+    expect(namedDestXyzFromZoomPreset('100', { left: 10, top: 20, zoom: 2 })).toEqual({
+      left: 10,
+      top: 20,
+      zoom: 1,
+    })
+    expect(namedDestXyzZoomFromPreset('100')).toBe(1)
+    expect(namedDestXyzFromZoomPreset('fit-width', { left: 10, top: 20, zoom: 2 })).toEqual({
+      left: 0,
+      top: 20,
+      zoom: 1,
+    })
+    expect(namedDestXyzFromZoomPreset('fit-width', { left: 10, top: 20, zoom: 2 }, 200)).toEqual({
+      left: 0,
+      top: 20,
+      zoom: LETTER_WIDTH / 200,
+    })
+    expect(namedDestXyzZoomFromPreset('fit-width', 200)).toBe(LETTER_WIDTH / 200)
+    expect(namedDestXyzZoomFromPreset('fit-width', A4_WIDTH)).toBeCloseTo(LETTER_WIDTH / A4_WIDTH)
+    expect(
+      await listNamedDests(await setNamedDestXyz(named, 'ChapTwo', namedDestXyzFromZoomPreset('100'))),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: null, top: null, zoom: 1 } }])
+    const zoomed = await setNamedDestXyz(named, 'ChapTwo', { left: 10, top: 20, zoom: 2 })
+    expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', '100')).toEqual({
+      left: 10,
+      top: 20,
+      zoom: 1,
+    })
+    expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
+      left: 0,
+      top: 20,
+      zoom: LETTER_WIDTH / 200,
+    })
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(zoomed, 'ChapTwo', await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', '100')),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 20, zoom: 1 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 0, top: 20, zoom: LETTER_WIDTH / 200 } }])
+    await expect(namedDestXyzZoomFromDestPage(named, 'Missing', '100')).rejects.toThrow(/đích tên/)
+    expect(() => namedDestXyzFromZoomPreset('zoom' as '100')).toThrow(/Zoom XYZ/)
+
     expect(toRomanNumeral(2)).toBe('ii')
     expect(toRomanNumeral(4, true)).toBe('IV')
     expect(formatPageLabel('trang', 3)).toBe('Trang 3')
@@ -2467,6 +2528,49 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(swapExtension('notes.marcxml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.mrcx', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.marc.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toDublincore('Demo', ['Một', 'Hai\ndòng'])).toContain('<dublinCore')
+    expect(toDublincore('Demo', ['Một'])).toContain('<dc:publisher>Demo</dc:publisher>')
+    expect(toDublincore('Demo', ['Một'])).toContain('<dc:description>Một</dc:description>')
+    expect(pagesFromDublincore(toDublincore('Demo', ['Một', 'Hai\ndòng']))).toEqual([
+      'Một',
+      'Hai\ndòng',
+    ])
+    expect(pagesFromImportedText('dublincore', toDublincore('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromDublincore('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromDublincore('<dublinCore><dc><dc:title>Một</dc:title></dc></dublinCore>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.dublincore', { type: '' }))).toBe(
+      'dublincore',
+    )
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.dublincore.xml', { type: 'application/vnd.dublincore+xml' }),
+      ),
+    ).toBe('dublincore')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dc.xml', { type: '' }))).toBe('dublincore')
+    expect(swapExtension('notes.dublincore', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.dublincore.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.dc.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toOnix('Demo', ['Một', 'Hai\ndòng'])).toContain('<ONIXMessage')
+    expect(toOnix('Demo', ['Một'])).toContain('<TitleText>Demo</TitleText>')
+    expect(toOnix('Demo', ['Một'])).toContain('<Text>Một</Text>')
+    expect(pagesFromOnix(toOnix('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('onix', toOnix('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromOnix('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromOnix(
+        '<ONIXMessage><Product><TitleText>Một</TitleText></Product></ONIXMessage>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.onix', { type: '' }))).toBe('onix')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.onix.xml', { type: 'application/onix+xml' })),
+    ).toBe('onix')
+    expect(swapExtension('notes.onix', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.onix.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

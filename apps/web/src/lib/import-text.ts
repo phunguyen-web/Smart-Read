@@ -65,6 +65,8 @@ export type ImportedTextKind =
   | 'cff'
   | 'datacite'
   | 'marcxml'
+  | 'dublincore'
+  | 'onix'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -446,6 +448,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'marcxml') {
     return pagesFromMarcxml(text)
+  }
+  if (kind === 'dublincore') {
+    return pagesFromDublincore(text)
+  }
+  if (kind === 'onix') {
+    return pagesFromOnix(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -2101,6 +2109,70 @@ export function pagesFromMarcxml(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp MARCXML cần các mục <record> / datafield 520.')
+}
+
+export function pagesFromDublincore(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<dc(?:\s[^>]*)?>([\s\S]*?)<\/dc>/gi),
+    ...trimmed.matchAll(/<oai_dc:dc\b[^>]*>([\s\S]*?)<\/oai_dc:dc>/gi),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const note = xmlTagText(record, 'dc:description') || xmlTagText(record, 'description')
+      if (note) {
+        return note
+      }
+      const abs = xmlTagText(record, 'dc:abstract') || xmlTagText(record, 'abstract')
+      if (abs) {
+        return abs
+      }
+      const title = xmlTagText(record, 'dc:title') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp Dublin Core cần các mục <dc> / <dc:description>.')
+}
+
+export function pagesFromOnix(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<Product\b[^>]*>([\s\S]*?)<\/Product>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const note = xmlTagText(record, 'Text')
+      if (note) {
+        return note
+      }
+      const abs = xmlTagText(record, 'Annotation') || xmlTagText(record, 'abstract')
+      if (abs) {
+        return abs
+      }
+      const withoutCollection = record.replace(/<Collection\b[\s\S]*?<\/Collection>/gi, '')
+      const title = xmlTagText(withoutCollection, 'TitleText') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp ONIX cần các mục <Product> / <Text>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

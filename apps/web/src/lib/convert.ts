@@ -62,6 +62,8 @@ export type ExportFormat =
   | 'cff'
   | 'datacite'
   | 'marcxml'
+  | 'dublincore'
+  | 'onix'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1293,6 +1295,60 @@ ${records}
 `
 }
 
+export function toDublincore(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <dc>
+    <dc:publisher>${heading}</dc:publisher>
+    <dc:title>Trang ${index + 1}</dc:title>
+    <dc:description>${note}</dc:description>
+  </dc>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<dublinCore xmlns:dc="http://purl.org/dc/elements/1.1/">
+${records}
+</dublinCore>
+`
+}
+
+export function toOnix(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <Product>
+    <DescriptiveDetail>
+      <Collection>
+        <TitleDetail>
+          <TitleElement>
+            <TitleText>${heading}</TitleText>
+          </TitleElement>
+        </TitleDetail>
+      </Collection>
+      <TitleDetail>
+        <TitleElement>
+          <TitleText>Trang ${index + 1}</TitleText>
+        </TitleElement>
+      </TitleDetail>
+    </DescriptiveDetail>
+    <CollateralDetail>
+      <TextContent>
+        <Text>${note}</Text>
+      </TextContent>
+    </CollateralDetail>
+  </Product>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<ONIXMessage release="3.0">
+${records}
+</ONIXMessage>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2214,6 +2270,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.datacite.datacite+xml;charset=utf-8'
     case 'marcxml':
       return 'application/marcxml+xml;charset=utf-8'
+    case 'dublincore':
+      return 'application/vnd.dublincore+xml;charset=utf-8'
+    case 'onix':
+      return 'application/onix+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
