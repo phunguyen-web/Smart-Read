@@ -1958,9 +1958,9 @@ export type OutlineBookmark = {
   destName?: string
 }
 
-export type NamedDestView = 'XYZ' | 'Fit' | 'FitH' | 'FitV' | 'FitR'
+export type NamedDestView = 'XYZ' | 'Fit' | 'FitH' | 'FitV' | 'FitR' | 'FitB'
 
-export const NAMED_DEST_VIEWS = ['XYZ', 'Fit', 'FitH', 'FitV', 'FitR'] as const
+export const NAMED_DEST_VIEWS = ['XYZ', 'Fit', 'FitH', 'FitV', 'FitR', 'FitB'] as const
 
 export type NamedDestination = {
   name: string
@@ -2080,11 +2080,12 @@ export function assertNamedDestView(value: string): NamedDestView {
     value === 'Fit' ||
     value === 'FitH' ||
     value === 'FitV' ||
-    value === 'FitR'
+    value === 'FitR' ||
+    value === 'FitB'
   ) {
     return value
   }
-  throw new Error('Kiểu xem đích chỉ là XYZ, Fit, FitH, FitV hoặc FitR.')
+  throw new Error('Kiểu xem đích chỉ là XYZ, Fit, FitH, FitV, FitR hoặc FitB.')
 }
 
 export function namedDestViewOf(dest: NamedDestination | undefined): NamedDestView {
@@ -2155,8 +2156,11 @@ function destViewFromArray(dest: unknown): NamedDestView {
         ? style.asString().slice(1)
         : style.asString()
       : ''
-  if (raw === 'Fit' || raw === 'FitB') {
+  if (raw === 'Fit') {
     return 'Fit'
+  }
+  if (raw === 'FitB') {
+    return 'FitB'
   }
   if (raw === 'FitH' || raw === 'FitBH') {
     return 'FitH'
@@ -2254,6 +2258,9 @@ function destArrayForPage(doc: PDFDocument, pageIndex: number, view: NamedDestVi
   if (view === 'FitR') {
     const { width, height } = page.getSize()
     return doc.context.obj([page.ref, PDFName.of('FitR'), 0, 0, width, height])
+  }
+  if (view === 'FitB') {
+    return doc.context.obj([page.ref, PDFName.of('FitB')])
   }
   return doc.context.obj([page.ref, PDFName.of('XYZ'), null, null, null])
 }
@@ -2942,7 +2949,7 @@ export async function setNamedDestPage(
   return new Uint8Array(await doc.save())
 }
 
-/** Set XYZ, Fit, FitH, FitV, or FitR on an existing named destination. Same view is a no-op write. */
+/** Set XYZ, Fit, FitH, FitV, FitR, or FitB on an existing named destination. Same view is a no-op write. */
 export async function setNamedDestView(
   bytes: Uint8Array,
   name: string,

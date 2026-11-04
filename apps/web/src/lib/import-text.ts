@@ -51,6 +51,8 @@ export type ImportedTextKind =
   | 'usf'
   | 'rt'
   | 'mpl'
+  | 'djvu'
+  | 'ps'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -390,6 +392,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'mpl') {
     return pagesFromMpl(text)
+  }
+  if (kind === 'djvu') {
+    return pagesFromDjvu(text)
+  }
+  if (kind === 'ps') {
+    return pagesFromPs(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1618,6 +1626,40 @@ export function pagesFromMpl(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp phụ đề MPL2 cần các mốc [start][end].')
+}
+
+export function pagesFromDjvu(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = trimmed
+    .split(/^@page\s+\d+\s*$/m)
+    .slice(1)
+    .map((chunk) => chunk.replace(/^\n/, '').replace(/\n+$/, '').trim())
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp DjVu text cần các dòng @page.')
+}
+
+export function unescapePs(value: string): string {
+  return value.replace(/\\([\\()])/g, '$1')
+}
+
+export function pagesFromPs(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = [...trimmed.matchAll(/\(((?:\\.|[^\\)])*)\)\s*=\s*$/gm)]
+    .map((match) => unescapePs(match[1] ?? '').replace(/\|/g, '\n').trim())
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp PostScript cần các dòng (text) =.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

@@ -48,6 +48,8 @@ export type ExportFormat =
   | 'usf'
   | 'rt'
   | 'mpl'
+  | 'djvu'
+  | 'ps'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -988,6 +990,36 @@ export function toMpl(pages: string[]): string {
   return `${cues}\n`
 }
 
+export function toDjvu(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tai lieu').replace(/\r?\n/g, ' ')
+  const bodies = pages
+    .map((text, index) => `@page ${index + 1}\n${text.trim() || '(không có chữ)'}`)
+    .join('\n\n')
+  return `DJVU-TEXT 1.0\ntitle: ${heading}\n\n${bodies}\n`
+}
+
+export function escapePs(text: string): string {
+  return text.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+}
+
+export function toPs(title: string, pages: string[]): string {
+  const heading = escapePs((title.trim() || 'Tai lieu').replace(/\r?\n/g, ' '))
+  const bodies = pages
+    .map((text, index) => {
+      const content = escapePs((text.trim() || '(không có chữ)').replace(/\r?\n/g, '|'))
+      return `%%Page: ${index + 1} ${index + 1}\n(${content}) =\nshowpage`
+    })
+    .join('\n')
+  return `%!PS-Adobe-3.0
+%%Title: ${heading}
+%%Pages: ${pages.length}
+%%EndComments
+${bodies}
+%%Trailer
+%%EOF
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -1881,6 +1913,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/vnd.rn-realtext;charset=utf-8'
     case 'mpl':
       return 'text/x-mpl2;charset=utf-8'
+    case 'djvu':
+      return 'image/vnd.djvu;charset=utf-8'
+    case 'ps':
+      return 'application/postscript;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

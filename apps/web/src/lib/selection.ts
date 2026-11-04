@@ -200,6 +200,34 @@ function foldGoto(value: string): string {
     .toLowerCase()
 }
 
+/** Unique Tới trang suggestions: viewer labels first, then dest names. */
+export function gotoSuggestions(
+  labels?: readonly string[],
+  dests?: readonly { name: string }[],
+): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  const add = (value: string) => {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return
+    }
+    const key = foldGoto(trimmed)
+    if (seen.has(key)) {
+      return
+    }
+    seen.add(key)
+    out.push(trimmed)
+  }
+  for (const label of labels ?? []) {
+    add(label)
+  }
+  for (const dest of dests ?? []) {
+    add(dest.name)
+  }
+  return out
+}
+
 /** Validate a 1-based page number, a viewer page label, or a named dest for jumping. */
 export function parseGotoPage(
   raw: string,

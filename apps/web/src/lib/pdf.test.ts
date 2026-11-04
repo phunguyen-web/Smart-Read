@@ -70,6 +70,9 @@ import {
   toUsf,
   toRt,
   toMpl,
+  toDjvu,
+  toPs,
+  escapePs,
   escapeTypst,
   toJsonl,
   toLatex,
@@ -131,6 +134,8 @@ import {
   pagesFromUsf,
   pagesFromRt,
   pagesFromMpl,
+  pagesFromDjvu,
+  pagesFromPs,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -351,6 +356,7 @@ import {
   oddPageIndexes,
   pageRange,
   parseGotoPage,
+  gotoSuggestions,
   parsePageRange,
   parseSplitSize,
   togglePage,
@@ -1171,10 +1177,29 @@ describe('pdf edits', () => {
       { name: 'ChapRect', pageIndex: 1, view: 'FitR' },
       { name: 'ChapTwo', pageIndex: 1, view: 'FitR' },
     ])
+    const fitBDest = await setNamedDestView(named, 'ChapTwo', 'FitB')
+    expect(await listNamedDests(fitBDest)).toEqual([{ name: 'ChapTwo', pageIndex: 1, view: 'FitB' }])
+    const fitBDoc = await PDFDocument.load(fitBDest)
+    const fitBArray = fitBDoc.context.lookup(
+      fitBDoc.catalog.lookup(PDFName.of('Dests'), PDFDict).get(PDFName.of('ChapTwo')),
+      PDFArray,
+    )
+    expect(fitBArray.get(1)).toEqual(PDFName.of('FitB'))
+    expect(fitBArray.size()).toBe(2)
+    expect(await listNamedDests(await setNamedDestPage(fitBDest, 'ChapTwo', 0))).toEqual([
+      { name: 'ChapTwo', pageIndex: 0, view: 'FitB' },
+    ])
+    expect(await listNamedDests(await duplicateNamedDest(fitBDest, 'ChapTwo', 'ChapBleed'))).toEqual([
+      { name: 'ChapBleed', pageIndex: 1, view: 'FitB' },
+      { name: 'ChapTwo', pageIndex: 1, view: 'FitB' },
+    ])
     const foreignFit = await PDFDocument.load(bytes)
     const foreignFitPages = foreignFit.getPages()
     const fitRef = foreignFit.context.register(
       foreignFit.context.obj([foreignFitPages[0]!.ref, PDFName.of('Fit')]),
+    )
+    const fitBRef = foreignFit.context.register(
+      foreignFit.context.obj([foreignFitPages[0]!.ref, PDFName.of('FitB')]),
     )
     const fitBhRef = foreignFit.context.register(
       foreignFit.context.obj([foreignFitPages[1]!.ref, PDFName.of('FitBH'), null]),
@@ -1187,11 +1212,13 @@ describe('pdf edits', () => {
     )
     const fitCatalog = foreignFit.context.obj({})
     fitCatalog.set(PDFName.of('Whole'), fitRef)
+    fitCatalog.set(PDFName.of('Bleed'), fitBRef)
     fitCatalog.set(PDFName.of('Wide'), fitBhRef)
     fitCatalog.set(PDFName.of('Tall'), fitBvRef)
     fitCatalog.set(PDFName.of('Rect'), fitRRef)
     foreignFit.catalog.set(PDFName.of('Dests'), fitCatalog)
     expect(await listNamedDests(new Uint8Array(await foreignFit.save()))).toEqual([
+      { name: 'Bleed', pageIndex: 0, view: 'FitB' },
       { name: 'Rect', pageIndex: 1, view: 'FitR' },
       { name: 'Tall', pageIndex: 0, view: 'FitV' },
       { name: 'Whole', pageIndex: 0, view: 'Fit' },
@@ -1965,6 +1992,31 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(sourceKindFromFile(new File(['x'], 'notes.mpl', { type: '' }))).toBe('mpl')
     expect(sourceKindFromFile(new File(['x'], 'notes.mpl', { type: 'text/x-mpl2' }))).toBe('mpl')
     expect(swapExtension('notes.mpl', 'pdf')).toBe('notes.pdf')
+
+    expect(toDjvu('Demo', ['Một', 'Hai\ndòng'])).toContain('DJVU-TEXT 1.0')
+    expect(toDjvu('Demo', ['Một'])).toContain('title: Demo')
+    expect(toDjvu('Demo', ['Một'])).toContain('@page 1')
+    expect(pagesFromDjvu(toDjvu('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('djvu', toDjvu('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromDjvu('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.djvu', { type: '' }))).toBe('djvu')
+    expect(sourceKindFromFile(new File(['x'], 'notes.djv', { type: 'image/vnd.djvu' }))).toBe('djvu')
+    expect(swapExtension('notes.djvu', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.djv', 'pdf')).toBe('notes.pdf')
+
+    expect(escapePs('(hi)')).toBe('\\(hi\\)')
+    expect(toPs('Demo', ['Một', 'Hai\ndòng'])).toContain('%!PS-Adobe-3.0')
+    expect(toPs('Demo', ['Một'])).toContain('%%Title: Demo')
+    expect(toPs('Demo', ['Một'])).toContain('(Một) =')
+    expect(pagesFromPs(toPs('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('ps', toPs('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromPs('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.ps', { type: '' }))).toBe('ps')
+    expect(sourceKindFromFile(new File(['x'], 'notes.eps', { type: 'application/postscript' }))).toBe(
+      'ps',
+    )
+    expect(swapExtension('notes.ps', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.eps', 'pdf')).toBe('notes.pdf')
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
     expect(toTtml('Demo', ['Một'])).toContain('<title>Demo</title>')
@@ -2216,6 +2268,14 @@ describe('page selection', () => {
     expect(parseGotoPage('Missing', 2, undefined, [{ name: 'ChapTwo', pageIndex: 1 }]).ok).toBe(
       false,
     )
+    expect(gotoSuggestions(['i', 'ii', '1'], [{ name: 'ChapTwo' }, { name: 'i' }])).toEqual([
+      'i',
+      'ii',
+      '1',
+      'ChapTwo',
+    ])
+    expect(gotoSuggestions(['Trang 1', 'Trang 2'])).toEqual(['Trang 1', 'Trang 2'])
+    expect(gotoSuggestions(undefined, [{ name: 'ChapTwo' }])).toEqual(['ChapTwo'])
   })
 
   it('caps undo snapshots and pops the latest first', () => {
