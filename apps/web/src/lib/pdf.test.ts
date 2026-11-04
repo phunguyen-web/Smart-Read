@@ -96,6 +96,8 @@ import {
   toMets,
   toPremis,
   toMix,
+  toAlto,
+  toPage,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -187,6 +189,8 @@ import {
   pagesFromMets,
   pagesFromPremis,
   pagesFromMix,
+  pagesFromAlto,
+  pagesFromPage,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1558,12 +1562,23 @@ describe('pdf edits', () => {
       top: 20,
       zoom: 1.25,
     })
+    expect(namedDestXyzFromZoomPreset('keep', { left: 10, top: 20, zoom: 2 })).toEqual({
+      left: 10,
+      top: 20,
+      zoom: null,
+    })
+    expect(namedDestXyzFromZoomPreset('keep')).toEqual({
+      left: null,
+      top: null,
+      zoom: null,
+    })
     expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
     expect(namedDestXyzZoomFromPreset('75')).toBe(0.75)
     expect(namedDestXyzZoomFromPreset('100')).toBe(1)
     expect(namedDestXyzZoomFromPreset('125')).toBe(1.25)
     expect(namedDestXyzZoomFromPreset('150')).toBe(1.5)
     expect(namedDestXyzZoomFromPreset('200')).toBe(2)
+    expect(namedDestXyzZoomFromPreset('keep')).toBeNull()
     expect(namedDestXyzFromZoomPreset('fit-width', { left: 10, top: 20, zoom: 2 })).toEqual({
       left: 0,
       top: 20,
@@ -1609,6 +1624,11 @@ describe('pdf edits', () => {
       left: 10,
       top: 20,
       zoom: 1.25,
+    })
+    expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'keep')).toEqual({
+      left: 10,
+      top: 20,
+      zoom: null,
     })
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
@@ -1693,6 +1713,15 @@ describe('pdf edits', () => {
         xyz: { left: 0, top: 0, zoom: Math.min(LETTER_WIDTH / 200, LETTER_HEIGHT / 280) },
       },
     ])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'keep'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 20, zoom: null } }])
     await expect(namedDestXyzZoomFromDestPage(named, 'Missing', '100')).rejects.toThrow(/đích tên/)
     expect(() => namedDestXyzFromZoomPreset('zoom' as '100')).toThrow(/Zoom XYZ/)
 
@@ -2915,6 +2944,48 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.mix', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.mix.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toAlto('Demo', ['Một', 'Hai\ndòng'])).toContain('<alto')
+    expect(toAlto('Demo', ['Một'])).toContain('<fileName>Demo</fileName>')
+    expect(toAlto('Demo', ['Một'])).toContain('<String>Một</String>')
+    expect(pagesFromAlto(toAlto('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('alto', toAlto('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromAlto('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromAlto(
+        '<alto><Layout><Page ID="P1"><PrintSpace><TextLine>Một</TextLine></PrintSpace></Page></Layout></alto>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.alto', { type: '' }))).toBe('alto')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.alto.xml', { type: 'application/alto+xml' })),
+    ).toBe('alto')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromAlto('<alto><Description></Description></alto>')).toThrow(/<Page>/)
+    expect(swapExtension('notes.alto', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.alto.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toPage('Demo', ['Một', 'Hai\ndòng'])).toContain('<PcGts')
+    expect(toPage('Demo', ['Một'])).toContain('<Creator>Demo</Creator>')
+    expect(toPage('Demo', ['Một'])).toContain('<Unicode>Một</Unicode>')
+    expect(pagesFromPage(toPage('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('page', toPage('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromPage('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromPage(
+        '<PcGts><Page imageFilename="Trang 1"><TextRegion><TextEquiv>Một</TextEquiv></TextRegion></Page></PcGts>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.page', { type: '' }))).toBe('page')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.page.xml', { type: 'application/vnd.prima.page+xml' })),
+    ).toBe('page')
+    expect(sourceKindFromFile(new File(['x'], 'notes.pcgts', { type: '' }))).toBe('page')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromPage('<PcGts><Metadata></Metadata></PcGts>')).toThrow(/<Page>/)
+    expect(swapExtension('notes.page', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.page.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.pcgts', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

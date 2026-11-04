@@ -77,6 +77,8 @@ export type ImportedTextKind =
   | 'mets'
   | 'premis'
   | 'mix'
+  | 'alto'
+  | 'page'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -494,6 +496,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'mix') {
     return pagesFromMix(text)
+  }
+  if (kind === 'alto') {
+    return pagesFromAlto(text)
+  }
+  if (kind === 'page') {
+    return pagesFromPage(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -2587,6 +2595,66 @@ export function pagesFromMix(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp MIX cần các mục <ImageCaptureMetadata> / <note>.')
+}
+
+export function pagesFromAlto(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<Page\b[^>]*>([\s\S]*?)<\/Page>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'String')
+      if (value) {
+        return value
+      }
+      const line = xmlTagText(record, 'TextLine')
+      if (line) {
+        return line
+      }
+      const title = xmlTagText(record, 'fileName') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp ALTO cần các mục <Page> / <String>.')
+}
+
+export function pagesFromPage(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<Page\b[^>]*>([\s\S]*?)<\/Page>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'Unicode')
+      if (value) {
+        return value
+      }
+      const equiv = xmlTagText(record, 'TextEquiv')
+      if (equiv) {
+        return equiv
+      }
+      const title = xmlTagText(record, 'imageFilename') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp PAGE cần các mục <Page> / <Unicode>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

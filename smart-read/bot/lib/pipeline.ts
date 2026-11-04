@@ -25,7 +25,7 @@ export const PIPELINE_STAGES = [
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP/CBZ; import TXT/MD/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff/Jupyter/BibTeX/SRT/VTT/LRC/ICS/CUE/ASS/TTML/SBV/SAMI/SUB/STL/SCC/USF/RT/MPL/DjVu/PS/TEI/JATS/RIS/ENW/CSL-JSON/NBIB/CSL-YAML/EndNote XML/MODS/CFF/DataCite/MARCXML/Dublin Core/ONIX/Unixref/BibJSON/PubMed/JSON-LD/BIBFRAME/Crossref/EAD/METS/PREMIS/MIX/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/CBZ/PNG/JPEG/WEBP as PDF.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP/CBZ; import TXT/MD/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff/Jupyter/BibTeX/SRT/VTT/LRC/ICS/CUE/ASS/TTML/SBV/SAMI/SUB/STL/SCC/USF/RT/MPL/DjVu/PS/TEI/JATS/RIS/ENW/CSL-JSON/NBIB/CSL-YAML/EndNote XML/MODS/CFF/DataCite/MARCXML/Dublin Core/ONIX/Unixref/BibJSON/PubMed/JSON-LD/BIBFRAME/Crossref/EAD/METS/PREMIS/MIX/ALTO/PAGE/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/CBZ/PNG/JPEG/WEBP as PDF.",
   },
   {
     id: "qa-reviewer",
@@ -597,6 +597,20 @@ export const SUPPORTED_FORMATS = [
     aliases: ["mix.xml"],
     role: "export",
     notes: "NISO MIX XML image capture metadata (<ImageCaptureMetadata> + imageProducer title + sourceType Trang n + note body). Uploading .mix / .mix.xml builds a PDF from note (then imageProducer, then sourceType). JSON-shaped MIX uses pagesFromJson. Match .mix / .mix.xml before generic XML. <mix\\b> / BasicDigitalObjectInformation do not match as an <ImageCaptureMetadata> record.",
+  },
+  {
+    id: "alto",
+    label: "ALTO",
+    aliases: ["alto.xml"],
+    role: "export",
+    notes: "ALTO XML layout pages (<Page> + fileName title + String body). Uploading .alto / .alto.xml builds a PDF from String (then TextLine, then fileName). JSON-shaped ALTO uses pagesFromJson. Match .alto / .alto.xml before generic XML. <alto\\b> / Description / Layout do not match as a <Page> record.",
+  },
+  {
+    id: "page",
+    label: "PAGE",
+    aliases: ["page.xml", "pcgts"],
+    role: "export",
+    notes: "PAGE XML regions (<Page> + Creator title + imageFilename Trang n + Unicode body). Uploading .page / .page.xml / .pcgts builds a PDF from Unicode (then TextEquiv, then imageFilename). JSON-shaped PAGE uses pagesFromJson. Match .page / .page.xml / .pcgts before generic XML. <PcGts\\b> / Metadata do not match as a <Page> record.",
   },
   {
     id: "xlsx",

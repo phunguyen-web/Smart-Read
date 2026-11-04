@@ -2208,6 +2208,7 @@ export const NAMED_DEST_XYZ_ZOOM_PRESETS = [
   'fit-width',
   'fit-height',
   'fit-page',
+  'keep',
 ] as const
 export type NamedDestXyzZoomPreset = (typeof NAMED_DEST_XYZ_ZOOM_PRESETS)[number]
 
@@ -2221,11 +2222,14 @@ export function assertNamedDestXyzZoomPreset(value: string): NamedDestXyzZoomPre
     value === '200' ||
     value === 'fit-width' ||
     value === 'fit-height' ||
-    value === 'fit-page'
+    value === 'fit-page' ||
+    value === 'keep'
   ) {
     return value
   }
-  throw new Error('Zoom XYZ chỉ là 50, 75, 100, 125, 150, 200, fit-width, fit-height hoặc fit-page.')
+  throw new Error(
+    'Zoom XYZ chỉ là 50, 75, 100, 125, 150, 200, fit-width, fit-height, fit-page hoặc keep.',
+  )
 }
 
 export const NAMED_DEST_XYZ_ZOOM_LABELS: Record<NamedDestXyzZoomPreset, string> = {
@@ -2238,10 +2242,11 @@ export const NAMED_DEST_XYZ_ZOOM_LABELS: Record<NamedDestXyzZoomPreset, string> 
   'fit-width': 'Vừa rộng',
   'fit-height': 'Vừa cao',
   'fit-page': 'Vừa trang',
+  keep: 'Giữ zoom',
 }
 
 const NAMED_DEST_XYZ_ZOOM_SCALE: Record<
-  Exclude<NamedDestXyzZoomPreset, 'fit-width' | 'fit-height' | 'fit-page'>,
+  Exclude<NamedDestXyzZoomPreset, 'fit-width' | 'fit-height' | 'fit-page' | 'keep'>,
   number
 > = {
   '50': 0.5,
@@ -2257,13 +2262,16 @@ export function namedDestXyzZoomNeedsPageSize(preset: NamedDestXyzZoomPreset): b
   return style === 'fit-width' || style === 'fit-height' || style === 'fit-page'
 }
 
-/** 50%/75%/100%/125%/150%/200% are zoom 0.5/0.75/1/1.25/1.5/2. Fit-width is Letter portrait width / page width. Fit-height is Letter portrait height / page height. Fit-page is the smaller of those two scales. */
+/** 50%/75%/100%/125%/150%/200% are zoom 0.5/0.75/1/1.25/1.5/2. Fit-width is Letter portrait width / page width. Fit-height is Letter portrait height / page height. Fit-page is the smaller of those two scales. Keep is null zoom so the viewer does not force a scale. */
 export function namedDestXyzZoomFromPreset(
   preset: NamedDestXyzZoomPreset,
   pageWidth?: number,
   pageHeight?: number,
-): number {
+): number | null {
   const style = assertNamedDestXyzZoomPreset(preset)
+  if (style === 'keep') {
+    return null
+  }
   if (style === 'fit-width') {
     const width =
       pageWidth != null && Number.isFinite(pageWidth) && pageWidth > 0 ? pageWidth : LETTER_WIDTH
@@ -2277,15 +2285,14 @@ export function namedDestXyzZoomFromPreset(
     return LETTER_HEIGHT / height
   }
   if (style === 'fit-page') {
-    return Math.min(
-      namedDestXyzZoomFromPreset('fit-width', pageWidth, pageHeight),
-      namedDestXyzZoomFromPreset('fit-height', pageWidth, pageHeight),
-    )
+    const widthZoom = namedDestXyzZoomFromPreset('fit-width', pageWidth, pageHeight)
+    const heightZoom = namedDestXyzZoomFromPreset('fit-height', pageWidth, pageHeight)
+    return Math.min(widthZoom ?? 1, heightZoom ?? 1)
   }
   return NAMED_DEST_XYZ_ZOOM_SCALE[style]
 }
 
-/** XYZ zoom preset. 50%/75%/100%/125%/150%/200% keep left/top. Fit-width pins left to 0. Fit-height pins top to 0. Fit-page pins left and top to 0. */
+/** XYZ zoom preset. 50%/75%/100%/125%/150%/200% keep left/top. Fit-width pins left to 0. Fit-height pins top to 0. Fit-page pins left and top to 0. Keep leaves left/top and sets zoom to null. */
 export function namedDestXyzFromZoomPreset(
   preset: NamedDestXyzZoomPreset,
   base: NamedDestXyz = { left: null, top: null, zoom: null },

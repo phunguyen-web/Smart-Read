@@ -74,6 +74,8 @@ export type ExportFormat =
   | 'mets'
   | 'premis'
   | 'mix'
+  | 'alto'
+  | 'page'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1596,6 +1598,60 @@ ${records}
 `
 }
 
+export function toAlto(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `    <Page ID="P${index + 1}" PHYSICAL_IMG_NR="${index + 1}">
+      <PrintSpace>
+        <TextBlock>
+          <TextLine>
+            <String>${note}</String>
+          </TextLine>
+        </TextBlock>
+      </PrintSpace>
+    </Page>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<alto xmlns="http://www.loc.gov/standards/alto/ns-v4#">
+  <Description>
+    <sourceImageInformation>
+      <fileName>${heading}</fileName>
+    </sourceImageInformation>
+  </Description>
+  <Layout>
+${records}
+  </Layout>
+</alto>
+`
+}
+
+export function toPage(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <Page imageFilename="Trang ${index + 1}">
+    <TextRegion>
+      <TextEquiv>
+        <Unicode>${note}</Unicode>
+      </TextEquiv>
+    </TextRegion>
+  </Page>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<PcGts xmlns="http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15">
+  <Metadata>
+    <Creator>${heading}</Creator>
+  </Metadata>
+${records}
+</PcGts>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2541,6 +2597,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/premis+xml;charset=utf-8'
     case 'mix':
       return 'application/mix+xml;charset=utf-8'
+    case 'alto':
+      return 'application/alto+xml;charset=utf-8'
+    case 'page':
+      return 'application/vnd.prima.page+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
