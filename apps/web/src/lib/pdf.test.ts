@@ -100,6 +100,8 @@ import {
   toPage,
   toFoxml,
   toEdm,
+  toLido,
+  toVra,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -195,6 +197,8 @@ import {
   pagesFromPage,
   pagesFromFoxml,
   pagesFromEdm,
+  pagesFromLido,
+  pagesFromVra,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1597,6 +1601,26 @@ describe('pdf edits', () => {
       top: null,
       zoom: null,
     })
+    expect(namedDestXyzFromAxisPreset('zero-left', { left: 10, top: 20, zoom: 2 })).toEqual({
+      left: 0,
+      top: 20,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('zero-top', { left: 10, top: 20, zoom: 2 })).toEqual({
+      left: 10,
+      top: 0,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('zero-left')).toEqual({
+      left: 0,
+      top: null,
+      zoom: null,
+    })
+    expect(namedDestXyzFromAxisPreset('zero-top')).toEqual({
+      left: null,
+      top: 0,
+      zoom: null,
+    })
     expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
     expect(namedDestXyzZoomFromPreset('75')).toBe(0.75)
     expect(namedDestXyzZoomFromPreset('100')).toBe(1)
@@ -1673,6 +1697,24 @@ describe('pdf edits', () => {
         ),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: null, zoom: 2 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          namedDestXyzFromAxisPreset('zero-left', { left: 10, top: 20, zoom: 2 }),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 0, top: 20, zoom: 2 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          namedDestXyzFromAxisPreset('zero-top', { left: 10, top: 20, zoom: 2 }),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 0, zoom: 2 } }])
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
       top: 20,
@@ -3071,6 +3113,43 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromEdm('<rdf:RDF></rdf:RDF>')).toThrow(/ProvidedCHO/)
     expect(swapExtension('notes.edm', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.edm.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toLido('Demo', ['Một', 'Hai\ndòng'])).toContain('<lidoWrap')
+    expect(toLido('Demo', ['Một'])).toContain('<appellationValue>Demo</appellationValue>')
+    expect(toLido('Demo', ['Một'])).toContain('<descriptiveNoteValue>Một</descriptiveNoteValue>')
+    expect(pagesFromLido(toLido('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('lido', toLido('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromLido('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromLido('<lidoWrap><lido><appellationValue>Một</appellationValue></lido></lidoWrap>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.lido', { type: '' }))).toBe('lido')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.lido.xml', { type: 'application/lido+xml' })),
+    ).toBe('lido')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromLido('<lidoWrap></lidoWrap>')).toThrow(/<lido>/)
+    expect(swapExtension('notes.lido', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.lido.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toVra('Demo', ['Một', 'Hai\ndòng'])).toContain('<vra')
+    expect(toVra('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toVra('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromVra(toVra('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vra', toVra('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVra('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromVra('<vra><work><title>Một</title></work></vra>')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vra', { type: '' }))).toBe('vra')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.vra.xml', { type: 'application/vra+xml' })),
+    ).toBe('vra')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vracore', { type: '' }))).toBe('vra')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromVra('<vra></vra>')).toThrow(/<work>/)
+    expect(swapExtension('notes.vra', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.vra.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.vracore', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.vracore.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

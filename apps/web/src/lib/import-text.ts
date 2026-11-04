@@ -81,6 +81,8 @@ export type ImportedTextKind =
   | 'page'
   | 'foxml'
   | 'edm'
+  | 'lido'
+  | 'vra'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -510,6 +512,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'edm') {
     return pagesFromEdm(text)
+  }
+  if (kind === 'lido') {
+    return pagesFromLido(text)
+  }
+  if (kind === 'vra') {
+    return pagesFromVra(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -2725,6 +2733,67 @@ export function pagesFromEdm(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp EDM cần các mục <edm:ProvidedCHO> / <dc:description>.')
+}
+
+export function pagesFromLido(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<(?:lido:)?lido\b(?!:)[^>]*>([\s\S]*?)<\/(?:lido:)?lido>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value =
+        xmlTagText(record, 'lido:descriptiveNoteValue') || xmlTagText(record, 'descriptiveNoteValue')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'lido:objectDescriptionSet') || xmlTagText(record, 'objectDescriptionSet')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'lido:appellationValue') || xmlTagText(record, 'appellationValue')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp LIDO cần các mục <lido> / <descriptiveNoteValue>.')
+}
+
+export function pagesFromVra(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<(?:vra:)?work\b[^>]*>([\s\S]*?)<\/(?:vra:)?work>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'vra:description') || xmlTagText(record, 'description')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'vra:note') || xmlTagText(record, 'note')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'vra:title') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp VRA cần các mục <work> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

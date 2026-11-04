@@ -2245,22 +2245,24 @@ export const NAMED_DEST_XYZ_ZOOM_LABELS: Record<NamedDestXyzZoomPreset, string> 
   keep: 'Giữ zoom',
 }
 
-export const NAMED_DEST_XYZ_AXIS_PRESETS = ['keep-left', 'keep-top'] as const
+export const NAMED_DEST_XYZ_AXIS_PRESETS = ['keep-left', 'keep-top', 'zero-left', 'zero-top'] as const
 export type NamedDestXyzAxisPreset = (typeof NAMED_DEST_XYZ_AXIS_PRESETS)[number]
 
 export function assertNamedDestXyzAxisPreset(value: string): NamedDestXyzAxisPreset {
-  if (value === 'keep-left' || value === 'keep-top') {
-    return value
+  if ((NAMED_DEST_XYZ_AXIS_PRESETS as readonly string[]).includes(value)) {
+    return value as NamedDestXyzAxisPreset
   }
-  throw new Error('Trục XYZ chỉ là keep-left hoặc keep-top.')
+  throw new Error('Trục XYZ chỉ là keep-left, keep-top, zero-left hoặc zero-top.')
 }
 
 export const NAMED_DEST_XYZ_AXIS_LABELS: Record<NamedDestXyzAxisPreset, string> = {
   'keep-left': 'Giữ trái',
   'keep-top': 'Giữ trên',
+  'zero-left': 'Trái 0',
+  'zero-top': 'Trên 0',
 }
 
-/** Keep-left leaves left null and keeps top/zoom. Keep-top leaves top null and keeps left/zoom. */
+/** Keep-left leaves left null and keeps top/zoom. Keep-top leaves top null and keeps left/zoom. Zero-left sets left 0 and keeps top/zoom. Zero-top sets top 0 and keeps left/zoom. Does not need dest page size. */
 export function namedDestXyzFromAxisPreset(
   preset: NamedDestXyzAxisPreset,
   base: NamedDestXyz = { left: null, top: null, zoom: null },
@@ -2269,7 +2271,13 @@ export function namedDestXyzFromAxisPreset(
   if (style === 'keep-left') {
     return { left: null, top: base.top ?? null, zoom: base.zoom ?? null }
   }
-  return { left: base.left ?? null, top: null, zoom: base.zoom ?? null }
+  if (style === 'keep-top') {
+    return { left: base.left ?? null, top: null, zoom: base.zoom ?? null }
+  }
+  if (style === 'zero-left') {
+    return { left: 0, top: base.top ?? null, zoom: base.zoom ?? null }
+  }
+  return { left: base.left ?? null, top: 0, zoom: base.zoom ?? null }
 }
 
 const NAMED_DEST_XYZ_ZOOM_SCALE: Record<

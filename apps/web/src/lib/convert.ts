@@ -78,6 +78,8 @@ export type ExportFormat =
   | 'page'
   | 'foxml'
   | 'edm'
+  | 'lido'
+  | 'vra'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1697,6 +1699,66 @@ ${records}
 `
 }
 
+export function toLido(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <lido>
+    <descriptiveMetadata>
+      <objectIdentificationWrap>
+        <titleWrap>
+          <titleSet>
+            <appellationValue>Trang ${index + 1}</appellationValue>
+          </titleSet>
+        </titleWrap>
+        <repositoryWrap>
+          <repositorySet>
+            <repositoryName>
+              <legalBodyName>
+                <appellationValue>${heading}</appellationValue>
+              </legalBodyName>
+            </repositoryName>
+          </repositorySet>
+        </repositoryWrap>
+        <objectDescriptionWrap>
+          <objectDescriptionSet>
+            <descriptiveNoteValue>${note}</descriptiveNoteValue>
+          </objectDescriptionSet>
+        </objectDescriptionWrap>
+      </objectIdentificationWrap>
+    </descriptiveMetadata>
+  </lido>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<lidoWrap xmlns="http://www.lido-schema.org">
+${records}
+</lidoWrap>
+`
+}
+
+export function toVra(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <work>
+    <agent>
+      <name>${heading}</name>
+    </agent>
+    <title>Trang ${index + 1}</title>
+    <description>${note}</description>
+  </work>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<vra xmlns="http://www.vraweb.org/vracore4.htm">
+${records}
+</vra>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2650,6 +2712,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/foxml+xml;charset=utf-8'
     case 'edm':
       return 'application/vnd.europeana.edm+xml;charset=utf-8'
+    case 'lido':
+      return 'application/lido+xml;charset=utf-8'
+    case 'vra':
+      return 'application/vra+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
