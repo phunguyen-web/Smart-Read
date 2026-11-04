@@ -51,7 +51,9 @@ export type ExportFormat =
   | 'djvu'
   | 'ps'
   | 'tei'
+  | 'jats'
   | 'ris'
+  | 'enw'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1075,6 +1077,50 @@ export function toRis(title: string, pages: string[]): string {
   return `${body}\n`
 }
 
+export function toJats(title: string, pages: string[]): string {
+  const heading = escapeHtml(title.trim() || 'Tài liệu')
+  const body = pages
+    .map((text, index) => {
+      const paras = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `      <p>${escapeHtml(line)}</p>`)
+        .join('\n')
+      return `    <sec id="page-${index + 1}">
+      <title>Trang ${index + 1}</title>
+${paras}
+    </sec>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<article xmlns:xlink="http://www.w3.org/1999/xlink" article-type="other" dtd-version="1.3" xml:lang="vi">
+  <front>
+    <article-meta>
+      <title-group>
+        <article-title>${heading}</article-title>
+      </title-group>
+    </article-meta>
+  </front>
+  <body>
+${body}
+  </body>
+</article>
+`
+}
+
+export function escapeEnw(value: string): string {
+  return value.replace(/\r?\n/g, '|')
+}
+
+export function toEnw(title: string, pages: string[]): string {
+  const heading = escapeEnw((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  return `${pages
+    .map((text, index) => {
+      const note = escapeEnw(text.trim() || '(không có chữ)')
+      return `%0 Generic\n%B ${heading}\n%T Trang ${index + 1}\n%Z ${note}\n`
+    })
+    .join('\n')}`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -1974,8 +2020,12 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/postscript;charset=utf-8'
     case 'tei':
       return 'application/tei+xml;charset=utf-8'
+    case 'jats':
+      return 'application/vnd.jats+xml;charset=utf-8'
     case 'ris':
       return 'application/x-research-info-systems;charset=utf-8'
+    case 'enw':
+      return 'application/x-endnote-refer;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

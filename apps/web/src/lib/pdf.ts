@@ -1962,11 +1962,24 @@ export type NamedDestView = 'XYZ' | 'Fit' | 'FitH' | 'FitV' | 'FitR' | 'FitB' | 
 
 export const NAMED_DEST_VIEWS = ['XYZ', 'Fit', 'FitH', 'FitV', 'FitR', 'FitB', 'FitBH', 'FitBV'] as const
 
+export type NamedDestXyz = {
+  /** PDF user-space X. `null` keeps the viewer's current left. */
+  left: number | null
+  /** PDF user-space Y. `null` keeps the viewer's current top. */
+  top: number | null
+  /** Magnification. `null` keeps the viewer's current zoom. */
+  zoom: number | null
+}
+
+export const NAMED_DEST_XYZ_MAX = 100_000
+
 export type NamedDestination = {
   name: string
   pageIndex: number
   /** Viewer dest style. Omitted means XYZ (keep current zoom). */
   view?: NamedDestView
+  /** XYZ left/top/zoom. Omitted when every part is null. Ignored for Fit* views. */
+  xyz?: NamedDestXyz
 }
 
 export const MAX_NAMED_DESTS = 80
@@ -2094,10 +2107,101 @@ export function namedDestViewOf(dest: NamedDestination | undefined): NamedDestVi
   return dest?.view ?? 'XYZ'
 }
 
+export function namedDestXyzOf(dest: NamedDestination | undefined): NamedDestXyz {
+  return dest?.xyz ?? { left: null, top: null, zoom: null }
+}
+
+function compactNamedDestXyz(xyz: NamedDestXyz | undefined): NamedDestXyz | undefined {
+  if (!xyz) {
+    return undefined
+  }
+  const left = xyz.left ?? null
+  const top = xyz.top ?? null
+  const zoom = xyz.zoom ?? null
+  if (left == null && top == null && zoom == null) {
+    return undefined
+  }
+  return { left, top, zoom }
+}
+
 function compactNamedDest(dest: NamedDestination): NamedDestination {
-  return dest.view && dest.view !== 'XYZ'
-    ? { name: dest.name, pageIndex: dest.pageIndex, view: dest.view }
+  if (dest.view && dest.view !== 'XYZ') {
+    return { name: dest.name, pageIndex: dest.pageIndex, view: dest.view }
+  }
+  const xyz = compactNamedDestXyz(dest.xyz)
+  return xyz
+    ? { name: dest.name, pageIndex: dest.pageIndex, xyz }
     : { name: dest.name, pageIndex: dest.pageIndex }
+}
+
+function destNumberOrNull(value: unknown): number | null {
+  return value instanceof PDFNumber ? value.asNumber() : null
+}
+
+function destXyzFromArray(dest: unknown): NamedDestXyz | undefined {
+  if (!(dest instanceof PDFArray) || dest.size() < 5 || destViewFromArray(dest) !== 'XYZ') {
+    return undefined
+  }
+  return compactNamedDestXyz({
+    left: destNumberOrNull(dest.get(2)),
+    top: destNumberOrNull(dest.get(3)),
+    zoom: destNumberOrNull(dest.get(4)),
+  })
+}
+
+/** Parse one XYZ input. Empty is `null` (keep current). Invalid is `undefined`. */
+export function parseNamedDestXyzPart(
+  text: string,
+  kind: 'left' | 'top' | 'zoom',
+): number | null | undefined {
+  const trimmed = text.trim()
+  if (!trimmed) {
+    return null
+  }
+  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(trimmed)) {
+    return undefined
+  }
+  const value = Number(trimmed)
+  if (!Number.isFinite(value) || Math.abs(value) > NAMED_DEST_XYZ_MAX) {
+    return undefined
+  }
+  if (kind === 'zoom' && value <= 0) {
+    return undefined
+  }
+  return value
+}
+
+/** 1-based XYZ fields from the dest-row inputs. Invalid parts make the whole input null. */
+export function parseNamedDestXyzInput(
+  left: string,
+  top: string,
+  zoom: string,
+): NamedDestXyz | null {
+  const parsedLeft = parseNamedDestXyzPart(left, 'left')
+  const parsedTop = parseNamedDestXyzPart(top, 'top')
+  const parsedZoom = parseNamedDestXyzPart(zoom, 'zoom')
+  if (parsedLeft === undefined || parsedTop === undefined || parsedZoom === undefined) {
+    return null
+  }
+  return { left: parsedLeft, top: parsedTop, zoom: parsedZoom }
+}
+
+export function assertNamedDestXyz(xyz: NamedDestXyz): NamedDestXyz {
+  const left = xyz.left
+  const top = xyz.top
+  const zoom = xyz.zoom
+  if (
+    (left != null && (!Number.isFinite(left) || Math.abs(left) > NAMED_DEST_XYZ_MAX)) ||
+    (top != null && (!Number.isFinite(top) || Math.abs(top) > NAMED_DEST_XYZ_MAX)) ||
+    (zoom != null && (!Number.isFinite(zoom) || zoom <= 0 || zoom > NAMED_DEST_XYZ_MAX))
+  ) {
+    throw new Error('Tọa độ XYZ không hợp lệ.')
+  }
+  return {
+    left: left ?? null,
+    top: top ?? null,
+    zoom: zoom ?? null,
+  }
 }
 
 /** Dest names that point at one page, in list order. */
@@ -2207,7 +2311,15 @@ function walkDestNameTree(
       const destArray = unwrapDestArray(doc, names.get(index + 1))
       const pageIndex = pageIndexForDest(pages, destArray)
       if (name && pageIndex >= 0) {
-        dests.set(name, compactNamedDest({ name, pageIndex, view: destViewFromArray(destArray) }))
+        dests.set(
+          name,
+          compactNamedDest({
+            name,
+            pageIndex,
+            view: destViewFromArray(destArray),
+            xyz: destXyzFromArray(destArray),
+          }),
+        )
       }
     }
   }
@@ -2232,7 +2344,15 @@ function collectNamedDests(doc: PDFDocument): Map<string, NamedDestination> {
       const destArray = unwrapDestArray(doc, catalogDests.get(key))
       const pageIndex = pageIndexForDest(pages, destArray)
       if (pageIndex >= 0) {
-        dests.set(name, compactNamedDest({ name, pageIndex, view: destViewFromArray(destArray) }))
+        dests.set(
+          name,
+          compactNamedDest({
+            name,
+            pageIndex,
+            view: destViewFromArray(destArray),
+            xyz: destXyzFromArray(destArray),
+          }),
+        )
       }
     }
   }
@@ -2249,11 +2369,12 @@ function destsFromMap(map: Map<string, NamedDestination>): NamedDestination[] {
     .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
 }
 
-function destArrayForPage(doc: PDFDocument, pageIndex: number, view: NamedDestView = 'XYZ') {
-  const page = doc.getPages()[pageIndex]
+function destArrayForPage(doc: PDFDocument, dest: NamedDestination) {
+  const page = doc.getPages()[dest.pageIndex]
   if (!page) {
     return null
   }
+  const view = namedDestViewOf(dest)
   if (view === 'Fit') {
     return doc.context.obj([page.ref, PDFName.of('Fit')])
   }
@@ -2276,15 +2397,17 @@ function destArrayForPage(doc: PDFDocument, pageIndex: number, view: NamedDestVi
   if (view === 'FitBV') {
     return doc.context.obj([page.ref, PDFName.of('FitBV'), null])
   }
-  return doc.context.obj([page.ref, PDFName.of('XYZ'), null, null, null])
+  return doc.context.obj([
+    page.ref,
+    PDFName.of('XYZ'),
+    dest.xyz?.left ?? null,
+    dest.xyz?.top ?? null,
+    dest.xyz?.zoom ?? null,
+  ])
 }
 
-function destRefForPage(
-  doc: PDFDocument,
-  pageIndex: number,
-  view: NamedDestView = 'XYZ',
-): PDFRef | null {
-  const destArray = destArrayForPage(doc, pageIndex, view)
+function destRefForPage(doc: PDFDocument, dest: NamedDestination): PDFRef | null {
+  const destArray = destArrayForPage(doc, dest)
   return destArray ? doc.context.register(destArray) : null
 }
 
@@ -2495,7 +2618,7 @@ function rewriteNamedDests(doc: PDFDocument, dests: readonly NamedDestination[])
   const catalog = doc.context.obj({})
   const named: { name: string; destRef: PDFRef }[] = []
   for (const dest of items) {
-    const destRef = destRefForPage(doc, dest.pageIndex, namedDestViewOf(dest))
+    const destRef = destRefForPage(doc, dest)
     if (!destRef) {
       continue
     }
@@ -2978,6 +3101,25 @@ export async function setNamedDestView(
     throw new Error('Chưa có đích tên này.')
   }
   dests.set(label, compactNamedDest({ ...current, view: style }))
+  rewriteNamedDests(doc, destsFromMap(dests))
+  return new Uint8Array(await doc.save())
+}
+
+/** Set XYZ left/top/zoom on an existing named destination. Switches the view to XYZ. Same coords still rewrite. */
+export async function setNamedDestXyz(
+  bytes: Uint8Array,
+  name: string,
+  xyz: NamedDestXyz,
+): Promise<Uint8Array> {
+  const label = assertNamedDestName(name)
+  const coords = assertNamedDestXyz(xyz)
+  const doc = await PDFDocument.load(bytes)
+  const dests = collectNamedDests(doc)
+  const current = dests.get(label)
+  if (!current) {
+    throw new Error('Chưa có đích tên này.')
+  }
+  dests.set(label, compactNamedDest({ ...current, view: undefined, xyz: coords }))
   rewriteNamedDests(doc, destsFromMap(dests))
   return new Uint8Array(await doc.save())
 }

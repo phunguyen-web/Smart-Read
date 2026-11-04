@@ -73,9 +73,12 @@ import {
   toDjvu,
   toPs,
   toTei,
+  toJats,
   toRis,
+  toEnw,
   escapePs,
   escapeRis,
+  escapeEnw,
   escapeTypst,
   toJsonl,
   toLatex,
@@ -140,7 +143,9 @@ import {
   pagesFromDjvu,
   pagesFromPs,
   pagesFromTei,
+  pagesFromJats,
   pagesFromRis,
+  pagesFromEnw,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -218,13 +223,17 @@ import {
   destNamesForPage,
   namedDestNameForPage,
   namedDestViewOf,
+  namedDestXyzOf,
   clearNamedDests,
   duplicateNamedDest,
   renameNamedDest,
   removeNamedDest,
   setNamedDestPage,
   setNamedDestView,
+  setNamedDestXyz,
   parseNamedDestPageInput,
+  parseNamedDestXyzInput,
+  parseNamedDestXyzPart,
   NAMED_DEST_LEAF_SIZE,
   destNameTreeChildSpan,
   destNameTreeHasIntermediate,
@@ -1265,6 +1274,78 @@ describe('pdf edits', () => {
     await expect(setNamedDestView(named, 'ChapTwo', 'Zoom')).rejects.toThrow(/XYZ/)
     await expect(setNamedDestView(bytes, 'ChapTwo', 'Fit')).rejects.toThrow(/đích tên/)
 
+    expect(namedDestXyzOf(undefined)).toEqual({ left: null, top: null, zoom: null })
+    expect(namedDestXyzOf({ name: 'ChapTwo', pageIndex: 1 })).toEqual({
+      left: null,
+      top: null,
+      zoom: null,
+    })
+    expect(parseNamedDestXyzPart('', 'left')).toBeNull()
+    expect(parseNamedDestXyzPart('72', 'left')).toBe(72)
+    expect(parseNamedDestXyzPart('1.5', 'zoom')).toBe(1.5)
+    expect(parseNamedDestXyzPart('0', 'zoom')).toBeUndefined()
+    expect(parseNamedDestXyzPart('abc', 'top')).toBeUndefined()
+    expect(parseNamedDestXyzInput('72', '720', '1.5')).toEqual({
+      left: 72,
+      top: 720,
+      zoom: 1.5,
+    })
+    expect(parseNamedDestXyzInput('', '', '')).toEqual({
+      left: null,
+      top: null,
+      zoom: null,
+    })
+    expect(parseNamedDestXyzInput('72', 'x', '1')).toBeNull()
+    expect(await listNamedDests(await setNamedDestXyz(named, 'ChapTwo', { left: null, top: null, zoom: null }))).toEqual([
+      { name: 'ChapTwo', pageIndex: 1 },
+    ])
+    const xyzDest = await setNamedDestXyz(named, 'ChapTwo', { left: 72, top: 720, zoom: 1.5 })
+    expect(await listNamedDests(xyzDest)).toEqual([
+      { name: 'ChapTwo', pageIndex: 1, xyz: { left: 72, top: 720, zoom: 1.5 } },
+    ])
+    const xyzDoc = await PDFDocument.load(xyzDest)
+    const xyzArray = xyzDoc.context.lookup(
+      xyzDoc.catalog.lookup(PDFName.of('Dests'), PDFDict).get(PDFName.of('ChapTwo')),
+      PDFArray,
+    )
+    expect(xyzArray.get(1)).toEqual(PDFName.of('XYZ'))
+    expect((xyzArray.get(2) as PDFNumber).asNumber()).toBe(72)
+    expect((xyzArray.get(3) as PDFNumber).asNumber()).toBe(720)
+    expect((xyzArray.get(4) as PDFNumber).asNumber()).toBeCloseTo(1.5)
+    expect(
+      await listNamedDests(await setNamedDestXyz(xyzDest, 'ChapTwo', { left: 72, top: 720, zoom: 1.5 })),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 72, top: 720, zoom: 1.5 } }])
+    expect(await listNamedDests(await setNamedDestPage(xyzDest, 'ChapTwo', 0))).toEqual([
+      { name: 'ChapTwo', pageIndex: 0, xyz: { left: 72, top: 720, zoom: 1.5 } },
+    ])
+    expect(await listNamedDests(await duplicateNamedDest(xyzDest, 'ChapTwo', 'ChapZoom'))).toEqual([
+      { name: 'ChapTwo', pageIndex: 1, xyz: { left: 72, top: 720, zoom: 1.5 } },
+      { name: 'ChapZoom', pageIndex: 1, xyz: { left: 72, top: 720, zoom: 1.5 } },
+    ])
+    expect(await listNamedDests(await setNamedDestView(xyzDest, 'ChapTwo', 'Fit'))).toEqual([
+      { name: 'ChapTwo', pageIndex: 1, view: 'Fit' },
+    ])
+    expect(await listNamedDests(await setNamedDestView(xyzDest, 'ChapTwo', 'XYZ'))).toEqual([
+      { name: 'ChapTwo', pageIndex: 1, xyz: { left: 72, top: 720, zoom: 1.5 } },
+    ])
+    const foreignXyz = await PDFDocument.load(bytes)
+    const foreignXyzPages = foreignXyz.getPages()
+    const xyzRef = foreignXyz.context.register(
+      foreignXyz.context.obj([foreignXyzPages[1]!.ref, PDFName.of('XYZ'), 10, 20, 2]),
+    )
+    const xyzCatalog = foreignXyz.context.obj({})
+    xyzCatalog.set(PDFName.of('Spot'), xyzRef)
+    foreignXyz.catalog.set(PDFName.of('Dests'), xyzCatalog)
+    expect(await listNamedDests(new Uint8Array(await foreignXyz.save()))).toEqual([
+      { name: 'Spot', pageIndex: 1, xyz: { left: 10, top: 20, zoom: 2 } },
+    ])
+    await expect(setNamedDestXyz(named, 'Missing', { left: 1, top: 2, zoom: 1 })).rejects.toThrow(
+      /đích tên/,
+    )
+    await expect(setNamedDestXyz(named, 'ChapTwo', { left: 1, top: 2, zoom: 0 })).rejects.toThrow(
+      /XYZ/,
+    )
+
     expect(toRomanNumeral(2)).toBe('ii')
     expect(toRomanNumeral(4, true)).toBe('IV')
     expect(formatPageLabel('trang', 3)).toBe('Trang 3')
@@ -2067,6 +2148,19 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.tei', 'pdf')).toBe('notes.pdf')
 
+    expect(toJats('Demo', ['Một', 'Hai\ndòng'])).toContain('article-type="other"')
+    expect(toJats('Demo', ['Một'])).toContain('<article-title>Demo</article-title>')
+    expect(toJats('Demo', ['Một'])).toContain('id="page-1"')
+    expect(pagesFromJats(toJats('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('jats', toJats('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromJats('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.jats', { type: '' }))).toBe('jats')
+    expect(sourceKindFromFile(new File(['x'], 'notes.nxml', { type: 'application/vnd.jats+xml' }))).toBe(
+      'jats',
+    )
+    expect(swapExtension('notes.jats', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.nxml', 'pdf')).toBe('notes.pdf')
+
     expect(escapeRis('Hai\ndòng')).toBe('Hai|dòng')
     expect(toRis('Demo', ['Một', 'Hai\ndòng'])).toContain('TY  - GEN')
     expect(toRis('Demo', ['Một'])).toContain('T2  - Demo')
@@ -2079,6 +2173,19 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
       sourceKindFromFile(new File(['x'], 'notes.ris', { type: 'application/x-research-info-systems' })),
     ).toBe('ris')
     expect(swapExtension('notes.ris', 'pdf')).toBe('notes.pdf')
+
+    expect(escapeEnw('Hai\ndòng')).toBe('Hai|dòng')
+    expect(toEnw('Demo', ['Một', 'Hai\ndòng'])).toContain('%0 Generic')
+    expect(toEnw('Demo', ['Một'])).toContain('%B Demo')
+    expect(toEnw('Demo', ['Một'])).toContain('%Z Một')
+    expect(pagesFromEnw(toEnw('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('enw', toEnw('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromEnw('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.enw', { type: '' }))).toBe('enw')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.enw', { type: 'application/x-endnote-refer' })),
+    ).toBe('enw')
+    expect(swapExtension('notes.enw', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

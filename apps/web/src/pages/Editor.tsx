@@ -35,12 +35,15 @@ import {
   listNamedDests,
   listOutlineBookmarks,
   parseNamedDestPageInput,
+  parseNamedDestXyzInput,
   namedDestViewOf,
+  namedDestXyzOf,
   NAMED_DEST_VIEWS,
   renameNamedDest,
   removeNamedDest,
   setNamedDestPage,
   setNamedDestView,
+  setNamedDestXyz,
   listPageLabels,
   moveOutlineItem,
   outlineIndexAfterIndent,
@@ -256,6 +259,9 @@ export function Editor() {
   const [namedDests, setNamedDests] = useState<NamedDestination[]>([])
   const [namedDestAt, setNamedDestAt] = useState<string | null>(null)
   const [destPage, setDestPage] = useState('')
+  const [destLeft, setDestLeft] = useState('')
+  const [destTop, setDestTop] = useState('')
+  const [destZoom, setDestZoom] = useState('')
   const [showBookletPreview, setShowBookletPreview] = useState(false)
   const [pageLabelStyle, setPageLabelStyle] = useState<PageLabelStyle>('decimal')
   const [lockedPdf, setLockedPdf] = useState<{
@@ -1013,9 +1019,9 @@ export function Editor() {
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục
-          (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích / kiểu xem XYZ Fit FitH FitV FitR FitB FitBH FitBV / đích trên thumbnail, bấm tên đích để chọn),
+          (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích / kiểu xem XYZ Fit FitH FitV FitR FitB FitBH FitBV / gắn XYZ trái đỉnh zoom / đích trên thumbnail, bấm tên đích để chọn),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, RIS, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -1025,7 +1031,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, RIS, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -1098,6 +1104,9 @@ export function Editor() {
               setNamedDestAt(dest.name)
               setDestName(dest.name)
               setDestPage(String(dest.pageIndex + 1))
+              setDestLeft(dest.xyz?.left == null ? '' : String(dest.xyz.left))
+              setDestTop(dest.xyz?.top == null ? '' : String(dest.xyz.top))
+              setDestZoom(dest.xyz?.zoom == null ? '' : String(dest.xyz.zoom))
               goToPage(dest.pageIndex, 'replace')
             }}
             onReorder={(from, to) => {
@@ -2233,6 +2242,36 @@ export function Editor() {
                   aria-label="Số trang đích cho đích tên đã chọn"
                 />
               </label>
+              <label className="overlay-field">
+                Trái XYZ
+                <input
+                  inputMode="decimal"
+                  value={destLeft}
+                  disabled={busy || namedDestAt == null}
+                  onChange={(event) => setDestLeft(event.target.value)}
+                  aria-label="Tọa độ trái XYZ của đích tên đã chọn"
+                />
+              </label>
+              <label className="overlay-field">
+                Đỉnh XYZ
+                <input
+                  inputMode="decimal"
+                  value={destTop}
+                  disabled={busy || namedDestAt == null}
+                  onChange={(event) => setDestTop(event.target.value)}
+                  aria-label="Tọa độ đỉnh XYZ của đích tên đã chọn"
+                />
+              </label>
+              <label className="overlay-field">
+                Zoom XYZ
+                <input
+                  inputMode="decimal"
+                  value={destZoom}
+                  disabled={busy || namedDestAt == null}
+                  onChange={(event) => setDestZoom(event.target.value)}
+                  aria-label="Độ phóng XYZ của đích tên đã chọn"
+                />
+              </label>
               <div className="preset-row" role="group" aria-label="Đích tên PDF">
                 <button
                   type="button"
@@ -2285,6 +2324,33 @@ export function Editor() {
                   }}
                 >
                   Gắn trang đích
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    busy ||
+                    namedDestAt == null ||
+                    parseNamedDestXyzInput(destLeft, destTop, destZoom) == null
+                  }
+                  aria-label={
+                    namedDestAt == null
+                      ? 'Chọn một đích tên rồi gắn tọa độ XYZ'
+                      : parseNamedDestXyzInput(destLeft, destTop, destZoom) == null
+                        ? 'Nhập trái, đỉnh hoặc zoom hợp lệ'
+                        : `Gắn XYZ cho đích ${namedDestAt}`
+                  }
+                  onClick={() => {
+                    if (namedDestAt == null) {
+                      return
+                    }
+                    const xyz = parseNamedDestXyzInput(destLeft, destTop, destZoom)
+                    if (xyz == null) {
+                      return
+                    }
+                    void run((bytes) => setNamedDestXyz(bytes, namedDestAt, xyz))
+                  }}
+                >
+                  Gắn XYZ
                 </button>
                 <button
                   type="button"
@@ -2418,14 +2484,22 @@ export function Editor() {
                         aria-pressed={namedDestAt === dest.name}
                         aria-label={`Chọn đích tên ${dest.name}`}
                         onClick={() => {
+                          const xyz = namedDestXyzOf(dest)
                           setNamedDestAt(dest.name)
                           setDestName(dest.name)
                           setDestPage(String(dest.pageIndex + 1))
+                          setDestLeft(xyz.left == null ? '' : String(xyz.left))
+                          setDestTop(xyz.top == null ? '' : String(xyz.top))
+                          setDestZoom(xyz.zoom == null ? '' : String(xyz.zoom))
                           goToPage(dest.pageIndex, 'replace')
                         }}
                       >
                         {dest.name} · trang {dest.pageIndex + 1}
-                        {dest.view && dest.view !== 'XYZ' ? ` · ${dest.view}` : ''}
+                        {dest.xyz
+                          ? ` · XYZ ${dest.xyz.left ?? '–'} ${dest.xyz.top ?? '–'} ${dest.xyz.zoom ?? '–'}`
+                          : dest.view && dest.view !== 'XYZ'
+                            ? ` · ${dest.view}`
+                            : ''}
                       </button>
                     </li>
                   ))}

@@ -54,7 +54,9 @@ export type ImportedTextKind =
   | 'djvu'
   | 'ps'
   | 'tei'
+  | 'jats'
   | 'ris'
+  | 'enw'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -404,8 +406,14 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   if (kind === 'tei') {
     return pagesFromTei(text)
   }
+  if (kind === 'jats') {
+    return pagesFromJats(text)
+  }
   if (kind === 'ris') {
     return pagesFromRis(text)
+  }
+  if (kind === 'enw') {
+    return pagesFromEnw(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1725,6 +1733,62 @@ export function pagesFromRis(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp RIS cần các mục TY / ER.')
+}
+
+export function pagesFromJats(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const sections = [...trimmed.matchAll(/<sec\b[^>]*>([\s\S]*?)<\/sec>/gi)]
+  if (sections.length > 0) {
+    const pages = sections
+      .map((match) => {
+        const body = match[1]!.replace(/<title\b[^>]*>[\s\S]*?<\/title>/i, '')
+        const paras = [...body.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map((para) =>
+          unescapeXml(para[1]!.replace(/<[^>]+>/g, '')),
+        )
+        return paras.join('\n').trim()
+      })
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  throw new Error('Tệp JATS cần các mục <sec>.')
+}
+
+export function unescapeEnw(value: string): string {
+  return value.replace(/\|/g, '\n')
+}
+
+export function pagesFromEnw(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = trimmed.split(/(?=^%0\s)/m)
+  const pages = records
+    .map((record) => {
+      const note = record.match(/^%Z\s+(.*)$/m)
+      if (note) {
+        return unescapeEnw(note[1]!.trim())
+      }
+      const abs = record.match(/^%X\s+(.*)$/m)
+      if (abs) {
+        return unescapeEnw(abs[1]!.trim())
+      }
+      const title = record.match(/^%T\s+(.*)$/m)
+      if (title && !/^Trang\s+\d+$/.test(title[1]!.trim())) {
+        return unescapeEnw(title[1]!.trim())
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp EndNote cần các mục %0.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
