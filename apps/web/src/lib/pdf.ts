@@ -2050,6 +2050,24 @@ export function assertNamedDestName(text: string): string {
   return name
 }
 
+/** Unused dest name for a 1-based page (`p1`, then `p1-2` if taken). */
+export function namedDestNameForPage(
+  pageIndex: number,
+  taken: ReadonlySet<string>,
+): string {
+  const base = `p${pageIndex + 1}`
+  if (!taken.has(base) && NAMED_DEST_NAME.test(base)) {
+    return base
+  }
+  for (let suffix = 2; suffix < 10_000; suffix += 1) {
+    const name = `${base}-${suffix}`
+    if (!taken.has(name) && NAMED_DEST_NAME.test(name)) {
+      return name
+    }
+  }
+  throw new Error(`Không thêm quá ${MAX_NAMED_DESTS} đích tên.`)
+}
+
 /** 1-based dest page from the dest-row input. Invalid or out of range is null. */
 export function parseNamedDestPageInput(text: string, count: number): number | null {
   const trimmed = text.trim()
@@ -2857,6 +2875,57 @@ export async function removeNamedDest(bytes: Uint8Array, name: string): Promise<
     nextBytes,
     outline.map((item) =>
       item.destName === label ? cloneOutlineItem(item, { destName: undefined }) : item,
+    ),
+  )
+}
+
+/** Add unused `p{n}` dests for selected pages. Empty or out-of-range indexes are refused. */
+export async function addNamedDestsForSelection(
+  bytes: Uint8Array,
+  pageIndexes: readonly number[],
+): Promise<Uint8Array> {
+  const unique = uniqueSorted([...pageIndexes], false)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn đích.')
+  }
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  for (const pageIndex of unique) {
+    if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= count) {
+      throw new Error('Chọn một trang đích.')
+    }
+  }
+  const dests = collectNamedDests(doc)
+  if (dests.size + unique.length > MAX_NAMED_DESTS) {
+    throw new Error(`Không thêm quá ${MAX_NAMED_DESTS} đích tên.`)
+  }
+  const taken = new Set(dests.keys())
+  for (const pageIndex of unique) {
+    const name = namedDestNameForPage(pageIndex, taken)
+    taken.add(name)
+    dests.set(name, pageIndex)
+  }
+  rewriteNamedDests(doc, destsFromMap(dests))
+  return new Uint8Array(await doc.save())
+}
+
+/** Remove every named destination. Outline leaves keep the page as an explicit dest. */
+export async function clearNamedDests(bytes: Uint8Array): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const dests = collectNamedDests(doc)
+  if (dests.size === 0) {
+    throw new Error('Chưa có đích tên.')
+  }
+  const outline = await listOutlineBookmarks(bytes)
+  rewriteNamedDests(doc, [])
+  const nextBytes = new Uint8Array(await doc.save())
+  if (!outline.some((item) => item.destName)) {
+    return nextBytes
+  }
+  return writeOutlineBookmarks(
+    nextBytes,
+    outline.map((item) =>
+      item.destName ? cloneOutlineItem(item, { destName: undefined }) : item,
     ),
   )
 }

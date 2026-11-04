@@ -18,6 +18,8 @@ import {
   addCoverPage,
   addHeaderFooter,
   addNamedDest,
+  addNamedDestsForSelection,
+  clearNamedDests,
   duplicateNamedDest,
   addOutlineBookmarks,
   addOutlineFolder,
@@ -2330,6 +2332,32 @@ export function Editor() {
                   }}
                 >
                   Nhân bản đích
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label={
+                    selected.length > 0
+                      ? `Thêm đích tên cho ${targets.length} trang đã chọn`
+                      : `Thêm đích tên cho ${currentCaption}`
+                  }
+                  onClick={() => void run((bytes) => addNamedDestsForSelection(bytes, targets))}
+                >
+                  Đích từ trang chọn
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || namedDests.length === 0}
+                  aria-label={
+                    namedDests.length === 0 ? 'Chưa có đích tên để xóa' : 'Xóa mọi đích tên'
+                  }
+                  onClick={() =>
+                    void run((bytes) => clearNamedDests(bytes), () => {
+                      setNamedDestAt(null)
+                    })
+                  }
+                >
+                  Xóa mọi đích
                 </button>
               </div>
               {namedDests.length > 0 ? (

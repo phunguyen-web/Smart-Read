@@ -55,9 +55,13 @@ import {
   formatTtmlTime,
   formatSbvTime,
   formatSamiTime,
+  formatSubTime,
+  formatStlTime,
   toTtml,
   toSbv,
   toSami,
+  toSub,
+  toStl,
   escapeTypst,
   toJsonl,
   toLatex,
@@ -113,6 +117,8 @@ import {
   pagesFromTtml,
   pagesFromSbv,
   pagesFromSami,
+  pagesFromSub,
+  pagesFromStl,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -186,6 +192,9 @@ import {
   addCoverPage,
   addHeaderFooter,
   addNamedDest,
+  addNamedDestsForSelection,
+  namedDestNameForPage,
+  clearNamedDests,
   duplicateNamedDest,
   renameNamedDest,
   removeNamedDest,
@@ -1062,6 +1071,31 @@ describe('pdf edits', () => {
       expectedNested.map((dest) => (dest.name === 'Chap01' ? { ...dest, pageIndex: 1 } : dest)),
     )
 
+    expect(namedDestNameForPage(0, new Set())).toBe('p1')
+    expect(namedDestNameForPage(0, new Set(['p1']))).toBe('p1-2')
+    const selectedDests = await addNamedDestsForSelection(bytes, [1, 0])
+    expect(await listNamedDests(selectedDests)).toEqual([
+      { name: 'p1', pageIndex: 0 },
+      { name: 'p2', pageIndex: 1 },
+    ])
+    const collisionDests = await addNamedDestsForSelection(await addNamedDest(bytes, 'p1', 1), [0])
+    expect(await listNamedDests(collisionDests)).toEqual([
+      { name: 'p1', pageIndex: 1 },
+      { name: 'p1-2', pageIndex: 0 },
+    ])
+    await expect(addNamedDestsForSelection(bytes, [])).rejects.toThrow(/trang/)
+    await expect(addNamedDestsForSelection(bytes, [9])).rejects.toThrow(/trang đích/)
+    const linkedCleared = await clearNamedDests(linked)
+    expect(await listNamedDests(linkedCleared)).toEqual([])
+    expect((await listOutlineBookmarks(linkedCleared))[0]).toEqual({
+      title: 'Mở đầu',
+      pageIndex: 1,
+      depth: 0,
+    })
+    const emptyClearDoc = await PDFDocument.load(linkedCleared)
+    expect(emptyClearDoc.catalog.lookupMaybe(PDFName.of('Dests'), PDFDict)).toBeUndefined()
+    await expect(clearNamedDests(bytes)).rejects.toThrow(/đích tên/)
+
     expect(toRomanNumeral(2)).toBe('ii')
     expect(toRomanNumeral(4, true)).toBe('IV')
     expect(formatPageLabel('trang', 3)).toBe('Trang 3')
@@ -1759,6 +1793,27 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
       'sami',
     )
     expect(swapExtension('notes.sami', 'pdf')).toBe('notes.pdf')
+    expect(formatSubTime(4)).toBe('00:00:04.00')
+    expect(toSub('Demo', ['Một', 'Hai\ndòng'])).toContain('[INFORMATION]')
+    expect(toSub('Demo', ['Một'])).toContain('[TITLE]Demo')
+    expect(pagesFromSub(toSub('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('sub', toSub('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromSub('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromSub('{0}{96}Một\n{96}{192}Hai|dòng')).toEqual(['Một', 'Hai\ndòng'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.sub', { type: '' }))).toBe('sub')
+    expect(sourceKindFromFile(new File(['x'], 'notes.sub', { type: 'text/x-microdvd' }))).toBe(
+      'sub',
+    )
+    expect(swapExtension('notes.sub', 'pdf')).toBe('notes.pdf')
+    expect(formatStlTime(4)).toBe('00:00:04:00')
+    expect(toStl('Demo', ['Một', 'Hai\ndòng'])).toContain('$FontName')
+    expect(toStl('Demo', ['Một'])).toContain('$Title              = Demo')
+    expect(pagesFromStl(toStl('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('stl', toStl('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromStl('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.stl', { type: '' }))).toBe('stl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.stl', { type: 'text/x-spruce' }))).toBe('stl')
+    expect(swapExtension('notes.stl', 'pdf')).toBe('notes.pdf')
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
     expect(toTtml('Demo', ['Một'])).toContain('<title>Demo</title>')

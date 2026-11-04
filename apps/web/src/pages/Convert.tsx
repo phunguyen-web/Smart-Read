@@ -41,6 +41,8 @@ import {
   toTtml,
   toSbv,
   toSami,
+  toSub,
+  toStl,
   toJson,
   toJsonl,
   toLatex,
@@ -119,6 +121,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'ttml', label: 'TTML', hint: 'Timed Text XML, một thẻ p mỗi trang' },
   { id: 'sbv', label: 'SBV', hint: 'Phụ đề YouTube, một cue mỗi trang' },
   { id: 'sami', label: 'SAMI', hint: 'Phụ đề SAMI, một SYNC mỗi trang' },
+  { id: 'sub', label: 'SUB', hint: 'Phụ đề SubViewer, một cue mỗi trang' },
+  { id: 'stl', label: 'STL', hint: 'Phụ đề Spruce, một dòng mỗi trang' },
   { id: 'xlsx', label: 'XLSX', hint: 'Excel, cột trang + chữ' },
   { id: 'docx', label: 'DOCX', hint: 'Microsoft Word' },
   { id: 'doc', label: 'DOC', hint: 'Word (cùng nội dung DOCX)' },
@@ -495,6 +499,16 @@ export function Convert() {
       } else if (format === 'sami') {
         downloadBlob(
           new Blob([toSami(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'sub') {
+        downloadBlob(
+          new Blob([toSub(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'stl') {
+        downloadBlob(
+          new Blob([toStl(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
       } else if (format === 'docx' || format === 'doc') {

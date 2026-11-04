@@ -42,6 +42,8 @@ export type ExportFormat =
   | 'ttml'
   | 'sbv'
   | 'sami'
+  | 'sub'
+  | 'stl'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -851,6 +853,53 @@ P { font-family: sans-serif; }
 ${cues}
 </BODY>
 </SAMI>
+`
+}
+
+export function formatSubTime(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.trunc(totalSeconds))
+  const hours = Math.floor(clamped / 3600)
+  const minutes = Math.floor((clamped % 3600) / 60)
+  const seconds = clamped % 60
+  return `${padTimePart(hours)}:${padTimePart(minutes)}:${padTimePart(seconds)}.00`
+}
+
+export function toSub(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const cues = pages
+    .map((text, index) => {
+      const start = formatSubTime(index * CUE_SECONDS)
+      const end = formatSubTime((index + 1) * CUE_SECONDS)
+      const content = text.trim() || '(không có chữ)'
+      return `${start},${end}\n${content}`
+    })
+    .join('\n\n')
+  return `[INFORMATION]\n[TITLE]${heading}\n[END INFORMATION]\n[SUBTITLE]\n${cues}\n`
+}
+
+export function formatStlTime(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.trunc(totalSeconds))
+  const hours = Math.floor(clamped / 3600)
+  const minutes = Math.floor((clamped % 3600) / 60)
+  const seconds = clamped % 60
+  return `${padTimePart(hours)}:${padTimePart(minutes)}:${padTimePart(seconds)}:00`
+}
+
+export function toStl(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const cues = pages
+    .map((text, index) => {
+      const start = formatStlTime(index * CUE_SECONDS)
+      const end = formatStlTime((index + 1) * CUE_SECONDS)
+      const content = (text.trim() || '(không có chữ)').replace(/\r?\n/g, '|')
+      return `${start} , ${end} , ${content}`
+    })
+    .join('\n')
+  return `$FontName           = Arial
+$FontSize           = 24
+$Title              = ${heading}
+
+${cues}
 `
 }
 
@@ -1735,6 +1784,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-sbv;charset=utf-8'
     case 'sami':
       return 'application/x-sami;charset=utf-8'
+    case 'sub':
+      return 'text/x-microdvd;charset=utf-8'
+    case 'stl':
+      return 'text/x-spruce;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

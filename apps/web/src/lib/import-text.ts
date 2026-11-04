@@ -45,6 +45,8 @@ export type ImportedTextKind =
   | 'ttml'
   | 'sbv'
   | 'sami'
+  | 'sub'
+  | 'stl'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -366,6 +368,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'sami') {
     return pagesFromSami(text)
+  }
+  if (kind === 'sub') {
+    return pagesFromSub(text)
+  }
+  if (kind === 'stl') {
+    return pagesFromStl(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1454,6 +1462,71 @@ export function pagesFromSami(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp SAMI cần các thẻ SYNC.')
+}
+
+export function pagesFromSub(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{\d+\}\{\d+\}/.test(trimmed)) {
+    const pages = trimmed
+      .split(/\r?\n/)
+      .map((line) => {
+        const match = line.match(/^\s*\{\d+\}\{\d+\}(.*)$/)
+        return match ? match[1]!.replace(/\|/g, '\n').trim() : ''
+      })
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const lines = trimmed.split(/\r?\n/)
+  const pages: string[] = []
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/^\d{2}:\d{2}:\d{2}\.\d+,\d{2}:\d{2}:\d{2}\.\d+/.test(lines[index]!)) {
+      continue
+    }
+    const body: string[] = []
+    index += 1
+    while (
+      index < lines.length &&
+      lines[index]!.trim().length > 0 &&
+      !/^\d{2}:\d{2}:\d{2}\.\d+,\d{2}:\d{2}:\d{2}\.\d+/.test(lines[index]!)
+    ) {
+      body.push(lines[index]!)
+      index += 1
+    }
+    index -= 1
+    const page = body.join('\n').trim()
+    if (page) {
+      pages.push(page)
+    }
+  }
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp phụ đề SUB cần các mốc thời gian.')
+}
+
+export function pagesFromStl(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = trimmed
+    .split(/\r?\n/)
+    .map((line) => {
+      const match = line.match(
+        /^\s*\d{2}:\d{2}:\d{2}:\d{2}\s*,\s*\d{2}:\d{2}:\d{2}:\d{2}\s*,\s*(.*)$/,
+      )
+      return match ? match[1]!.replace(/\|/g, '\n').trim() : ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp phụ đề STL cần các mốc thời gian.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
