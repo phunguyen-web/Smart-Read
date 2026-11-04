@@ -94,6 +94,8 @@ import {
   toCrossref,
   toEad,
   toMets,
+  toPremis,
+  toMix,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -183,6 +185,8 @@ import {
   pagesFromCrossref,
   pagesFromEad,
   pagesFromMets,
+  pagesFromPremis,
+  pagesFromMix,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1549,9 +1553,15 @@ describe('pdf edits', () => {
       top: 20,
       zoom: 1.5,
     })
+    expect(namedDestXyzFromZoomPreset('125', { left: 10, top: 20, zoom: 2 })).toEqual({
+      left: 10,
+      top: 20,
+      zoom: 1.25,
+    })
     expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
     expect(namedDestXyzZoomFromPreset('75')).toBe(0.75)
     expect(namedDestXyzZoomFromPreset('100')).toBe(1)
+    expect(namedDestXyzZoomFromPreset('125')).toBe(1.25)
     expect(namedDestXyzZoomFromPreset('150')).toBe(1.5)
     expect(namedDestXyzZoomFromPreset('200')).toBe(2)
     expect(namedDestXyzFromZoomPreset('fit-width', { left: 10, top: 20, zoom: 2 })).toEqual({
@@ -1594,6 +1604,11 @@ describe('pdf edits', () => {
       left: 10,
       top: 20,
       zoom: 1.5,
+    })
+    expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', '125')).toEqual({
+      left: 10,
+      top: 20,
+      zoom: 1.25,
     })
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
@@ -2856,6 +2871,50 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromMets('<mets><metsHdr></metsHdr></mets>')).toThrow(/dmdSec/)
     expect(swapExtension('notes.mets', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.mets.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toPremis('Demo', ['Một', 'Hai\ndòng'])).toContain('<premis')
+    expect(toPremis('Demo', ['Một'])).toContain('<agentName>Demo</agentName>')
+    expect(toPremis('Demo', ['Một'])).toContain(
+      '<significantPropertiesValue>Một</significantPropertiesValue>',
+    )
+    expect(pagesFromPremis(toPremis('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('premis', toPremis('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromPremis('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromPremis(
+        '<premis><object><originalName>Một</originalName></object></premis>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.premis', { type: '' }))).toBe('premis')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.premis.xml', { type: 'application/premis+xml' })),
+    ).toBe('premis')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromPremis('<premis></premis>')).toThrow(/<object>/)
+    expect(swapExtension('notes.premis', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.premis.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toMix('Demo', ['Một', 'Hai\ndòng'])).toContain('<mix')
+    expect(toMix('Demo', ['Một'])).toContain('<imageProducer>Demo</imageProducer>')
+    expect(toMix('Demo', ['Một'])).toContain('<note>Một</note>')
+    expect(pagesFromMix(toMix('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('mix', toMix('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromMix('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromMix(
+        '<mix><ImageCaptureMetadata><sourceType>Một</sourceType></ImageCaptureMetadata></mix>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.mix', { type: '' }))).toBe('mix')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.mix.xml', { type: 'application/mix+xml' })),
+    ).toBe('mix')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromMix('<mix><BasicDigitalObjectInformation></BasicDigitalObjectInformation></mix>')).toThrow(
+      /ImageCaptureMetadata/,
+    )
+    expect(swapExtension('notes.mix', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.mix.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

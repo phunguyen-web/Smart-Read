@@ -72,6 +72,8 @@ export type ExportFormat =
   | 'crossref'
   | 'ead'
   | 'mets'
+  | 'premis'
+  | 'mix'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1541,6 +1543,59 @@ ${records}
 `
 }
 
+export function toPremis(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <object>
+    <objectIdentifier>
+      <objectIdentifierType>local</objectIdentifierType>
+      <objectIdentifierValue>page-${index + 1}</objectIdentifierValue>
+    </objectIdentifier>
+    <originalName>Trang ${index + 1}</originalName>
+    <significantProperties>
+      <significantPropertiesType>note</significantPropertiesType>
+      <significantPropertiesValue>${note}</significantPropertiesValue>
+    </significantProperties>
+  </object>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<premis xmlns="http://www.loc.gov/premis/v3">
+  <agent>
+    <agentName>${heading}</agentName>
+  </agent>
+${records}
+</premis>
+`
+}
+
+export function toMix(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <ImageCaptureMetadata>
+    <sourceType>Trang ${index + 1}</sourceType>
+    <imageProducer>${heading}</imageProducer>
+    <note>${note}</note>
+  </ImageCaptureMetadata>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mix xmlns="http://www.loc.gov/mix/v20">
+  <BasicDigitalObjectInformation>
+    <ObjectIdentifier>
+      <objectIdentifierType>local</objectIdentifierType>
+      <objectIdentifierValue>${heading}</objectIdentifierValue>
+    </ObjectIdentifier>
+  </BasicDigitalObjectInformation>
+${records}
+</mix>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2482,6 +2537,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/ead+xml;charset=utf-8'
     case 'mets':
       return 'application/mets+xml;charset=utf-8'
+    case 'premis':
+      return 'application/premis+xml;charset=utf-8'
+    case 'mix':
+      return 'application/mix+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

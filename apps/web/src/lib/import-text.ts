@@ -75,6 +75,8 @@ export type ImportedTextKind =
   | 'crossref'
   | 'ead'
   | 'mets'
+  | 'premis'
+  | 'mix'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -486,6 +488,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'mets') {
     return pagesFromMets(text)
+  }
+  if (kind === 'premis') {
+    return pagesFromPremis(text)
+  }
+  if (kind === 'mix') {
+    return pagesFromMix(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -2519,6 +2527,66 @@ export function pagesFromMets(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp METS cần các mục <dmdSec> / <abstract>.')
+}
+
+export function pagesFromPremis(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<object\b[^>]*>([\s\S]*?)<\/object>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'significantPropertiesValue')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'note')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'originalName') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp PREMIS cần các mục <object> / <significantPropertiesValue>.')
+}
+
+export function pagesFromMix(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<ImageCaptureMetadata\b[^>]*>([\s\S]*?)<\/ImageCaptureMetadata>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const note = xmlTagText(record, 'note')
+      if (note) {
+        return note
+      }
+      const producer = xmlTagText(record, 'imageProducer')
+      if (producer) {
+        return producer
+      }
+      const title = xmlTagText(record, 'sourceType') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp MIX cần các mục <ImageCaptureMetadata> / <note>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

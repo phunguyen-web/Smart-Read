@@ -2202,6 +2202,7 @@ export const NAMED_DEST_XYZ_ZOOM_PRESETS = [
   '50',
   '75',
   '100',
+  '125',
   '150',
   '200',
   'fit-width',
@@ -2215,6 +2216,7 @@ export function assertNamedDestXyzZoomPreset(value: string): NamedDestXyzZoomPre
     value === '50' ||
     value === '75' ||
     value === '100' ||
+    value === '125' ||
     value === '150' ||
     value === '200' ||
     value === 'fit-width' ||
@@ -2223,13 +2225,14 @@ export function assertNamedDestXyzZoomPreset(value: string): NamedDestXyzZoomPre
   ) {
     return value
   }
-  throw new Error('Zoom XYZ chỉ là 50, 75, 100, 150, 200, fit-width, fit-height hoặc fit-page.')
+  throw new Error('Zoom XYZ chỉ là 50, 75, 100, 125, 150, 200, fit-width, fit-height hoặc fit-page.')
 }
 
 export const NAMED_DEST_XYZ_ZOOM_LABELS: Record<NamedDestXyzZoomPreset, string> = {
   '50': '50%',
   '75': '75%',
   '100': '100%',
+  '125': '125%',
   '150': '150%',
   '200': '200%',
   'fit-width': 'Vừa rộng',
@@ -2244,6 +2247,7 @@ const NAMED_DEST_XYZ_ZOOM_SCALE: Record<
   '50': 0.5,
   '75': 0.75,
   '100': 1,
+  '125': 1.25,
   '150': 1.5,
   '200': 2,
 }
@@ -2253,7 +2257,7 @@ export function namedDestXyzZoomNeedsPageSize(preset: NamedDestXyzZoomPreset): b
   return style === 'fit-width' || style === 'fit-height' || style === 'fit-page'
 }
 
-/** 50%/75%/100%/150%/200% are zoom 0.5/0.75/1/1.5/2. Fit-width is Letter portrait width / page width. Fit-height is Letter portrait height / page height. Fit-page is the smaller of those two scales. */
+/** 50%/75%/100%/125%/150%/200% are zoom 0.5/0.75/1/1.25/1.5/2. Fit-width is Letter portrait width / page width. Fit-height is Letter portrait height / page height. Fit-page is the smaller of those two scales. */
 export function namedDestXyzZoomFromPreset(
   preset: NamedDestXyzZoomPreset,
   pageWidth?: number,
@@ -2281,7 +2285,7 @@ export function namedDestXyzZoomFromPreset(
   return NAMED_DEST_XYZ_ZOOM_SCALE[style]
 }
 
-/** XYZ zoom preset. 50%/75%/100%/150%/200% keep left/top. Fit-width pins left to 0. Fit-height pins top to 0. Fit-page pins left and top to 0. */
+/** XYZ zoom preset. 50%/75%/100%/125%/150%/200% keep left/top. Fit-width pins left to 0. Fit-height pins top to 0. Fit-page pins left and top to 0. */
 export function namedDestXyzFromZoomPreset(
   preset: NamedDestXyzZoomPreset,
   base: NamedDestXyz = { left: null, top: null, zoom: null },
