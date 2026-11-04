@@ -1958,9 +1958,9 @@ export type OutlineBookmark = {
   destName?: string
 }
 
-export type NamedDestView = 'XYZ' | 'Fit' | 'FitH'
+export type NamedDestView = 'XYZ' | 'Fit' | 'FitH' | 'FitV' | 'FitR'
 
-export const NAMED_DEST_VIEWS = ['XYZ', 'Fit', 'FitH'] as const
+export const NAMED_DEST_VIEWS = ['XYZ', 'Fit', 'FitH', 'FitV', 'FitR'] as const
 
 export type NamedDestination = {
   name: string
@@ -2075,10 +2075,16 @@ export function namedDestNameForPage(
 }
 
 export function assertNamedDestView(value: string): NamedDestView {
-  if (value === 'XYZ' || value === 'Fit' || value === 'FitH') {
+  if (
+    value === 'XYZ' ||
+    value === 'Fit' ||
+    value === 'FitH' ||
+    value === 'FitV' ||
+    value === 'FitR'
+  ) {
     return value
   }
-  throw new Error('Kiểu xem đích chỉ là XYZ, Fit hoặc FitH.')
+  throw new Error('Kiểu xem đích chỉ là XYZ, Fit, FitH, FitV hoặc FitR.')
 }
 
 export function namedDestViewOf(dest: NamedDestination | undefined): NamedDestView {
@@ -2154,6 +2160,12 @@ function destViewFromArray(dest: unknown): NamedDestView {
   }
   if (raw === 'FitH' || raw === 'FitBH') {
     return 'FitH'
+  }
+  if (raw === 'FitV' || raw === 'FitBV') {
+    return 'FitV'
+  }
+  if (raw === 'FitR') {
+    return 'FitR'
   }
   return 'XYZ'
 }
@@ -2235,6 +2247,13 @@ function destArrayForPage(doc: PDFDocument, pageIndex: number, view: NamedDestVi
   }
   if (view === 'FitH') {
     return doc.context.obj([page.ref, PDFName.of('FitH'), null])
+  }
+  if (view === 'FitV') {
+    return doc.context.obj([page.ref, PDFName.of('FitV'), null])
+  }
+  if (view === 'FitR') {
+    const { width, height } = page.getSize()
+    return doc.context.obj([page.ref, PDFName.of('FitR'), 0, 0, width, height])
   }
   return doc.context.obj([page.ref, PDFName.of('XYZ'), null, null, null])
 }
@@ -2923,7 +2942,7 @@ export async function setNamedDestPage(
   return new Uint8Array(await doc.save())
 }
 
-/** Set XYZ, Fit, or FitH on an existing named destination. Same view is a no-op write. */
+/** Set XYZ, Fit, FitH, FitV, or FitR on an existing named destination. Same view is a no-op write. */
 export async function setNamedDestView(
   bytes: Uint8Array,
   name: string,

@@ -11,6 +11,7 @@ type PageThumbsProps = {
   dests?: readonly NamedDestination[]
   disabled?: boolean
   onSelect: (index: number, event: React.MouseEvent<HTMLButtonElement>) => void
+  onSelectDest?: (name: string) => void
   onReorder: (from: number, to: number) => void
 }
 
@@ -23,6 +24,7 @@ export function PageThumbs({
   dests,
   disabled,
   onSelect,
+  onSelectDest,
   onReorder,
 }: PageThumbsProps) {
   const listRef = useRef<HTMLDivElement>(null)
@@ -105,6 +107,16 @@ export function PageThumbs({
                 event.preventDefault()
                 return
               }
+              const destEl =
+                event.target instanceof Element
+                  ? event.target.closest('[data-dest-name]')
+                  : null
+              const destName = destEl instanceof HTMLElement ? destEl.dataset.destName : undefined
+              if (destName && onSelectDest) {
+                event.preventDefault()
+                onSelectDest(destName)
+                return
+              }
               onSelect(index, event)
             }}
             onDragStart={(event) => {
@@ -134,7 +146,13 @@ export function PageThumbs({
             <canvas aria-hidden="true" />
             <span>{label}</span>
             {destNames.length > 0 ? (
-              <span className="thumb-dests">{destNames.join(', ')}</span>
+              <span className="thumb-dests">
+                {destNames.map((name) => (
+                  <span key={name} data-dest-name={name} className="thumb-dest" title={name}>
+                    {name}
+                  </span>
+                ))}
+              </span>
             ) : null}
           </button>
         )

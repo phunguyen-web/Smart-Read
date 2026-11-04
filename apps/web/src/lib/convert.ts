@@ -46,6 +46,8 @@ export type ExportFormat =
   | 'stl'
   | 'scc'
   | 'usf'
+  | 'rt'
+  | 'mpl'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -948,6 +950,44 @@ ${cues}
 `
 }
 
+export function formatRtTime(totalSeconds: number): string {
+  return `${Math.max(0, Math.trunc(totalSeconds))}.0`
+}
+
+export function toRt(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const duration = formatRtTime(pages.length * CUE_SECONDS)
+  const cues = pages
+    .map((text, index) => {
+      const start = formatRtTime(index * CUE_SECONDS)
+      const end = formatRtTime((index + 1) * CUE_SECONDS)
+      const body = escapeHtml(text.trim() || '(không có chữ)').replace(/\r?\n/g, '<br/>')
+      return `<time begin="${start}" end="${end}"/>${body}`
+    })
+    .join('\n')
+  return `<window type="generic" duration="${duration}">
+<!-- ${heading} -->
+${cues}
+</window>
+`
+}
+
+export function formatMplTime(totalSeconds: number): string {
+  return String(Math.max(0, Math.trunc(totalSeconds)) * 10)
+}
+
+export function toMpl(pages: string[]): string {
+  const cues = pages
+    .map((text, index) => {
+      const start = formatMplTime(index * CUE_SECONDS)
+      const end = formatMplTime((index + 1) * CUE_SECONDS)
+      const content = (text.trim() || '(không có chữ)').replace(/\r?\n/g, '|')
+      return `[${start}][${end}]${content}`
+    })
+    .join('\n')
+  return `${cues}\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -1837,6 +1877,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-scc;charset=utf-8'
     case 'usf':
       return 'application/x-usf+xml;charset=utf-8'
+    case 'rt':
+      return 'text/vnd.rn-realtext;charset=utf-8'
+    case 'mpl':
+      return 'text/x-mpl2;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

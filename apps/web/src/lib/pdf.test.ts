@@ -59,6 +59,8 @@ import {
   formatStlTime,
   formatSccTime,
   formatUsfTime,
+  formatRtTime,
+  formatMplTime,
   toTtml,
   toSbv,
   toSami,
@@ -66,6 +68,8 @@ import {
   toStl,
   toScc,
   toUsf,
+  toRt,
+  toMpl,
   escapeTypst,
   toJsonl,
   toLatex,
@@ -125,6 +129,8 @@ import {
   pagesFromStl,
   pagesFromScc,
   pagesFromUsf,
+  pagesFromRt,
+  pagesFromMpl,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1128,12 +1134,42 @@ describe('pdf edits', () => {
       PDFArray,
     )
     expect(fitHArray.get(1)).toEqual(PDFName.of('FitH'))
+    const fitVDest = await setNamedDestView(named, 'ChapTwo', 'FitV')
+    expect(await listNamedDests(fitVDest)).toEqual([{ name: 'ChapTwo', pageIndex: 1, view: 'FitV' }])
+    const fitVDoc = await PDFDocument.load(fitVDest)
+    const fitVArray = fitVDoc.context.lookup(
+      fitVDoc.catalog.lookup(PDFName.of('Dests'), PDFDict).get(PDFName.of('ChapTwo')),
+      PDFArray,
+    )
+    expect(fitVArray.get(1)).toEqual(PDFName.of('FitV'))
+    const fitRDest = await setNamedDestView(named, 'ChapTwo', 'FitR')
+    expect(await listNamedDests(fitRDest)).toEqual([{ name: 'ChapTwo', pageIndex: 1, view: 'FitR' }])
+    const fitRDoc = await PDFDocument.load(fitRDest)
+    const fitRArray = fitRDoc.context.lookup(
+      fitRDoc.catalog.lookup(PDFName.of('Dests'), PDFDict).get(PDFName.of('ChapTwo')),
+      PDFArray,
+    )
+    expect(fitRArray.get(1)).toEqual(PDFName.of('FitR'))
+    expect(fitRArray.size()).toBe(6)
+    const namedPage = (await PDFDocument.load(named)).getPages()[1]!
+    const namedSize = namedPage.getSize()
+    expect((fitRArray.get(2) as PDFNumber).asNumber()).toBe(0)
+    expect((fitRArray.get(3) as PDFNumber).asNumber()).toBe(0)
+    expect((fitRArray.get(4) as PDFNumber).asNumber()).toBeCloseTo(namedSize.width)
+    expect((fitRArray.get(5) as PDFNumber).asNumber()).toBeCloseTo(namedSize.height)
     expect(await listNamedDests(await setNamedDestPage(fitDest, 'ChapTwo', 0))).toEqual([
       { name: 'ChapTwo', pageIndex: 0, view: 'Fit' },
     ])
     expect(await listNamedDests(await duplicateNamedDest(fitDest, 'ChapTwo', 'ChapFit'))).toEqual([
       { name: 'ChapFit', pageIndex: 1, view: 'Fit' },
       { name: 'ChapTwo', pageIndex: 1, view: 'Fit' },
+    ])
+    expect(await listNamedDests(await setNamedDestPage(fitVDest, 'ChapTwo', 0))).toEqual([
+      { name: 'ChapTwo', pageIndex: 0, view: 'FitV' },
+    ])
+    expect(await listNamedDests(await duplicateNamedDest(fitRDest, 'ChapTwo', 'ChapRect'))).toEqual([
+      { name: 'ChapRect', pageIndex: 1, view: 'FitR' },
+      { name: 'ChapTwo', pageIndex: 1, view: 'FitR' },
     ])
     const foreignFit = await PDFDocument.load(bytes)
     const foreignFitPages = foreignFit.getPages()
@@ -1143,16 +1179,26 @@ describe('pdf edits', () => {
     const fitBhRef = foreignFit.context.register(
       foreignFit.context.obj([foreignFitPages[1]!.ref, PDFName.of('FitBH'), null]),
     )
+    const fitBvRef = foreignFit.context.register(
+      foreignFit.context.obj([foreignFitPages[0]!.ref, PDFName.of('FitBV'), null]),
+    )
+    const fitRRef = foreignFit.context.register(
+      foreignFit.context.obj([foreignFitPages[1]!.ref, PDFName.of('FitR'), 0, 0, 200, 280]),
+    )
     const fitCatalog = foreignFit.context.obj({})
     fitCatalog.set(PDFName.of('Whole'), fitRef)
     fitCatalog.set(PDFName.of('Wide'), fitBhRef)
+    fitCatalog.set(PDFName.of('Tall'), fitBvRef)
+    fitCatalog.set(PDFName.of('Rect'), fitRRef)
     foreignFit.catalog.set(PDFName.of('Dests'), fitCatalog)
     expect(await listNamedDests(new Uint8Array(await foreignFit.save()))).toEqual([
+      { name: 'Rect', pageIndex: 1, view: 'FitR' },
+      { name: 'Tall', pageIndex: 0, view: 'FitV' },
       { name: 'Whole', pageIndex: 0, view: 'Fit' },
       { name: 'Wide', pageIndex: 1, view: 'FitH' },
     ])
     await expect(setNamedDestView(named, 'Missing', 'Fit')).rejects.toThrow(/đích tên/)
-    await expect(setNamedDestView(named, 'ChapTwo', 'FitR')).rejects.toThrow(/XYZ/)
+    await expect(setNamedDestView(named, 'ChapTwo', 'Zoom')).rejects.toThrow(/XYZ/)
     await expect(setNamedDestView(bytes, 'ChapTwo', 'Fit')).rejects.toThrow(/đích tên/)
 
     expect(toRomanNumeral(2)).toBe('ii')
@@ -1893,6 +1939,32 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
       'usf',
     )
     expect(swapExtension('notes.usf', 'pdf')).toBe('notes.pdf')
+
+    expect(formatRtTime(0)).toBe('0.0')
+    expect(formatRtTime(4)).toBe('4.0')
+    expect(toRt('Demo', ['Một', 'Hai\ndòng'])).toContain('<window type="generic"')
+    expect(toRt('Demo', ['Một'])).toContain('<!-- Demo -->')
+    expect(pagesFromRt(toRt('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('rt', toRt('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromRt('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.rt', { type: '' }))).toBe('rt')
+    expect(sourceKindFromFile(new File(['x'], 'notes.rt', { type: 'text/vnd.rn-realtext' }))).toBe(
+      'rt',
+    )
+    expect(sourceKindFromFile(new File(['x'], 'notes.rtf', { type: '' }))).toBe('rtf')
+    expect(swapExtension('notes.rt', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.rtf', 'pdf')).toBe('notes.pdf')
+
+    expect(formatMplTime(0)).toBe('0')
+    expect(formatMplTime(4)).toBe('40')
+    expect(toMpl(['Một', 'Hai\ndòng'])).toContain('[0][40]')
+    expect(toMpl(['Một'])).toContain('[0][40]Một')
+    expect(pagesFromMpl(toMpl(['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('mpl', toMpl(['Hi']))).toEqual(['Hi'])
+    expect(pagesFromMpl('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.mpl', { type: '' }))).toBe('mpl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mpl', { type: 'text/x-mpl2' }))).toBe('mpl')
+    expect(swapExtension('notes.mpl', 'pdf')).toBe('notes.pdf')
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
     expect(toTtml('Demo', ['Một'])).toContain('<title>Demo</title>')

@@ -1012,9 +1012,9 @@ export function Editor() {
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục
-          (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích / kiểu xem XYZ Fit FitH / đích trên thumbnail),
+          (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích / kiểu xem XYZ Fit FitH FitV FitR / đích trên thumbnail, bấm tên đích để chọn),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -1024,7 +1024,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -1089,6 +1089,16 @@ export function Editor() {
             dests={namedDests}
             disabled={busy}
             onSelect={onThumbSelect}
+            onSelectDest={(name) => {
+              const dest = namedDests.find((item) => item.name === name)
+              if (!dest) {
+                return
+              }
+              setNamedDestAt(dest.name)
+              setDestName(dest.name)
+              setDestPage(String(dest.pageIndex + 1))
+              goToPage(dest.pageIndex, 'replace')
+            }}
             onReorder={(from, to) => {
               applyReorder(movingIndexesForDrag(selected, from), to, from)
             }}
@@ -1168,6 +1178,7 @@ export function Editor() {
                   ref={gotoRef}
                   value={gotoRaw}
                   placeholder={currentLabel || String(page + 1)}
+                  list="goto-dest-names"
                   aria-label="Tới số, nhãn trang hoặc đích tên"
                   aria-keyshortcuts="Control+G"
                   onChange={(event) => setGotoRaw(event.target.value)}
@@ -1178,6 +1189,11 @@ export function Editor() {
                     }
                   }}
                 />
+                <datalist id="goto-dest-names">
+                  {namedDests.map((dest) => (
+                    <option key={dest.name} value={dest.name} />
+                  ))}
+                </datalist>
               </label>
               <button type="button" disabled={busy} onClick={applyGoto}>
                 Tới trang

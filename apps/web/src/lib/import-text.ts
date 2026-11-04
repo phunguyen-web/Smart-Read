@@ -49,6 +49,8 @@ export type ImportedTextKind =
   | 'stl'
   | 'scc'
   | 'usf'
+  | 'rt'
+  | 'mpl'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -382,6 +384,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'usf') {
     return pagesFromUsf(text)
+  }
+  if (kind === 'rt') {
+    return pagesFromRt(text)
+  }
+  if (kind === 'mpl') {
+    return pagesFromMpl(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1569,6 +1577,47 @@ export function pagesFromUsf(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp phụ đề USF cần các thẻ text.')
+}
+
+export function pagesFromRt(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = trimmed
+    .split(/<time\b[^>]*\/?>/i)
+    .slice(1)
+    .map((chunk) =>
+      unescapeXml(
+        chunk
+          .replace(/<\/window>[\s\S]*$/i, '')
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<[^>]+>/g, ''),
+      ).trim(),
+    )
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp phụ đề RealText cần các thẻ time.')
+}
+
+export function pagesFromMpl(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = trimmed
+    .split(/\r?\n/)
+    .map((line) => {
+      const match = line.match(/^\s*\[\d+\]\[\d+\](.*)$/)
+      return match ? match[1]!.replace(/\|/g, '\n').trim() : ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp phụ đề MPL2 cần các mốc [start][end].')
 }
 
 export function pagesFromBibtex(text: string): string[] {
