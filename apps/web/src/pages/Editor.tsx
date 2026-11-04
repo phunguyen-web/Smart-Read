@@ -39,7 +39,11 @@ import {
   namedDestViewOf,
   namedDestXyzOf,
   namedDestXyzFromPaper,
+  namedDestXyzFromPageSize,
   NAMED_DEST_VIEWS,
+  NAMED_DEST_XYZ_EDGES,
+  NAMED_DEST_XYZ_EDGE_LABELS,
+  listPageSizes,
   renameNamedDest,
   removeNamedDest,
   setNamedDestPage,
@@ -117,6 +121,7 @@ import {
   type CropMarginId,
   type MergeWhere,
   type NamedDestination,
+  type PageSize,
   type OverlayPosition,
   type OutlineBookmark,
   type OverlayPresetId,
@@ -258,6 +263,7 @@ export function Editor() {
   const [outline, setOutline] = useState<OutlineBookmark[]>([])
   const [outlineAt, setOutlineAt] = useState<number | null>(null)
   const [namedDests, setNamedDests] = useState<NamedDestination[]>([])
+  const [pageSizes, setPageSizes] = useState<PageSize[]>([])
   const [namedDestAt, setNamedDestAt] = useState<string | null>(null)
   const [destPage, setDestPage] = useState('')
   const [destLeft, setDestLeft] = useState('')
@@ -317,6 +323,10 @@ export function Editor() {
     currentLabel && currentLabel !== String(page + 1)
       ? `${currentLabel} (trang ${page + 1})`
       : `trang ${page + 1}`
+  const destPageSize =
+    namedDestAt == null
+      ? undefined
+      : pageSizes[namedDests.find((dest) => dest.name === namedDestAt)?.pageIndex ?? -1]
 
   useEffect(() => {
     if (!doc) {
@@ -344,13 +354,18 @@ export function Editor() {
       return
     }
     let cancelled = false
-    void Promise.all([listOutlineBookmarks(doc.bytes), listNamedDests(doc.bytes)])
-      .then(([items, dests]) => {
+    void Promise.all([
+      listOutlineBookmarks(doc.bytes),
+      listNamedDests(doc.bytes),
+      listPageSizes(doc.bytes),
+    ])
+      .then(([items, dests, sizes]) => {
         if (cancelled) {
           return
         }
         setOutline(items)
         setNamedDests(dests)
+        setPageSizes(sizes)
         setOutlineAt((current) =>
           current != null && current >= 0 && current < items.length ? current : null,
         )
@@ -362,6 +377,7 @@ export function Editor() {
         if (!cancelled) {
           setOutline([])
           setNamedDests([])
+          setPageSizes([])
           setOutlineAt(null)
           setNamedDestAt(null)
         }
@@ -1020,9 +1036,9 @@ export function Editor() {
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục
-          (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích / kiểu xem XYZ Fit FitH FitV FitR FitB FitBH FitBV / gắn XYZ trái đỉnh zoom / khổ A4 Letter A5 trái trên / đích trên thumbnail, bấm tên đích để chọn),
+          (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích / kiểu xem XYZ Fit FitH FitV FitR FitB FitBH FitBV / gắn XYZ trái đỉnh zoom / khổ A4 Letter A5 trái trên / mé trái trên / trên / phải trên theo khổ trang đích / đích trên thumbnail, bấm tên đích để chọn),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -1032,7 +1048,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -2376,6 +2392,33 @@ export function Editor() {
                     }}
                   >
                     {PAPER_LABELS[paper]} trái trên
+                  </button>
+                ))}
+                {NAMED_DEST_XYZ_EDGES.map((edge) => (
+                  <button
+                    key={edge}
+                    type="button"
+                    disabled={busy || namedDestAt == null || destPageSize == null}
+                    aria-label={
+                      namedDestAt == null
+                        ? `Chọn một đích tên rồi gắn XYZ ${NAMED_DEST_XYZ_EDGE_LABELS[edge]}`
+                        : destPageSize == null
+                          ? 'Chưa đọc được khổ trang đích'
+                          : `Gắn XYZ ${NAMED_DEST_XYZ_EDGE_LABELS[edge]} cho đích ${namedDestAt}`
+                    }
+                    onClick={() => {
+                      if (namedDestAt == null || destPageSize == null) {
+                        return
+                      }
+                      const xyz = namedDestXyzFromPageSize(destPageSize, edge)
+                      void run((bytes) => setNamedDestXyz(bytes, namedDestAt, xyz), () => {
+                        setDestLeft(xyz.left == null ? '' : String(xyz.left))
+                        setDestTop(xyz.top == null ? '' : String(xyz.top))
+                        setDestZoom(xyz.zoom == null ? '' : String(xyz.zoom))
+                      })
+                    }}
+                  >
+                    {NAMED_DEST_XYZ_EDGE_LABELS[edge]}
                   </button>
                 ))}
                 <button

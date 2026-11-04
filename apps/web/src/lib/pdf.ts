@@ -2146,6 +2146,43 @@ export function namedDestXyzFromPaper(
   return namedDestXyzFromPageSize(PAPER_SIZES[paper].portrait, edge)
 }
 
+export const NAMED_DEST_XYZ_EDGE_LABELS: Record<NamedDestXyzEdge, string> = {
+  'top-left': 'Trái trên trang',
+  top: 'Trên trang',
+  'top-right': 'Phải trên trang',
+}
+
+/** Displayed size of every page, after rotation. */
+export async function listPageSizes(bytes: Uint8Array): Promise<PageSize[]> {
+  try {
+    const doc = await PDFDocument.load(bytes)
+    return doc.getPages().map((page) => displayedPageSize(page))
+  } catch (error) {
+    if (isPdfPasswordError(error)) {
+      throw new PdfPasswordRequiredError()
+    }
+    throw error
+  }
+}
+
+/** XYZ left/top from the dest page's actual displayed size. */
+export async function namedDestXyzFromDestPage(
+  bytes: Uint8Array,
+  destName: string,
+  edge: NamedDestXyzEdge = 'top-left',
+): Promise<NamedDestXyz> {
+  const dests = await listNamedDests(bytes)
+  const dest = dests.find((item) => item.name === destName)
+  if (!dest) {
+    throw new Error('Chưa có đích tên này.')
+  }
+  const size = (await listPageSizes(bytes))[dest.pageIndex]
+  if (!size) {
+    throw new Error('Không đọc được khổ trang đích.')
+  }
+  return namedDestXyzFromPageSize(size, edge)
+}
+
 function compactNamedDestXyz(xyz: NamedDestXyz | undefined): NamedDestXyz | undefined {
   if (!xyz) {
     return undefined

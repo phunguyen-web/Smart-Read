@@ -78,6 +78,8 @@ import {
   toEnw,
   toCsljson,
   toNbib,
+  toCslyaml,
+  toEnxml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -151,6 +153,8 @@ import {
   pagesFromEnw,
   pagesFromCsljson,
   pagesFromNbib,
+  pagesFromCslyaml,
+  pagesFromEnxml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -231,6 +235,8 @@ import {
   namedDestXyzOf,
   namedDestXyzFromPageSize,
   namedDestXyzFromPaper,
+  namedDestXyzFromDestPage,
+  listPageSizes,
   clearNamedDests,
   duplicateNamedDest,
   renameNamedDest,
@@ -1380,6 +1386,29 @@ describe('pdf edits', () => {
     expect(await listNamedDests(await setNamedDestXyz(named, 'ChapTwo', namedDestXyzFromPaper('a4')))).toEqual([
       { name: 'ChapTwo', pageIndex: 1, xyz: { left: 0, top: A4_HEIGHT, zoom: null } },
     ])
+    const destSizes = await listPageSizes(named)
+    expect(destSizes[1]).toEqual({ width: 200, height: 280 })
+    expect(await namedDestXyzFromDestPage(named, 'ChapTwo', 'top-left')).toEqual({
+      left: 0,
+      top: 280,
+      zoom: null,
+    })
+    expect(await namedDestXyzFromDestPage(named, 'ChapTwo', 'top')).toEqual({
+      left: null,
+      top: 280,
+      zoom: null,
+    })
+    expect(await namedDestXyzFromDestPage(named, 'ChapTwo', 'top-right')).toEqual({
+      left: 200,
+      top: 280,
+      zoom: null,
+    })
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(named, 'ChapTwo', await namedDestXyzFromDestPage(named, 'ChapTwo', 'top')),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: null, top: 280, zoom: null } }])
+    await expect(namedDestXyzFromDestPage(named, 'Missing', 'top')).rejects.toThrow(/đích tên/)
 
     expect(toRomanNumeral(2)).toBe('ii')
     expect(toRomanNumeral(4, true)).toBe('IV')
@@ -2249,6 +2278,39 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
       sourceKindFromFile(new File(['x'], 'notes.nbib', { type: 'application/x-nbib' })),
     ).toBe('nbib')
     expect(swapExtension('notes.nbib', 'pdf')).toBe('notes.pdf')
+
+    expect(toCslyaml('Demo', ['Một', 'Hai\ndòng'])).toContain('type: document')
+    expect(toCslyaml('Demo', ['Một'])).toContain('container-title: "Demo"')
+    expect(toCslyaml('Demo', ['Một'])).toContain('note: "Một"')
+    expect(pagesFromCslyaml(toCslyaml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('cslyaml', toCslyaml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromCslyaml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromCslyaml('- title: Một\n- abstract: Hai')).toEqual(['Một', 'Hai'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.cslyaml', { type: '' }))).toBe('cslyaml')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.csl.yaml', { type: 'application/vnd.citationstyles.csl+yaml' }),
+      ),
+    ).toBe('cslyaml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.csl.yml', { type: '' }))).toBe('cslyaml')
+    expect(swapExtension('notes.cslyaml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.csl.yaml', 'pdf')).toBe('notes.pdf')
+
+    expect(toEnxml('Demo', ['Một', 'Hai\ndòng'])).toContain('<xml>')
+    expect(toEnxml('Demo', ['Một'])).toContain('<secondary-title>Demo</secondary-title>')
+    expect(toEnxml('Demo', ['Một'])).toContain('<notes>Một</notes>')
+    expect(pagesFromEnxml(toEnxml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('enxml', toEnxml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromEnxml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromEnxml('<xml><records><record><title>Một</title></record></records></xml>')).toEqual([
+      'Một',
+    ])
+    expect(sourceKindFromFile(new File(['x'], 'notes.enxml', { type: '' }))).toBe('enxml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.endnote.xml', { type: 'application/x-endnote+xml' })),
+    ).toBe('enxml')
+    expect(swapExtension('notes.enxml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.endnote.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

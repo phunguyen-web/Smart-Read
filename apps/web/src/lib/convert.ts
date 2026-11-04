@@ -56,6 +56,8 @@ export type ExportFormat =
   | 'enw'
   | 'csljson'
   | 'nbib'
+  | 'cslyaml'
+  | 'enxml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1149,6 +1151,44 @@ export function toNbib(title: string, pages: string[]): string {
     .join('\n')}`
 }
 
+export function toCslyaml(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  return `${pages
+    .map((text, index) => {
+      const note = text.trim() || '(không có chữ)'
+      return `- id: page-${index + 1}
+  type: document
+  title: ${escapeYaml(`Trang ${index + 1}`)}
+  container-title: ${escapeYaml(heading)}
+  note: ${escapeYaml(note)}`
+    })
+    .join('\n')}\n`
+}
+
+export function toEnxml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `    <record>
+      <ref-type name="Generic">13</ref-type>
+      <titles>
+        <title>Trang ${index + 1}</title>
+        <secondary-title>${heading}</secondary-title>
+      </titles>
+      <notes>${note}</notes>
+    </record>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<xml>
+  <records>
+${records}
+  </records>
+</xml>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2058,6 +2098,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.citationstyles.csl+json;charset=utf-8'
     case 'nbib':
       return 'application/x-nbib;charset=utf-8'
+    case 'cslyaml':
+      return 'application/vnd.citationstyles.csl+yaml;charset=utf-8'
+    case 'enxml':
+      return 'application/x-endnote+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

@@ -59,6 +59,8 @@ export type ImportedTextKind =
   | 'enw'
   | 'csljson'
   | 'nbib'
+  | 'cslyaml'
+  | 'enxml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -422,6 +424,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'nbib') {
     return pagesFromNbib(text)
+  }
+  if (kind === 'cslyaml') {
+    return pagesFromCslyaml(text)
+  }
+  if (kind === 'enxml') {
+    return pagesFromEnxml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1866,6 +1874,82 @@ export function pagesFromNbib(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp NBIB cần các mục PMID / AB.')
+}
+
+function yamlField(record: string, name: string): string | null {
+  const match = record.match(new RegExp(`^\\s*(?:-\\s+)?${name}:\\s*(.*)$`, 'm'))
+  if (!match) {
+    return null
+  }
+  const value = unescapeYamlQuoted(match[1]!.trim())
+  return value ? value : null
+}
+
+export function pagesFromCslyaml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = trimmed.split(/^(?=- )/m)
+  const pages = records
+    .map((record) => {
+      const note = yamlField(record, 'note')
+      if (note) {
+        return note
+      }
+      const abs = yamlField(record, 'abstract')
+      if (abs) {
+        return abs
+      }
+      const title = yamlField(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp CSL-YAML cần các mục note / abstract / title.')
+}
+
+function xmlTagText(record: string, tag: string): string {
+  const match = record.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`, 'i'))
+  if (!match) {
+    return ''
+  }
+  return unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim()
+}
+
+export function pagesFromEnxml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<record\b[^>]*>([\s\S]*?)<\/record>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const notes = xmlTagText(record, 'notes')
+      if (notes) {
+        return notes
+      }
+      const abs = xmlTagText(record, 'abstract')
+      if (abs) {
+        return abs
+      }
+      const title = xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp EndNote XML cần các mục <record> / <notes>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
