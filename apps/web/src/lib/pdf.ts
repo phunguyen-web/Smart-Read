@@ -1950,11 +1950,11 @@ export type OutlineBookmark = {
   /** Folders only. `false` writes a negative `/Count` so viewers collapse children. */
   open?: boolean
   /**
-   * Folders written without `/Dest`. `pageIndex` is the first child's page so the
-   * editor can still jump; viewers do not treat the folder as a page target.
+   * Folders written without an explicit page `/Dest`. `pageIndex` is the first
+   * child's page so the editor can still jump unless `destName` is set.
    */
   destless?: true
-  /** Leaf `/Dest` stored as a named destination instead of an explicit page array. */
+  /** `/Dest` stored as a named destination (leaf or folder) instead of a page array. */
   destName?: string
 }
 
@@ -2487,7 +2487,7 @@ async function writeOutlineBookmarks(
       fields.Dest = [page.ref, PDFName.of('XYZ'), null, null, null]
     }
     const outlineItem = context.obj(fields)
-    if (kids.length === 0 && destName) {
+    if (destName) {
       outlineItem.set(PDFName.of('Dest'), PDFName.of(destName))
     }
     if (siblingAt > 0) {
@@ -2525,9 +2525,9 @@ async function writeOutlineBookmarks(
   doc.catalog.set(PDFName.of('PageMode'), PDFName.of('UseOutlines'))
   writeCatalogNamedDests(
     doc,
-    valid.flatMap((item, index) => {
+    valid.flatMap((item) => {
       const name = item.destName
-      if (!name || childrenOf[index]!.length > 0 || !NAMED_DEST_NAME.test(name)) {
+      if (!name || !NAMED_DEST_NAME.test(name)) {
         return []
       }
       return [{ name, pageIndex: item.pageIndex }]
@@ -2601,6 +2601,27 @@ export async function renameNamedDest(
   )
 }
 
+/** Point an existing named destination at another page. Same page is a no-op. */
+export async function setNamedDestPage(
+  bytes: Uint8Array,
+  name: string,
+  pageIndex: number,
+): Promise<Uint8Array> {
+  const label = assertNamedDestName(name)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= count) {
+    throw new Error('Chọn một trang đích.')
+  }
+  const dests = collectNamedDests(doc)
+  if (!dests.has(label)) {
+    throw new Error('Chưa có đích tên này.')
+  }
+  dests.set(label, pageIndex)
+  rewriteNamedDests(doc, destsFromMap(dests))
+  return new Uint8Array(await doc.save())
+}
+
 /**
  * Remove a named destination. Outline leaves keep the page as an explicit dest.
  */
@@ -2627,7 +2648,8 @@ export async function removeNamedDest(bytes: Uint8Array, name: string): Promise<
 }
 
 /**
- * Point a leaf bookmark at a named destination. Dest-less folders are refused.
+ * Point a bookmark (leaf or folder) at a named destination.
+ * Folders keep `/Dest` as the name instead of the first child's page.
  * The name must already exist in the catalog.
  */
 export async function setOutlineNamedDest(
@@ -2640,17 +2662,15 @@ export async function setOutlineNamedDest(
   if (!Number.isInteger(index) || index < 0 || index >= existing.length) {
     throw new Error('Chọn một mục lục.')
   }
-  const depths = normalizeOutlineDepths(existing)
-  if (itemIsOutlineFolder(depths, index) || existing[index]!.destless) {
-    throw new Error('Thư mục không gắn trang đích.')
-  }
   const dests = await listNamedDests(bytes)
   const dest = dests.find((item) => item.name === label)
   if (!dest) {
     throw new Error('Chưa có đích tên này.')
   }
   const next = existing.map((item, at) =>
-    at === index ? cloneOutlineItem(item, { pageIndex: dest.pageIndex, destName: label }) : item,
+    at === index
+      ? cloneOutlineItem(item, { pageIndex: dest.pageIndex, destName: label, destless: false })
+      : item,
   )
   return writeOutlineBookmarks(bytes, next)
 }

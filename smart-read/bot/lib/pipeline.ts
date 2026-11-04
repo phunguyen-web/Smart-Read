@@ -18,14 +18,14 @@ export const PIPELINE_STAGES = [
     subagent: "pdf-editor",
     title: "PDF editor",
     summary:
-      "Implement in-browser PDF page operations: rotate, reverse, interleave halves / split odd-even, 2-up / 4-up, booklet impose with a print-sheet preview, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, cover page, page border, crop or pad margins, unify mixed page sizes, reading tint, page background color, auto-crop whitespace, grayscale, find text, go to page (number or viewer label), remove blank or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, text overlay, outline bookmarks (including dest-less nested folders (depth 3, per-folder collapse, rename/remove, move up/down, indent/outdent, retarget dest, named destinations via addNamedDest / listNamedDests / renameNamedDest / removeNamedDest / setOutlineNamedDest) that can collapse or clear), page labels (shown on thumbnails), extract embedded images, open a password-protected PDF, and password-protect a download copy.",
+      "Implement in-browser PDF page operations: rotate, reverse, interleave halves / split odd-even, 2-up / 4-up, booklet impose with a print-sheet preview, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, cover page, page border, crop or pad margins, unify mixed page sizes, reading tint, page background color, auto-crop whitespace, grayscale, find text, go to page (number or viewer label), remove blank or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, text overlay, outline bookmarks (including dest-less nested folders (depth 3, per-folder collapse, rename/remove, move up/down, indent/outdent, retarget dest, named destinations via addNamedDest / listNamedDests / renameNamedDest / setNamedDestPage / removeNamedDest / setOutlineNamedDest) that can collapse or clear), page labels (shown on thumbnails), extract embedded images, open a password-protected PDF, and password-protect a download copy.",
   },
   {
     id: "format-converter",
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP/CBZ; import TXT/MD/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff/Jupyter/BibTeX/SRT/VTT/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/CBZ/PNG/JPEG/WEBP as PDF.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP/CBZ; import TXT/MD/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff/Jupyter/BibTeX/SRT/VTT/LRC/ICS/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/CBZ/PNG/JPEG/WEBP as PDF.",
   },
   {
     id: "qa-reviewer",
@@ -106,13 +106,13 @@ export const SUPPORTED_FORMATS = [
     id: "pdf",
     label: "PDF",
     role: "edit",
-    notes: "Source format. Page rotate 90/180, reverse order, interleave halves / split odd-even, 2-up / 4-up, booklet impose (bookletPreviewSheets shows print order without mutating), flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, cover page, page border, crop or pad margins, unify mixed page sizes, reading tint, page background color, auto-crop whitespace, grayscale, find text, go to page (number or viewer label), remove no-text or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split to ZIP, insert blank or PNG/JPEG/WEBP, reorder, merge, metadata, persist undo, text overlay, outline bookmarks (nested dest-less folders via addOutlineFolder (optional parentIndex, max depth 3, no /Dest on the folder); per-folder collapse via setOutlineFolderOpen; collapse all with setOutlineFoldersOpen; renameOutlineItem; removeOutlineItem promotes children; moveOutlineItem swaps a sibling subtree; indentOutlineItem nests under the previous sibling; outdentOutlineItem lifts a subtree after its parent; setOutlineDest retargets a leaf to an explicit page (clears destName); addNamedDest / listNamedDests / renameNamedDest / removeNamedDest / setOutlineNamedDest read and write catalog `/Dests` plus the `/Names` `/Dests` name tree; clearOutline), page labels (1 / i, ii / Trang, or front matter then 1; shown on thumbnails), extract embedded JPEG/PNG, open a password-protected PDF (working copy stays decrypted), and password-protect a download copy.",
+    notes: "Source format. Page rotate 90/180, reverse order, interleave halves / split odd-even, 2-up / 4-up, booklet impose (bookletPreviewSheets shows print order without mutating), flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, cover page, page border, crop or pad margins, unify mixed page sizes, reading tint, page background color, auto-crop whitespace, grayscale, find text, go to page (number or viewer label), remove no-text or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split to ZIP, insert blank or PNG/JPEG/WEBP, reorder, merge, metadata, persist undo, text overlay, outline bookmarks (nested dest-less folders via addOutlineFolder (optional parentIndex, max depth 3, no /Dest on the folder); per-folder collapse via setOutlineFolderOpen; collapse all with setOutlineFoldersOpen; renameOutlineItem; removeOutlineItem promotes children; moveOutlineItem swaps a sibling subtree; indentOutlineItem nests under the previous sibling; outdentOutlineItem lifts a subtree after its parent; setOutlineDest retargets a leaf to an explicit page (clears destName); addNamedDest / listNamedDests / renameNamedDest / setNamedDestPage / removeNamedDest / setOutlineNamedDest read and write catalog `/Dests` plus the `/Names` `/Dests` name tree; clearOutline), page labels (1 / i, ii / Trang, or front matter then 1; shown on thumbnails), extract embedded JPEG/PNG, open a password-protected PDF (working copy stays decrypted), and password-protect a download copy.",
   },
   {
     id: "txt",
     label: "Plain text",
     role: "export",
-    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats. PNG/JPEG/WEBP, DOCX, ODT, ODS, XLSX, PPTX, ODP, EPUB, CBZ, FB2, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, and VTT uploads also become PDF pages.",
+    notes: "Extracted page text. Uploading TXT builds a PDF first so it can round-trip to other formats. PNG/JPEG/WEBP, DOCX, ODT, ODS, XLSX, PPTX, ODP, EPUB, CBZ, FB2, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, and ICS uploads also become PDF pages.",
   },
   {
     id: "html",
@@ -333,6 +333,19 @@ export const SUPPORTED_FORMATS = [
     aliases: ["webvtt"],
     role: "export",
     notes: "WebVTT with NOTE title plus 4-second cues. Uploading .vtt builds a PDF from cue text. JSON-shaped VTT uses pagesFromJson.",
+  },
+  {
+    id: "lrc",
+    label: "LRC",
+    role: "export",
+    notes: "Timed lyrics [mm:ss.xx], 4 seconds each, plus [ti:title]. Uploading .lrc builds a PDF from lyric lines. JSON-shaped LRC uses pagesFromJson.",
+  },
+  {
+    id: "ics",
+    label: "ICS",
+    aliases: ["ical", "icalendar"],
+    role: "export",
+    notes: "iCalendar with one VEVENT per page (4-second slots from epoch). Uploading .ics builds a PDF from DESCRIPTION or SUMMARY. JSON-shaped ICS uses pagesFromJson.",
   },
   {
     id: "xlsx",

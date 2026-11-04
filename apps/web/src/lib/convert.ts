@@ -35,6 +35,8 @@ export type ExportFormat =
   | 'bib'
   | 'srt'
   | 'vtt'
+  | 'lrc'
+  | 'ics'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -639,6 +641,69 @@ export function toVtt(title: string, pages: string[]): string {
     })
     .join('\n\n')
   return `WEBVTT\n\nNOTE ${heading}\n\n${cues}\n`
+}
+
+export function formatLrcTime(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.trunc(totalSeconds))
+  const minutes = Math.floor(clamped / 60)
+  const seconds = clamped % 60
+  return `${padTimePart(minutes)}:${padTimePart(seconds)}.00`
+}
+
+export function toLrc(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const lines = pages.map((text, index) => {
+    const content = (text.trim() || '(không có chữ)').replace(/\r?\n/g, ' ')
+    return `[${formatLrcTime(index * CUE_SECONDS)}]${content}`
+  })
+  return `[ti:${heading}]\n${lines.join('\n')}\n`
+}
+
+export function escapeIcs(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/\r?\n/g, '\\n')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+}
+
+export function unescapeIcs(value: string): string {
+  return value
+    .replace(/\\n/gi, '\n')
+    .replace(/\\,/g, ',')
+    .replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\')
+}
+
+export function formatIcsDate(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.trunc(totalSeconds))
+  const hours = Math.floor(clamped / 3600)
+  const minutes = Math.floor((clamped % 3600) / 60)
+  const seconds = clamped % 60
+  return `19700101T${padTimePart(hours)}${padTimePart(minutes)}${padTimePart(seconds)}Z`
+}
+
+export function toIcs(title: string, pages: string[]): string {
+  const heading = escapeIcs((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const events = pages
+    .map((text, index) => {
+      const body = text.trim() || '(không có chữ)'
+      const summary = escapeIcs(body.split(/\r?\n/, 1)[0] || `Trang ${index + 1}`)
+      const start = index * CUE_SECONDS
+      const end = (index + 1) * CUE_SECONDS
+      return [
+        'BEGIN:VEVENT',
+        `UID:page-${index + 1}@smart-read`,
+        'DTSTAMP:19700101T000000Z',
+        `DTSTART:${formatIcsDate(start)}`,
+        `DTEND:${formatIcsDate(end)}`,
+        `SUMMARY:${summary}`,
+        `DESCRIPTION:${escapeIcs(body)}`,
+        'END:VEVENT',
+      ].join('\n')
+    })
+    .join('\n')
+  return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${events}\nEND:VCALENDAR\n`
 }
 
 export function toLatex(title: string, pages: string[]): string {
@@ -1508,6 +1573,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-subrip;charset=utf-8'
     case 'vtt':
       return 'text/vtt;charset=utf-8'
+    case 'lrc':
+      return 'text/x-lrc;charset=utf-8'
+    case 'ics':
+      return 'text/calendar;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

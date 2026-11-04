@@ -39,8 +39,13 @@ import {
   escapeBibtex,
   formatSrtTime,
   formatVttTime,
+  formatLrcTime,
+  formatIcsDate,
+  escapeIcs,
   toSrt,
   toVtt,
+  toLrc,
+  toIcs,
   escapeTypst,
   toJsonl,
   toLatex,
@@ -89,6 +94,8 @@ import {
   pagesFromBibtex,
   pagesFromSrt,
   pagesFromVtt,
+  pagesFromLrc,
+  pagesFromIcs,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -164,6 +171,7 @@ import {
   addNamedDest,
   renameNamedDest,
   removeNamedDest,
+  setNamedDestPage,
   addOutlineBookmarks,
   addOutlineFolder,
   bookletPreviewSheets,
@@ -835,9 +843,29 @@ describe('pdf edits', () => {
       pageIndex: 0,
       depth: 0,
     })
-    await expect(setOutlineNamedDest(nested, 0, 'ChapTwo')).rejects.toThrow(/gắn trang đích/)
+    await expect(setOutlineNamedDest(nested, 0, 'ChapTwo')).rejects.toThrow(/đích tên/)
     await expect(setOutlineNamedDest(namedLeaf, 0, 'Missing')).rejects.toThrow(/đích tên/)
     await expect(setOutlineNamedDest(bytes, 0, 'ChapTwo')).rejects.toThrow(/mục lục/)
+    const namedFolder = await addNamedDest(nested, 'ChapTwo', 1)
+    const folderLinked = await setOutlineNamedDest(namedFolder, 0, 'ChapTwo')
+    expect((await listOutlineBookmarks(folderLinked))[0]).toEqual({
+      title: 'Phần A',
+      pageIndex: 1,
+      depth: 0,
+      destName: 'ChapTwo',
+    })
+    const folderDoc = await PDFDocument.load(folderLinked)
+    const folderRoot = folderDoc.catalog.lookup(PDFName.of('Outlines'), PDFDict)
+    const folderItem = folderDoc.context.lookup(folderRoot.get(PDFName.of('First')), PDFDict)
+    expect(folderItem.lookup(PDFName.of('Dest'), PDFName)).toEqual(PDFName.of('ChapTwo'))
+    const folderRetarget = await setNamedDestPage(folderLinked, 'ChapTwo', 0)
+    expect(await listNamedDests(folderRetarget)).toEqual([{ name: 'ChapTwo', pageIndex: 0 }])
+    expect((await listOutlineBookmarks(folderRetarget))[0]).toEqual({
+      title: 'Phần A',
+      pageIndex: 0,
+      depth: 0,
+      destName: 'ChapTwo',
+    })
 
     const namedDoc = await PDFDocument.load(named)
     const namesTree = namedDoc.catalog.lookup(PDFName.of('Names'), PDFDict)
@@ -877,6 +905,23 @@ describe('pdf edits', () => {
     ).toBeUndefined()
     await expect(removeNamedDest(named, 'Missing')).rejects.toThrow(/đích tên/)
     await expect(removeNamedDest(named, '  ')).rejects.toThrow(/tên đích/)
+
+    expect(await listNamedDests(await setNamedDestPage(named, 'ChapTwo', 1))).toEqual([
+      { name: 'ChapTwo', pageIndex: 1 },
+    ])
+    const retargetedDest = await setNamedDestPage(named, 'ChapTwo', 0)
+    expect(await listNamedDests(retargetedDest)).toEqual([{ name: 'ChapTwo', pageIndex: 0 }])
+    const linkedRetarget = await setNamedDestPage(linked, 'ChapTwo', 0)
+    expect((await listOutlineBookmarks(linkedRetarget))[0]).toEqual({
+      title: 'Mở đầu',
+      pageIndex: 0,
+      depth: 0,
+      destName: 'ChapTwo',
+    })
+    await expect(setNamedDestPage(named, 'Missing', 0)).rejects.toThrow(/đích tên/)
+    await expect(setNamedDestPage(named, 'ChapTwo', 9)).rejects.toThrow(/trang đích/)
+    await expect(setNamedDestPage(bytes, 'ChapTwo', 0)).rejects.toThrow(/đích tên/)
+    await expect(setNamedDestPage(named, '  ', 0)).rejects.toThrow(/tên đích/)
 
     expect(toRomanNumeral(2)).toBe('ii')
     expect(toRomanNumeral(4, true)).toBe('IV')
@@ -1511,6 +1556,25 @@ describe('conversion helpers', () => {
     expect(sourceKindFromFile(new File(['x'], 'notes.vtt', { type: '' }))).toBe('vtt')
     expect(sourceKindFromFile(new File(['x'], 'notes.vtt', { type: 'text/vtt' }))).toBe('vtt')
     expect(swapExtension('notes.vtt', 'pdf')).toBe('notes.pdf')
+    expect(formatLrcTime(4)).toBe('00:04.00')
+    expect(toLrc('Demo', ['Một', 'Hai\ndòng'])).toContain('[ti:Demo]')
+    expect(toLrc('Demo', ['Một'])).toContain('[00:00.00]Một')
+    expect(pagesFromLrc(toLrc('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai dòng'])
+    expect(pagesFromImportedText('lrc', toLrc('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromLrc('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.lrc', { type: '' }))).toBe('lrc')
+    expect(sourceKindFromFile(new File(['x'], 'notes.lrc', { type: 'text/x-lrc' }))).toBe('lrc')
+    expect(swapExtension('notes.lrc', 'pdf')).toBe('notes.pdf')
+    expect(formatIcsDate(4)).toBe('19700101T000004Z')
+    expect(escapeIcs('a;b,c\nd')).toBe('a\\;b\\,c\\nd')
+    expect(toIcs('Demo', ['Một', 'Hai\ndòng'])).toContain('BEGIN:VCALENDAR')
+    expect(toIcs('Demo', ['Một'])).toContain('X-WR-CALNAME:Demo')
+    expect(pagesFromIcs(toIcs('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('ics', toIcs('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromIcs('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.ics', { type: '' }))).toBe('ics')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ics', { type: 'text/calendar' }))).toBe('ics')
+    expect(swapExtension('notes.ics', 'pdf')).toBe('notes.pdf')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: '' }))).toBe('cbz')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: 'application/vnd.comicbook+zip' }))).toBe(
       'cbz',

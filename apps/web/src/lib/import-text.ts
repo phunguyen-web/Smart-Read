@@ -38,6 +38,8 @@ export type ImportedTextKind =
   | 'bib'
   | 'srt'
   | 'vtt'
+  | 'lrc'
+  | 'ics'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -338,6 +340,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'vtt') {
     return pagesFromVtt(text)
+  }
+  if (kind === 'lrc') {
+    return pagesFromLrc(text)
+  }
+  if (kind === 'ics') {
+    return pagesFromIcs(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1208,6 +1216,65 @@ export function pagesFromVtt(text: string): string[] {
   }
   const body = trimmed.replace(/^WEBVTT\b.*$/im, '').trim()
   return pagesFromSrt(body)
+}
+
+const LRC_LINE = /^\s*\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\](.*)$/
+
+export function pagesFromLrc(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = trimmed
+    .split(/\r?\n/)
+    .map((line) => {
+      const match = line.match(LRC_LINE)
+      return match ? match[4]!.trim() : ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp lời bài hát cần các mốc thời gian.')
+}
+
+function unescapeIcs(value: string): string {
+  return value
+    .replace(/\\n/gi, '\n')
+    .replace(/\\,/g, ',')
+    .replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\')
+}
+
+function unfoldIcs(text: string): string {
+  return text.replace(/\r?\n[ \t]/g, '')
+}
+
+function icsField(block: string, name: string): string {
+  const match = unfoldIcs(block).match(new RegExp(`(?:^|\\n)${name}[;:]([^\\n]*)`, 'i'))
+  return match ? unescapeIcs(match[1]!.trim()) : ''
+}
+
+export function pagesFromIcs(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const unfolded = unfoldIcs(trimmed)
+  if (/BEGIN:VEVENT/i.test(unfolded)) {
+    const pages = unfolded
+      .split(/BEGIN:VEVENT/i)
+      .slice(1)
+      .map((chunk) => {
+        const block = chunk.split(/END:VEVENT/i)[0] ?? ''
+        return icsField(block, 'DESCRIPTION') || icsField(block, 'SUMMARY')
+      })
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  throw new Error('Tệp lịch cần các sự kiện VEVENT.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

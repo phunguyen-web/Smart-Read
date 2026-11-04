@@ -33,6 +33,7 @@ import {
   listOutlineBookmarks,
   renameNamedDest,
   removeNamedDest,
+  setNamedDestPage,
   listPageLabels,
   moveOutlineItem,
   outlineIndexAfterIndent,
@@ -1003,9 +1004,9 @@ export function Editor() {
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục
-          (thư mục lồng 3 cấp không Dest, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / đổi tên đích / xóa đích),
+          (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích / đổi tên đích / xóa đích),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -1015,7 +1016,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -2221,6 +2222,23 @@ export function Editor() {
                   }}
                 >
                   Gắn đích tên
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || namedDestAt == null}
+                  aria-label={
+                    namedDestAt == null
+                      ? 'Chọn một đích tên rồi gắn trang hiện tại'
+                      : `Gắn đích ${namedDestAt} vào trang ${page + 1}`
+                  }
+                  onClick={() => {
+                    if (namedDestAt == null) {
+                      return
+                    }
+                    void run((bytes) => setNamedDestPage(bytes, namedDestAt, page))
+                  }}
+                >
+                  Gắn trang đích
                 </button>
                 <button
                   type="button"
