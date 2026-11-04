@@ -88,6 +88,8 @@ import {
   toOnix,
   toUnixref,
   toBibjson,
+  toPubmed,
+  toJsonld,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -171,6 +173,8 @@ import {
   pagesFromOnix,
   pagesFromUnixref,
   pagesFromBibjson,
+  pagesFromPubmed,
+  pagesFromJsonld,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1580,6 +1584,34 @@ describe('pdf edits', () => {
         ),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 0, top: 20, zoom: LETTER_WIDTH / 200 } }])
+    expect(namedDestXyzFromZoomPreset('fit-height', { left: 10, top: 20, zoom: 2 })).toEqual({
+      left: 10,
+      top: 0,
+      zoom: 1,
+    })
+    expect(namedDestXyzFromZoomPreset('fit-height', { left: 10, top: 20, zoom: 2 }, undefined, 200)).toEqual({
+      left: 10,
+      top: 0,
+      zoom: LETTER_HEIGHT / 200,
+    })
+    expect(namedDestXyzZoomFromPreset('fit-height', undefined, 200)).toBe(LETTER_HEIGHT / 200)
+    expect(namedDestXyzZoomFromPreset('fit-height', undefined, A4_HEIGHT)).toBeCloseTo(
+      LETTER_HEIGHT / A4_HEIGHT,
+    )
+    expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-height')).toEqual({
+      left: 10,
+      top: 0,
+      zoom: LETTER_HEIGHT / 280,
+    })
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-height'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 0, zoom: LETTER_HEIGHT / 280 } }])
     await expect(namedDestXyzZoomFromDestPage(named, 'Missing', '100')).rejects.toThrow(/đích tên/)
     expect(() => namedDestXyzFromZoomPreset('zoom' as '100')).toThrow(/Zoom XYZ/)
 
@@ -2639,6 +2671,43 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toBe('bibjson')
     expect(swapExtension('notes.bibjson', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.bib.json', 'pdf')).toBe('notes.pdf')
+
+    expect(toPubmed('Demo', ['Một', 'Hai\ndòng'])).toContain('<PubmedArticleSet')
+    expect(toPubmed('Demo', ['Một'])).toContain('<Title>Demo</Title>')
+    expect(toPubmed('Demo', ['Một'])).toContain('<AbstractText>Một</AbstractText>')
+    expect(pagesFromPubmed(toPubmed('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('pubmed', toPubmed('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromPubmed('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromPubmed(
+        '<PubmedArticleSet><PubmedArticle><ArticleTitle>Một</ArticleTitle></PubmedArticle></PubmedArticleSet>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.pubmed', { type: '' }))).toBe('pubmed')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.pubmed.xml', { type: 'application/vnd.nlm.pubmed+xml' }),
+      ),
+    ).toBe('pubmed')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromPubmed('<PubmedArticleSet></PubmedArticleSet>')).toThrow(/PubmedArticle/)
+    expect(swapExtension('notes.pubmed', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.pubmed.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toJsonld('Demo', ['Một', 'Hai\ndòng'])).toContain('"@type": "CreativeWork"')
+    expect(toJsonld('Demo', ['Một'])).toContain('"name": "Demo"')
+    expect(toJsonld('Demo', ['Một'])).toContain('"description": "Một"')
+    expect(pagesFromJsonld(toJsonld('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('jsonld', toJsonld('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromJsonld('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromJsonld('[{"name":"Một"}]')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.json', { type: '' }))).toBe('json')
+    expect(sourceKindFromFile(new File(['x'], 'notes.jsonld', { type: '' }))).toBe('jsonld')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.json-ld', { type: 'application/ld+json' })),
+    ).toBe('jsonld')
+    expect(swapExtension('notes.jsonld', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.json-ld', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

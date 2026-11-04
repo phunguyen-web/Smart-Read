@@ -69,6 +69,8 @@ export type ImportedTextKind =
   | 'onix'
   | 'unixref'
   | 'bibjson'
+  | 'pubmed'
+  | 'jsonld'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -462,6 +464,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'bibjson') {
     return pagesFromBibjson(text)
+  }
+  if (kind === 'pubmed') {
+    return pagesFromPubmed(text)
+  }
+  if (kind === 'jsonld') {
+    return pagesFromJsonld(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -2247,6 +2255,79 @@ export function pagesFromBibjson(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp BibJSON cần các mục note / abstract / title.')
+}
+
+export function pagesFromPubmed(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<PubmedArticle\b[^>]*>([\s\S]*?)<\/PubmedArticle>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const note = xmlTagText(record, 'AbstractText') || xmlTagText(record, 'description')
+      if (note) {
+        return note
+      }
+      const abs = xmlTagText(record, 'abstract')
+      if (abs) {
+        return abs
+      }
+      const title = xmlTagText(record, 'ArticleTitle')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp PubMed cần các mục <PubmedArticle> / <AbstractText>.')
+}
+
+export function pagesFromJsonld(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  let data: unknown
+  try {
+    data = JSON.parse(trimmed)
+  } catch {
+    throw new Error('Tệp JSON-LD không hợp lệ.')
+  }
+  const items = Array.isArray(data) ? data : []
+  const pages = items
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return ''
+      }
+      const rec = item as { description?: unknown; abstract?: unknown; name?: unknown; title?: unknown }
+      if (typeof rec.description === 'string' && rec.description.trim()) {
+        return rec.description
+      }
+      if (typeof rec.abstract === 'string' && rec.abstract.trim()) {
+        return rec.abstract
+      }
+      if (typeof rec.name === 'string' && rec.name.trim() && !/^Trang\s+\d+$/.test(rec.name.trim())) {
+        return rec.name
+      }
+      if (
+        typeof rec.title === 'string' &&
+        rec.title.trim() &&
+        !/^Trang\s+\d+$/.test(rec.title.trim())
+      ) {
+        return rec.title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp JSON-LD cần các mục description / abstract / name.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

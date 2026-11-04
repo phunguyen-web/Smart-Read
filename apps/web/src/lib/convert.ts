@@ -66,6 +66,8 @@ export type ExportFormat =
   | 'onix'
   | 'unixref'
   | 'bibjson'
+  | 'pubmed'
+  | 'jsonld'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1392,6 +1394,45 @@ export function toBibjson(title: string, pages: string[]): string {
   return `${JSON.stringify(items, null, 2)}\n`
 }
 
+export function toPubmed(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <PubmedArticle>
+    <MedlineCitation>
+      <Article>
+        <Journal>
+          <Title>${heading}</Title>
+        </Journal>
+        <ArticleTitle>Trang ${index + 1}</ArticleTitle>
+        <Abstract>
+          <AbstractText>${note}</AbstractText>
+        </Abstract>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<PubmedArticleSet>
+${records}
+</PubmedArticleSet>
+`
+}
+
+export function toJsonld(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const items = pages.map((text, index) => ({
+    '@context': 'https://schema.org',
+    '@type': 'CreativeWork',
+    name: `Trang ${index + 1}`,
+    publisher: { name: heading },
+    description: text.trim() || '(không có chữ)',
+  }))
+  return `${JSON.stringify(items, null, 2)}\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2321,6 +2362,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.crossref.unixref+xml;charset=utf-8'
     case 'bibjson':
       return 'application/vnd.citationstyles.bibjson+json;charset=utf-8'
+    case 'pubmed':
+      return 'application/vnd.nlm.pubmed+xml;charset=utf-8'
+    case 'jsonld':
+      return 'application/ld+json;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
