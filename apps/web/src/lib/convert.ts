@@ -39,6 +39,8 @@ export type ExportFormat =
   | 'ics'
   | 'cue'
   | 'ass'
+  | 'ttml'
+  | 'sbv'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -769,6 +771,59 @@ Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 ${events}
 `
+}
+
+export function formatTtmlTime(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.trunc(totalSeconds))
+  const hours = Math.floor(clamped / 3600)
+  const minutes = Math.floor((clamped % 3600) / 60)
+  const seconds = clamped % 60
+  return `${padTimePart(hours)}:${padTimePart(minutes)}:${padTimePart(seconds)}.000`
+}
+
+export function toTtml(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const cues = pages
+    .map((text, index) => {
+      const start = formatTtmlTime(index * CUE_SECONDS)
+      const end = formatTtmlTime((index + 1) * CUE_SECONDS)
+      const body = escapeHtml(text.trim() || '(không có chữ)').replace(/\r?\n/g, '<br/>')
+      return `    <p begin="${start}" end="${end}">${body}</p>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="utf-8"?>
+<tt xmlns="http://www.w3.org/ns/ttml">
+  <head>
+    <metadata>
+      <title>${heading}</title>
+    </metadata>
+  </head>
+  <body>
+    <div>
+${cues}
+    </div>
+  </body>
+</tt>
+`
+}
+
+export function formatSbvTime(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.trunc(totalSeconds))
+  const hours = Math.floor(clamped / 3600)
+  const minutes = Math.floor((clamped % 3600) / 60)
+  const seconds = clamped % 60
+  return `${hours}:${padTimePart(minutes)}:${padTimePart(seconds)}.000`
+}
+
+export function toSbv(pages: string[]): string {
+  return `${pages
+    .map((text, index) => {
+      const start = formatSbvTime(index * CUE_SECONDS)
+      const end = formatSbvTime((index + 1) * CUE_SECONDS)
+      const content = text.trim() || '(không có chữ)'
+      return `${start},${end}\n${content}`
+    })
+    .join('\n\n')}\n`
 }
 
 export function toLatex(title: string, pages: string[]): string {
@@ -1646,6 +1701,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-cue;charset=utf-8'
     case 'ass':
       return 'text/x-ssa;charset=utf-8'
+    case 'ttml':
+      return 'application/ttml+xml;charset=utf-8'
+    case 'sbv':
+      return 'text/x-sbv;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

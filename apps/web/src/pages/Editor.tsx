@@ -18,6 +18,7 @@ import {
   addCoverPage,
   addHeaderFooter,
   addNamedDest,
+  duplicateNamedDest,
   addOutlineBookmarks,
   addOutlineFolder,
   bookletPreviewSheets,
@@ -595,14 +596,14 @@ export function Editor() {
     if (!doc) {
       return
     }
-    const parsed = parseGotoPage(gotoRaw, doc.pageCount, viewerLabels)
+    const parsed = parseGotoPage(gotoRaw, doc.pageCount, viewerLabels, namedDests)
     if (!parsed.ok) {
       setError(parsed.message)
       return
     }
     setError(null)
     goToPage(parsed.index, 'replace')
-  }, [doc, gotoRaw, goToPage, viewerLabels])
+  }, [doc, gotoRaw, goToPage, namedDests, viewerLabels])
 
   const removeBlankPages = useCallback(async (): Promise<void> => {
     if (!doc) {
@@ -1008,7 +1009,7 @@ export function Editor() {
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục
           (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -1018,7 +1019,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -1161,7 +1162,7 @@ export function Editor() {
                   ref={gotoRef}
                   value={gotoRaw}
                   placeholder={currentLabel || String(page + 1)}
-                  aria-label="Tới số hoặc nhãn trang"
+                  aria-label="Tới số, nhãn trang hoặc đích tên"
                   aria-keyshortcuts="Control+G"
                   onChange={(event) => setGotoRaw(event.target.value)}
                   onKeyDown={(event) => {
@@ -2299,6 +2300,36 @@ export function Editor() {
                   }}
                 >
                   Xóa đích tên
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    busy ||
+                    namedDestAt == null ||
+                    destName.normalize('NFC').trim() === '' ||
+                    destName.normalize('NFC').trim() === namedDestAt
+                  }
+                  aria-label={
+                    namedDestAt == null
+                      ? 'Chọn một đích tên rồi nhập tên mới để nhân bản'
+                      : destName.normalize('NFC').trim() === '' ||
+                          destName.normalize('NFC').trim() === namedDestAt
+                        ? 'Nhập tên đích mới để nhân bản'
+                        : `Nhân bản đích ${namedDestAt} thành ${destName.normalize('NFC').trim()}`
+                  }
+                  onClick={() => {
+                    if (namedDestAt == null) {
+                      return
+                    }
+                    const from = namedDestAt
+                    const nextName = destName.normalize('NFC').trim()
+                    void run(
+                      (bytes) => duplicateNamedDest(bytes, from, nextName),
+                      () => setNamedDestAt(nextName),
+                    )
+                  }}
+                >
+                  Nhân bản đích
                 </button>
               </div>
               {namedDests.length > 0 ? (

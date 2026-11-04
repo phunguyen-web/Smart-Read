@@ -200,11 +200,12 @@ function foldGoto(value: string): string {
     .toLowerCase()
 }
 
-/** Validate a 1-based page number, or a viewer page label, for jumping in the editor. */
+/** Validate a 1-based page number, a viewer page label, or a named dest for jumping. */
 export function parseGotoPage(
   raw: string,
   pageCount: number,
   labels?: readonly string[],
+  dests?: readonly { name: string; pageIndex: number }[],
 ): GotoPageParse {
   if (pageCount < 1) {
     return { ok: false, message: 'Tài liệu không có trang để tới.' }
@@ -220,13 +221,26 @@ export function parseGotoPage(
       return { ok: true, index: hit }
     }
   }
+  if (dests && dests.length > 0) {
+    const folded = foldGoto(trimmed)
+    const dest = dests.find((item) => foldGoto(item.name) === folded)
+    if (dest && dest.pageIndex >= 0 && dest.pageIndex < pageCount) {
+      return { ok: true, index: dest.pageIndex }
+    }
+  }
   if (!/^\d+$/.test(trimmed)) {
+    const hasLabels = Boolean(labels && labels.length === pageCount)
+    const hasDests = Boolean(dests && dests.length > 0)
     return {
       ok: false,
       message:
-        labels && labels.length === pageCount
-          ? 'Không tìm thấy nhãn hoặc số trang.'
-          : 'Số trang phải là số nguyên.',
+        hasLabels && hasDests
+          ? 'Không tìm thấy nhãn, đích tên hoặc số trang.'
+          : hasDests
+            ? 'Không tìm thấy đích tên hoặc số trang.'
+            : hasLabels
+              ? 'Không tìm thấy nhãn hoặc số trang.'
+              : 'Số trang phải là số nguyên.',
     }
   }
   const page = Number(trimmed)

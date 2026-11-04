@@ -52,6 +52,10 @@ import {
   toIcs,
   toCue,
   toAss,
+  formatTtmlTime,
+  formatSbvTime,
+  toTtml,
+  toSbv,
   escapeTypst,
   toJsonl,
   toLatex,
@@ -104,6 +108,8 @@ import {
   pagesFromIcs,
   pagesFromCue,
   pagesFromAss,
+  pagesFromTtml,
+  pagesFromSbv,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -177,6 +183,7 @@ import {
   addCoverPage,
   addHeaderFooter,
   addNamedDest,
+  duplicateNamedDest,
   renameNamedDest,
   removeNamedDest,
   setNamedDestPage,
@@ -978,6 +985,20 @@ describe('pdf edits', () => {
       { name: 'Beta', pageIndex: 1 },
       { name: 'ChapTwo', pageIndex: 1 },
     ])
+    const mergedDoc = await PDFDocument.load(mergedKids)
+    const mergedTree = mergedDoc.catalog
+      .lookup(PDFName.of('Names'), PDFDict)
+      .lookup(PDFName.of('Dests'), PDFDict)
+    expect(mergedTree.lookup(PDFName.of('Kids'), PDFArray).size()).toBe(3)
+    expect(mergedTree.lookupMaybe(PDFName.of('Names'), PDFArray)).toBeUndefined()
+    const duplicated = await duplicateNamedDest(named, 'ChapTwo', 'ChapTwoCopy')
+    expect(await listNamedDests(duplicated)).toEqual([
+      { name: 'ChapTwo', pageIndex: 1 },
+      { name: 'ChapTwoCopy', pageIndex: 1 },
+    ])
+    await expect(duplicateNamedDest(named, 'ChapTwo', 'ChapTwo')).rejects.toThrow(/đã dùng/)
+    await expect(duplicateNamedDest(bytes, 'ChapTwo', 'ChapTwoCopy')).rejects.toThrow(/đích tên/)
+    await expect(duplicateNamedDest(named, 'ChapTwo', '1bad')).rejects.toThrow(/chữ/)
 
     let branched = bytes
     for (const name of ['ChapA', 'ChapB', 'ChapC', 'ChapD', 'ChapE']) {
@@ -1680,6 +1701,31 @@ describe('conversion helpers', () => {
     expect(sourceKindFromFile(new File(['x'], 'notes.ass', { type: '' }))).toBe('ass')
     expect(sourceKindFromFile(new File(['x'], 'notes.ssa', { type: 'text/x-ssa' }))).toBe('ass')
     expect(swapExtension('notes.ass', 'pdf')).toBe('notes.pdf')
+    expect(
+      pagesFromAss(`[Events]
+Format: Marked, Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: Marked=0,0,0:00:00.00,0:00:04.00,Default,,0,0,0,,Hello, world
+Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
+    ).toEqual(['Hello, world', 'Hai'])
+    expect(formatTtmlTime(4)).toBe('00:00:04.000')
+    expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
+    expect(toTtml('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(pagesFromTtml(toTtml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('ttml', toTtml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromTtml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.ttml', { type: '' }))).toBe('ttml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dfxp', { type: 'application/ttml+xml' }))).toBe(
+      'ttml',
+    )
+    expect(swapExtension('notes.ttml', 'pdf')).toBe('notes.pdf')
+    expect(formatSbvTime(4)).toBe('0:00:04.000')
+    expect(toSbv(['Một', 'Hai\ndòng'])).toContain('0:00:00.000,0:00:04.000')
+    expect(pagesFromSbv(toSbv(['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('sbv', toSbv(['Hi']))).toEqual(['Hi'])
+    expect(pagesFromSbv('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.sbv', { type: '' }))).toBe('sbv')
+    expect(sourceKindFromFile(new File(['x'], 'notes.sbv', { type: 'text/x-sbv' }))).toBe('sbv')
+    expect(swapExtension('notes.sbv', 'pdf')).toBe('notes.pdf')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: '' }))).toBe('cbz')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: 'application/vnd.comicbook+zip' }))).toBe(
       'cbz',
@@ -1903,6 +1949,15 @@ describe('page selection', () => {
     expect(parseGotoPage('4', 4, ['i', 'ii', '1', '2'])).toEqual({ ok: true, index: 3 })
     expect(parseGotoPage('Trang 2', 2, ['Trang 1', 'Trang 2'])).toEqual({ ok: true, index: 1 })
     expect(parseGotoPage('iv', 4, ['i', 'ii', '1', '2']).ok).toBe(false)
+    expect(
+      parseGotoPage('ChapTwo', 2, undefined, [{ name: 'ChapTwo', pageIndex: 1 }]),
+    ).toEqual({ ok: true, index: 1 })
+    expect(
+      parseGotoPage('chaptwo', 2, ['1', '2'], [{ name: 'ChapTwo', pageIndex: 1 }]),
+    ).toEqual({ ok: true, index: 1 })
+    expect(parseGotoPage('Missing', 2, undefined, [{ name: 'ChapTwo', pageIndex: 1 }]).ok).toBe(
+      false,
+    )
   })
 
   it('caps undo snapshots and pops the latest first', () => {

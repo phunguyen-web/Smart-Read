@@ -42,6 +42,8 @@ export type ImportedTextKind =
   | 'ics'
   | 'cue'
   | 'ass'
+  | 'ttml'
+  | 'sbv'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -354,6 +356,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'ass') {
     return pagesFromAss(text)
+  }
+  if (kind === 'ttml') {
+    return pagesFromTtml(text)
+  }
+  if (kind === 'sbv') {
+    return pagesFromSbv(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1312,12 +1320,25 @@ function unescapeAss(value: string): string {
   return value.replace(/\\N/g, '\n').replace(/\\\{/g, '{').replace(/\\\}/g, '}')
 }
 
+/** Text column from the [Events] Format line (SSA Marked= can add fields before Text). */
+export function assTextColumn(eventsBlock: string): number {
+  const format = eventsBlock.match(/^\s*Format:\s*(.+)$/im)
+  if (!format) {
+    return 9
+  }
+  const cols = format[1]!.split(',').map((col) => col.trim().toLowerCase())
+  const textAt = cols.lastIndexOf('text')
+  return textAt >= 0 ? textAt : 9
+}
+
 export function pagesFromAss(text: string): string[] {
   const trimmed = assertImportBudget(text)
   if (/^\s*\{/.test(trimmed)) {
     return pagesFromJson(trimmed)
   }
-  const pages = trimmed
+  const events = trimmed.split(/^\s*\[Events\]\s*$/im)[1] ?? trimmed
+  const textAt = assTextColumn(events)
+  const pages = events
     .split(/\r?\n/)
     .map((line) => {
       const match = line.match(/^\s*Dialogue:\s*(.*)$/i)
@@ -1325,16 +1346,58 @@ export function pagesFromAss(text: string): string[] {
         return ''
       }
       const fields = match[1]!.split(',')
-      if (fields.length < 10) {
+      if (fields.length <= textAt) {
         return ''
       }
-      return unescapeAss(fields.slice(9).join(',').trim())
+      return unescapeAss(fields.slice(textAt).join(',').trim())
     })
     .filter((page) => page.length > 0)
   if (pages.length > 0) {
     return capPages(pages)
   }
   throw new Error('Tệp phụ đề ASS cần các dòng Dialogue.')
+}
+
+export function pagesFromTtml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = [...trimmed.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+    .map((match) =>
+      unescapeXml(
+        match[1]!.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ''),
+      ).trim(),
+    )
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp TTML cần các thẻ p.')
+}
+
+export function pagesFromSbv(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = trimmed
+    .split(/\r?\n\s*\r?\n/)
+    .map((chunk) => {
+      const lines = chunk.split(/\r?\n/).filter((line) => line.trim().length > 0)
+      if (lines.length === 0) {
+        return ''
+      }
+      if (/^\d+:\d{2}:\d{2}\.\d+,\d+:\d{2}:\d{2}\.\d+/.test(lines[0]!)) {
+        return lines.slice(1).join('\n').trim()
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp phụ đề SBV cần các mốc thời gian.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

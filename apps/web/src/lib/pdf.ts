@@ -2190,32 +2190,81 @@ function destNameLeaf(
   return leaf
 }
 
-/** Flat `/Names` when dests fit one leaf; otherwise a `/Kids` tree other writers can merge. */
-function destNameTree(doc: PDFDocument, items: readonly { name: string; destRef: PDFRef }[]): PDFDict {
-  if (items.length <= NAMED_DEST_LEAF_SIZE) {
+export type DestNameTreeStyle = {
+  forceKids: boolean
+  leafSize: number
+}
+
+/** Leaf size and `/Kids` presence from an existing `/Names` `/Dests` tree. */
+export function destNameTreeStyleFromDoc(doc: PDFDocument): DestNameTreeStyle {
+  const names = doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)
+  const tree = names?.lookupMaybe(PDFName.of('Dests'), PDFDict)
+  if (!tree) {
+    return { forceKids: false, leafSize: NAMED_DEST_LEAF_SIZE }
+  }
+  const kids = tree.lookupMaybe(PDFName.of('Kids'), PDFArray)
+  if (!(kids instanceof PDFArray) || kids.size() === 0) {
+    return { forceKids: false, leafSize: NAMED_DEST_LEAF_SIZE }
+  }
+  let leafSize = 0
+  const seen = new Set<number>()
+  for (let index = 0; index < kids.size(); index += 1) {
+    let node: unknown = kids.get(index)
+    if (node instanceof PDFRef) {
+      if (seen.has(node.objectNumber)) {
+        continue
+      }
+      seen.add(node.objectNumber)
+      node = doc.context.lookup(node)
+    }
+    if (!(node instanceof PDFDict)) {
+      continue
+    }
+    const namesArray = node.lookupMaybe(PDFName.of('Names'), PDFArray)
+    if (namesArray instanceof PDFArray) {
+      leafSize = Math.max(leafSize, Math.floor(namesArray.size() / 2))
+    }
+  }
+  return {
+    forceKids: true,
+    leafSize: Math.max(1, Math.min(leafSize || NAMED_DEST_LEAF_SIZE, NAMED_DEST_LEAF_SIZE)),
+  }
+}
+
+/** Flat `/Names` when dests fit one leaf; keep `/Kids` when the source tree already used them. */
+function destNameTree(
+  doc: PDFDocument,
+  items: readonly { name: string; destRef: PDFRef }[],
+  style: DestNameTreeStyle = { forceKids: false, leafSize: NAMED_DEST_LEAF_SIZE },
+): PDFDict {
+  const leafSize = Math.max(1, Math.min(style.leafSize || NAMED_DEST_LEAF_SIZE, NAMED_DEST_LEAF_SIZE))
+  if (!style.forceKids && items.length <= leafSize) {
     const tree = destNameLeaf(doc, items)
     tree.delete(PDFName.of('Limits'))
     return tree
   }
   const kids = doc.context.obj([])
-  for (let start = 0; start < items.length; start += NAMED_DEST_LEAF_SIZE) {
-    const chunk = items.slice(start, start + NAMED_DEST_LEAF_SIZE)
+  for (let start = 0; start < items.length; start += leafSize) {
+    const chunk = items.slice(start, start + leafSize)
     kids.push(doc.context.register(destNameLeaf(doc, chunk)))
   }
   const tree = doc.context.obj({})
   tree.set(PDFName.of('Kids'), kids)
-  tree.set(
-    PDFName.of('Limits'),
-    doc.context.obj([
-      PDFHexString.fromText(items[0]!.name),
-      PDFHexString.fromText(items[items.length - 1]!.name),
-    ]),
-  )
+  if (items.length > 0) {
+    tree.set(
+      PDFName.of('Limits'),
+      doc.context.obj([
+        PDFHexString.fromText(items[0]!.name),
+        PDFHexString.fromText(items[items.length - 1]!.name),
+      ]),
+    )
+  }
   return tree
 }
 
 /** Replace catalog `/Dests` and the `/Names` `/Dests` name tree. */
 function rewriteNamedDests(doc: PDFDocument, dests: readonly NamedDestination[]): void {
+  const style = destNameTreeStyleFromDoc(doc)
   const pages = doc.getPages()
   const unique = new Map<string, number>()
   for (const dest of dests) {
@@ -2259,7 +2308,7 @@ function rewriteNamedDests(doc: PDFDocument, dests: readonly NamedDestination[])
     namesDict = doc.context.obj({})
     doc.catalog.set(PDFName.of('Names'), namesDict)
   }
-  namesDict.set(PDFName.of('Dests'), destNameTree(doc, named))
+  namesDict.set(PDFName.of('Dests'), destNameTree(doc, named, style))
 }
 
 function writeCatalogNamedDests(
@@ -2661,6 +2710,30 @@ export async function renameNamedDest(
       item.destName === oldLabel ? cloneOutlineItem(item, { destName: newLabel }) : item,
     ),
   )
+}
+
+/** Copy an existing named destination to a new unused name on the same page. */
+export async function duplicateNamedDest(
+  bytes: Uint8Array,
+  from: string,
+  to: string,
+): Promise<Uint8Array> {
+  const source = assertNamedDestName(from)
+  const label = assertNamedDestName(to)
+  const doc = await PDFDocument.load(bytes)
+  const dests = collectNamedDests(doc)
+  if (!dests.has(source)) {
+    throw new Error('Chưa có đích tên này.')
+  }
+  if (dests.has(label)) {
+    throw new Error('Tên đích đã dùng.')
+  }
+  if (dests.size >= MAX_NAMED_DESTS) {
+    throw new Error(`Không thêm quá ${MAX_NAMED_DESTS} đích tên.`)
+  }
+  dests.set(label, dests.get(source)!)
+  rewriteNamedDests(doc, destsFromMap(dests))
+  return new Uint8Array(await doc.save())
 }
 
 /** Point an existing named destination at another page. Same page is a no-op. */
