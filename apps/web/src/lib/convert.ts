@@ -68,6 +68,8 @@ export type ExportFormat =
   | 'bibjson'
   | 'pubmed'
   | 'jsonld'
+  | 'bibframe'
+  | 'crossref'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1433,6 +1435,46 @@ export function toJsonld(title: string, pages: string[]): string {
   return `${JSON.stringify(items, null, 2)}\n`
 }
 
+export function toBibframe(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <bf:Work>
+    <bf:mainTitle>${heading}</bf:mainTitle>
+    <bf:title>Trang ${index + 1}</bf:title>
+    <bf:note>${note}</bf:note>
+  </bf:Work>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:bf="http://id.loc.gov/ontologies/bibframe/">
+${records}
+</rdf:RDF>
+`
+}
+
+export function toCrossref(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const items = pages.map((text, index) => ({
+    DOI: `10.0000/page-${index + 1}`,
+    type: 'journal-article',
+    title: [`Trang ${index + 1}`],
+    'container-title': [heading],
+    abstract: text.trim() || '(không có chữ)',
+  }))
+  return `${JSON.stringify(
+    {
+      status: 'ok',
+      'message-type': 'work-list',
+      'message-version': '1.0.0',
+      message: { items },
+    },
+    null,
+    2,
+  )}\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2366,6 +2408,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.nlm.pubmed+xml;charset=utf-8'
     case 'jsonld':
       return 'application/ld+json;charset=utf-8'
+    case 'bibframe':
+      return 'application/bibframe+xml;charset=utf-8'
+    case 'crossref':
+      return 'application/vnd.crossref+json;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

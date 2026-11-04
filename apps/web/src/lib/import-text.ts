@@ -71,6 +71,8 @@ export type ImportedTextKind =
   | 'bibjson'
   | 'pubmed'
   | 'jsonld'
+  | 'bibframe'
+  | 'crossref'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -470,6 +472,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'jsonld') {
     return pagesFromJsonld(text)
+  }
+  if (kind === 'bibframe') {
+    return pagesFromBibframe(text)
+  }
+  if (kind === 'crossref') {
+    return pagesFromCrossref(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -2328,6 +2336,121 @@ export function pagesFromJsonld(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp JSON-LD cần các mục description / abstract / name.')
+}
+
+export function pagesFromBibframe(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<bf:Work\b[^>]*>([\s\S]*?)<\/bf:Work>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const note = xmlTagText(record, 'bf:note') || xmlTagText(record, 'note')
+      if (note) {
+        return note
+      }
+      const abs = xmlTagText(record, 'abstract') || xmlTagText(record, 'bf:abstract')
+      if (abs) {
+        return abs
+      }
+      const title = xmlTagText(record, 'bf:title') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp BIBFRAME cần các mục <bf:Work> / <bf:note>.')
+}
+
+function firstCrossrefString(value: unknown): string {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim()
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item === 'string' && item.trim()) {
+        return item.trim()
+      }
+    }
+  }
+  return ''
+}
+
+function textFromCrossrefWork(item: unknown): string {
+  if (!item || typeof item !== 'object') {
+    return ''
+  }
+  const rec = item as { abstract?: unknown; note?: unknown; title?: unknown }
+  const abstract = firstCrossrefString(rec.abstract)
+  if (abstract) {
+    return abstract
+  }
+  const note = firstCrossrefString(rec.note)
+  if (note) {
+    return note
+  }
+  const title = firstCrossrefString(rec.title)
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function crossrefWorkItems(data: unknown): unknown[] | null {
+  if (Array.isArray(data)) {
+    return data
+  }
+  if (!data || typeof data !== 'object') {
+    return null
+  }
+  const rec = data as { 'message-type'?: unknown; message?: unknown }
+  const isWorkList = rec['message-type'] === 'work-list' || rec['message-type'] === 'work'
+  if (rec.message && typeof rec.message === 'object' && !Array.isArray(rec.message)) {
+    const items = (rec.message as { items?: unknown }).items
+    if (Array.isArray(items) && (isWorkList || items.length > 0)) {
+      return items
+    }
+  }
+  return isWorkList ? [] : null
+}
+
+export function pagesFromCrossref(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    let data: unknown
+    try {
+      data = JSON.parse(trimmed)
+    } catch {
+      throw new Error('Tệp Crossref không hợp lệ.')
+    }
+    const items = crossrefWorkItems(data)
+    if (items) {
+      const pages = items.map(textFromCrossrefWork).filter((page) => page.length > 0)
+      if (pages.length > 0) {
+        return capPages(pages)
+      }
+      throw new Error('Tệp Crossref cần các mục abstract / note / title.')
+    }
+    return pagesFromJson(trimmed)
+  }
+  let data: unknown
+  try {
+    data = JSON.parse(trimmed)
+  } catch {
+    throw new Error('Tệp Crossref không hợp lệ.')
+  }
+  const items = crossrefWorkItems(data)
+  const pages = (items ?? []).map(textFromCrossrefWork).filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp Crossref cần các mục abstract / note / title.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

@@ -90,6 +90,8 @@ import {
   toBibjson,
   toPubmed,
   toJsonld,
+  toBibframe,
+  toCrossref,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -175,6 +177,8 @@ import {
   pagesFromBibjson,
   pagesFromPubmed,
   pagesFromJsonld,
+  pagesFromBibframe,
+  pagesFromCrossref,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1612,6 +1616,42 @@ describe('pdf edits', () => {
         ),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 0, zoom: LETTER_HEIGHT / 280 } }])
+    expect(namedDestXyzFromZoomPreset('fit-page', { left: 10, top: 20, zoom: 2 })).toEqual({
+      left: 0,
+      top: 0,
+      zoom: 1,
+    })
+    expect(namedDestXyzFromZoomPreset('fit-page', { left: 10, top: 20, zoom: 2 }, 200, 200)).toEqual({
+      left: 0,
+      top: 0,
+      zoom: Math.min(LETTER_WIDTH / 200, LETTER_HEIGHT / 200),
+    })
+    expect(namedDestXyzZoomFromPreset('fit-page', 200, 200)).toBe(
+      Math.min(LETTER_WIDTH / 200, LETTER_HEIGHT / 200),
+    )
+    expect(namedDestXyzZoomFromPreset('fit-page', A4_WIDTH, A4_HEIGHT)).toBeCloseTo(
+      Math.min(LETTER_WIDTH / A4_WIDTH, LETTER_HEIGHT / A4_HEIGHT),
+    )
+    expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-page')).toEqual({
+      left: 0,
+      top: 0,
+      zoom: Math.min(LETTER_WIDTH / 200, LETTER_HEIGHT / 280),
+    })
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-page'),
+        ),
+      ),
+    ).toEqual([
+      {
+        name: 'ChapTwo',
+        pageIndex: 1,
+        xyz: { left: 0, top: 0, zoom: Math.min(LETTER_WIDTH / 200, LETTER_HEIGHT / 280) },
+      },
+    ])
     await expect(namedDestXyzZoomFromDestPage(named, 'Missing', '100')).rejects.toThrow(/đích tên/)
     expect(() => namedDestXyzFromZoomPreset('zoom' as '100')).toThrow(/Zoom XYZ/)
 
@@ -2708,6 +2748,48 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toBe('jsonld')
     expect(swapExtension('notes.jsonld', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.json-ld', 'pdf')).toBe('notes.pdf')
+
+    expect(toBibframe('Demo', ['Một', 'Hai\ndòng'])).toContain('<rdf:RDF')
+    expect(toBibframe('Demo', ['Một'])).toContain('<bf:mainTitle>Demo</bf:mainTitle>')
+    expect(toBibframe('Demo', ['Một'])).toContain('<bf:note>Một</bf:note>')
+    expect(pagesFromBibframe(toBibframe('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('bibframe', toBibframe('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromBibframe('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromBibframe(
+        '<rdf:RDF xmlns:bf="http://id.loc.gov/ontologies/bibframe/"><bf:Work><bf:title>Một</bf:title></bf:Work></rdf:RDF>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.bibframe', { type: '' }))).toBe('bibframe')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.bibframe.xml', { type: 'application/bibframe+xml' }),
+      ),
+    ).toBe('bibframe')
+    expect(sourceKindFromFile(new File(['x'], 'notes.bf.xml', { type: '' }))).toBe('bibframe')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromBibframe('<rdf:RDF></rdf:RDF>')).toThrow(/bf:Work/)
+    expect(swapExtension('notes.bibframe', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.bibframe.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.bf.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toCrossref('Demo', ['Một', 'Hai\ndòng'])).toContain('"message-type": "work-list"')
+    expect(toCrossref('Demo', ['Một'])).toContain('"Demo"')
+    expect(toCrossref('Demo', ['Một'])).toContain('"abstract": "Một"')
+    expect(pagesFromCrossref(toCrossref('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('crossref', toCrossref('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromCrossref('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromCrossref('[{"title":["Một"]}]')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.json', { type: '' }))).toBe('json')
+    expect(sourceKindFromFile(new File(['x'], 'notes.crossref', { type: '' }))).toBe('crossref')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.crossref.json', { type: 'application/vnd.crossref+json' }),
+      ),
+    ).toBe('crossref')
+    expect(sourceKindFromFile(new File(['x'], 'notes.crossref.xml', { type: '' }))).toBe('unixref')
+    expect(swapExtension('notes.crossref', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.crossref.json', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

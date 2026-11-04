@@ -3,7 +3,7 @@ import type { ImportedTextKind, ZipImportKind } from './import-text.ts'
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 export const ACCEPT_SOURCES =
-  'application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,application/x-ipynb+json,.ipynb,application/x-bibtex,.bib,.bibtex,application/x-research-info-systems,.ris,application/x-endnote-refer,.enw,application/vnd.citationstyles.csl+json,.csljson,application/x-nbib,.nbib,application/vnd.citationstyles.csl+yaml,.cslyaml,.csl.yaml,.csl.yml,application/x-endnote+xml,.enxml,application/mods+xml,.mods,.mods.xml,application/citation-file+yaml,.cff,.citation.cff,application/vnd.datacite.datacite+xml,.datacite,.datacite.xml,application/marcxml+xml,.marcxml,.mrcx,.marc.xml,application/vnd.dublincore+xml,.dublincore,.dublincore.xml,.dc.xml,application/onix+xml,.onix,.onix.xml,application/vnd.crossref.unixref+xml,.unixref,.unixref.xml,.crossref.xml,application/vnd.citationstyles.bibjson+json,.bibjson,.bib.json,application/vnd.nlm.pubmed+xml,.pubmed,.pubmed.xml,application/ld+json,.jsonld,.json-ld,application/x-subrip,.srt,text/vtt,.vtt,text/x-lrc,.lrc,text/calendar,.ics,application/x-cue,.cue,text/x-ssa,.ass,.ssa,application/ttml+xml,.ttml,.dfxp,text/x-sbv,.sbv,application/x-sami,.smi,.sami,text/x-microdvd,.sub,text/x-subviewer,.sub,text/x-spruce,.stl,text/x-scc,.scc,application/x-usf+xml,.usf,text/vnd.rn-realtext,.rt,text/x-mpl2,.mpl,image/vnd.djvu,.djvu,.djv,application/postscript,.ps,.eps,application/eps,application/tei+xml,.tei,application/vnd.jats+xml,.jats,.nxml,application/json,.json,application/jsonl,.jsonl,.ndjson,application/yaml,.yaml,.yml,text/yaml,application/xml,.xml,text/xml,text/csv,.csv,text/tab-separated-values,.tsv,application/toml,.toml,text/org,.org,application/x-tex,.tex,.latex,text/x-texinfo,.texinfo,.texi,.txi,text/troff,text/x-roff,.roff,.man,text/ini,.ini,.cfg,text/asciidoc,.adoc,.asciidoc,text/x-rst,.rst,.rest,text/x-textile,.textile,.txtl,text/x-mediawiki,.mediawiki,.wiki,text/x-dokuwiki,.dokuwiki,.dw,application/docbook+xml,.dbk,.docbook,text/x-opml,.opml,application/atom+xml,.atom,application/rss+xml,.rss,text/x-typst,.typ,text/gemini,.gmi,.gemini,text/x-pod,.pod,text/x-bbcode,.bbcode,.bb,text/x-fountain,.fountain,.spmd,text/x-tiddlywiki,.tid,.tiddlywiki,.tiddly,application/rtf,.rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,application/msword,.doc,application/vnd.oasis.opendocument.text,.odt,application/vnd.oasis.opendocument.spreadsheet,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pptx,application/vnd.oasis.opendocument.presentation,.odp,application/x-fictionbook+xml,.fb2,application/epub+zip,.epub,application/vnd.comicbook+zip,.cbz,image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp'
+  'application/pdf,.pdf,text/plain,.txt,text/markdown,.md,.markdown,text/html,.html,.htm,application/x-ipynb+json,.ipynb,application/x-bibtex,.bib,.bibtex,application/x-research-info-systems,.ris,application/x-endnote-refer,.enw,application/vnd.citationstyles.csl+json,.csljson,application/x-nbib,.nbib,application/vnd.citationstyles.csl+yaml,.cslyaml,.csl.yaml,.csl.yml,application/x-endnote+xml,.enxml,application/mods+xml,.mods,.mods.xml,application/citation-file+yaml,.cff,.citation.cff,application/vnd.datacite.datacite+xml,.datacite,.datacite.xml,application/marcxml+xml,.marcxml,.mrcx,.marc.xml,application/vnd.dublincore+xml,.dublincore,.dublincore.xml,.dc.xml,application/onix+xml,.onix,.onix.xml,application/vnd.crossref.unixref+xml,.unixref,.unixref.xml,.crossref.xml,application/vnd.citationstyles.bibjson+json,.bibjson,.bib.json,application/vnd.nlm.pubmed+xml,.pubmed,.pubmed.xml,application/bibframe+xml,.bibframe,.bibframe.xml,.bf.xml,application/ld+json,.jsonld,.json-ld,application/vnd.crossref+json,.crossref,.crossref.json,application/x-subrip,.srt,text/vtt,.vtt,text/x-lrc,.lrc,text/calendar,.ics,application/x-cue,.cue,text/x-ssa,.ass,.ssa,application/ttml+xml,.ttml,.dfxp,text/x-sbv,.sbv,application/x-sami,.smi,.sami,text/x-microdvd,.sub,text/x-subviewer,.sub,text/x-spruce,.stl,text/x-scc,.scc,application/x-usf+xml,.usf,text/vnd.rn-realtext,.rt,text/x-mpl2,.mpl,image/vnd.djvu,.djvu,.djv,application/postscript,.ps,.eps,application/eps,application/tei+xml,.tei,application/vnd.jats+xml,.jats,.nxml,application/json,.json,application/jsonl,.jsonl,.ndjson,application/yaml,.yaml,.yml,text/yaml,application/xml,.xml,text/xml,text/csv,.csv,text/tab-separated-values,.tsv,application/toml,.toml,text/org,.org,application/x-tex,.tex,.latex,text/x-texinfo,.texinfo,.texi,.txi,text/troff,text/x-roff,.roff,.man,text/ini,.ini,.cfg,text/asciidoc,.adoc,.asciidoc,text/x-rst,.rst,.rest,text/x-textile,.textile,.txtl,text/x-mediawiki,.mediawiki,.wiki,text/x-dokuwiki,.dokuwiki,.dw,application/docbook+xml,.dbk,.docbook,text/x-opml,.opml,application/atom+xml,.atom,application/rss+xml,.rss,text/x-typst,.typ,text/gemini,.gmi,.gemini,text/x-pod,.pod,text/x-bbcode,.bbcode,.bb,text/x-fountain,.fountain,.spmd,text/x-tiddlywiki,.tid,.tiddlywiki,.tiddly,application/rtf,.rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,application/msword,.doc,application/vnd.oasis.opendocument.text,.odt,application/vnd.oasis.opendocument.spreadsheet,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pptx,application/vnd.oasis.opendocument.presentation,.odp,application/x-fictionbook+xml,.fb2,application/epub+zip,.epub,application/vnd.comicbook+zip,.cbz,image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp'
 
 export type ImageKind = 'png' | 'jpg' | 'webp'
 export type EmbedImageKind = 'png' | 'jpg'
@@ -126,6 +126,15 @@ export function sourceKindFromFile(file: File): SourceKind {
     name.endsWith('.json-ld')
   ) {
     return 'jsonld'
+  }
+  if (
+    type === 'application/vnd.crossref+json' ||
+    type === 'application/vnd.crossref.unixsd+json' ||
+    type === 'application/x-crossref+json' ||
+    name.endsWith('.crossref.json') ||
+    name.endsWith('.crossref')
+  ) {
+    return 'crossref'
   }
   if (type === 'application/json' || name.endsWith('.json')) {
     return 'json'
@@ -511,6 +520,16 @@ export function sourceKindFromFile(file: File): SourceKind {
     return 'pubmed'
   }
   if (
+    type === 'application/bibframe+xml' ||
+    type === 'application/x-bibframe+xml' ||
+    type === 'text/x-bibframe+xml' ||
+    name.endsWith('.bibframe.xml') ||
+    name.endsWith('.bf.xml') ||
+    name.endsWith('.bibframe')
+  ) {
+    return 'bibframe'
+  }
+  if (
     type === 'application/xml' ||
     type === 'text/xml' ||
     (name.endsWith('.xml') && !name.endsWith('.fb2'))
@@ -686,7 +705,7 @@ export function sourceKindFromFile(file: File): SourceKind {
   try {
     return imageKindFromFile(file)
   } catch {
-    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP.')
+    throw new Error('Chỉ nhận PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP.')
   }
 }
 
@@ -769,7 +788,7 @@ export async function readImageFiles(
 
 export function swapExtension(filename: string, ext: string): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|bib\.json|json-ld|jsonld|json|csl\.ya?ml|ya?ml|endnote\.xml|mods\.xml|datacite\.xml|marc\.xml|dublincore\.xml|dc\.xml|onix\.xml|unixref\.xml|crossref\.xml|pubmed\.xml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|lrc|ics|cue|ass|ssa|ttml|dfxp|sbv|sami|smi|sub|stl|scc|usf|mpl|djvu|djv|tei|jats|nxml|ris|enw|csljson|bibjson|nbib|cslyaml|enxml|mods|citation\.cff|cff|datacite|marcxml|mrcx|dublincore|onix|unixref|pubmed|eps|ps|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|rt|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|bib\.json|json-ld|jsonld|crossref\.json|json|csl\.ya?ml|ya?ml|endnote\.xml|mods\.xml|datacite\.xml|marc\.xml|dublincore\.xml|dc\.xml|onix\.xml|unixref\.xml|crossref\.xml|pubmed\.xml|bibframe\.xml|bf\.xml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|lrc|ics|cue|ass|ssa|ttml|dfxp|sbv|sami|smi|sub|stl|scc|usf|mpl|djvu|djv|tei|jats|nxml|ris|enw|csljson|bibjson|nbib|cslyaml|enxml|mods|citation\.cff|cff|datacite|marcxml|mrcx|dublincore|onix|unixref|pubmed|bibframe|crossref|eps|ps|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|rt|cbz)$/i, '') ||
     'document'
   return `${base}.${ext}`
 }
@@ -814,7 +833,7 @@ export function imagePageName(
   ext: 'png' | 'jpg' | 'webp',
 ): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|bib\.json|json-ld|jsonld|json|csl\.ya?ml|ya?ml|endnote\.xml|mods\.xml|datacite\.xml|marc\.xml|dublincore\.xml|dc\.xml|onix\.xml|unixref\.xml|crossref\.xml|pubmed\.xml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|lrc|ics|cue|ass|ssa|ttml|dfxp|sbv|sami|smi|sub|stl|scc|usf|mpl|djvu|djv|tei|jats|nxml|ris|enw|csljson|bibjson|nbib|cslyaml|enxml|mods|citation\.cff|cff|datacite|marcxml|mrcx|dublincore|onix|unixref|pubmed|eps|ps|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|rt|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|bib\.json|json-ld|jsonld|crossref\.json|json|csl\.ya?ml|ya?ml|endnote\.xml|mods\.xml|datacite\.xml|marc\.xml|dublincore\.xml|dc\.xml|onix\.xml|unixref\.xml|crossref\.xml|pubmed\.xml|bibframe\.xml|bf\.xml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|lrc|ics|cue|ass|ssa|ttml|dfxp|sbv|sami|smi|sub|stl|scc|usf|mpl|djvu|djv|tei|jats|nxml|ris|enw|csljson|bibjson|nbib|cslyaml|enxml|mods|citation\.cff|cff|datacite|marcxml|mrcx|dublincore|onix|unixref|pubmed|bibframe|crossref|eps|ps|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|rt|cbz)$/i, '') ||
     'document'
   const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
   return `${base}-trang-${page}.${ext}`
@@ -822,7 +841,7 @@ export function imagePageName(
 
 export function imageZipName(filename: string, ext: 'png' | 'jpg' | 'webp'): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|bib\.json|json-ld|jsonld|json|csl\.ya?ml|ya?ml|endnote\.xml|mods\.xml|datacite\.xml|marc\.xml|dublincore\.xml|dc\.xml|onix\.xml|unixref\.xml|crossref\.xml|pubmed\.xml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|lrc|ics|cue|ass|ssa|ttml|dfxp|sbv|sami|smi|sub|stl|scc|usf|mpl|djvu|djv|tei|jats|nxml|ris|enw|csljson|bibjson|nbib|cslyaml|enxml|mods|citation\.cff|cff|datacite|marcxml|mrcx|dublincore|onix|unixref|pubmed|eps|ps|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|rt|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|bib\.json|json-ld|jsonld|crossref\.json|json|csl\.ya?ml|ya?ml|endnote\.xml|mods\.xml|datacite\.xml|marc\.xml|dublincore\.xml|dc\.xml|onix\.xml|unixref\.xml|crossref\.xml|pubmed\.xml|bibframe\.xml|bf\.xml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|lrc|ics|cue|ass|ssa|ttml|dfxp|sbv|sami|smi|sub|stl|scc|usf|mpl|djvu|djv|tei|jats|nxml|ris|enw|csljson|bibjson|nbib|cslyaml|enxml|mods|citation\.cff|cff|datacite|marcxml|mrcx|dublincore|onix|unixref|pubmed|bibframe|crossref|eps|ps|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|rt|cbz)$/i, '') ||
     'document'
   return `${base}-anh-${ext}.zip`
 }
@@ -834,7 +853,7 @@ export function embeddedImageName(
   ext: 'png' | 'jpg',
 ): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|bib\.json|json-ld|jsonld|json|csl\.ya?ml|ya?ml|endnote\.xml|mods\.xml|datacite\.xml|marc\.xml|dublincore\.xml|dc\.xml|onix\.xml|unixref\.xml|crossref\.xml|pubmed\.xml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|lrc|ics|cue|ass|ssa|ttml|dfxp|sbv|sami|smi|sub|stl|scc|usf|mpl|djvu|djv|tei|jats|nxml|ris|enw|csljson|bibjson|nbib|cslyaml|enxml|mods|citation\.cff|cff|datacite|marcxml|mrcx|dublincore|onix|unixref|pubmed|eps|ps|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|rt|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|bib\.json|json-ld|jsonld|crossref\.json|json|csl\.ya?ml|ya?ml|endnote\.xml|mods\.xml|datacite\.xml|marc\.xml|dublincore\.xml|dc\.xml|onix\.xml|unixref\.xml|crossref\.xml|pubmed\.xml|bibframe\.xml|bf\.xml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|lrc|ics|cue|ass|ssa|ttml|dfxp|sbv|sami|smi|sub|stl|scc|usf|mpl|djvu|djv|tei|jats|nxml|ris|enw|csljson|bibjson|nbib|cslyaml|enxml|mods|citation\.cff|cff|datacite|marcxml|mrcx|dublincore|onix|unixref|pubmed|bibframe|crossref|eps|ps|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|rt|cbz)$/i, '') ||
     'document'
   const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
   const image = Number.isInteger(imageIndex) && imageIndex >= 0 ? imageIndex + 1 : 1
@@ -843,7 +862,7 @@ export function embeddedImageName(
 
 export function embeddedImageZipName(filename: string): string {
   const base =
-    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|bib\.json|json-ld|jsonld|json|csl\.ya?ml|ya?ml|endnote\.xml|mods\.xml|datacite\.xml|marc\.xml|dublincore\.xml|dc\.xml|onix\.xml|unixref\.xml|crossref\.xml|pubmed\.xml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|lrc|ics|cue|ass|ssa|ttml|dfxp|sbv|sami|smi|sub|stl|scc|usf|mpl|djvu|djv|tei|jats|nxml|ris|enw|csljson|bibjson|nbib|cslyaml|enxml|mods|citation\.cff|cff|datacite|marcxml|mrcx|dublincore|onix|unixref|pubmed|eps|ps|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|rt|cbz)$/i, '') ||
+    filename.replace(/\.(pdf|txt|text|md|markdown|html|htm|png|jpe?g|webp|jsonl|ndjson|ipynb|bib\.json|json-ld|jsonld|crossref\.json|json|csl\.ya?ml|ya?ml|endnote\.xml|mods\.xml|datacite\.xml|marc\.xml|dublincore\.xml|dc\.xml|onix\.xml|unixref\.xml|crossref\.xml|pubmed\.xml|bibframe\.xml|bf\.xml|xml|csv|tsv|toml|org|texinfo|texi|txi|tex|latex|ini|cfg|adoc|asciidoc|rst|rest|textile|txtl|mediawiki|wiki|dokuwiki|dw|dbk|docbook|opml|atom|rss|typ|gmi|gemini|pod|bbcode|bb|fountain|spmd|tid|tiddlywiki|tiddly|roff|man|bibtex|bib|srt|vtt|lrc|ics|cue|ass|ssa|ttml|dfxp|sbv|sami|smi|sub|stl|scc|usf|mpl|djvu|djv|tei|jats|nxml|ris|enw|csljson|bibjson|nbib|cslyaml|enxml|mods|citation\.cff|cff|datacite|marcxml|mrcx|dublincore|onix|unixref|pubmed|bibframe|crossref|eps|ps|xlsx|xls|docx|doc|pptx|ppt|epub|odt|ods|odp|fb2|rtf|rt|cbz)$/i, '') ||
     'document'
   return `${base}-anh-nhung.zip`
 }
