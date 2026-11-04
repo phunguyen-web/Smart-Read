@@ -47,6 +47,8 @@ export type ImportedTextKind =
   | 'sami'
   | 'sub'
   | 'stl'
+  | 'scc'
+  | 'usf'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -374,6 +376,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'stl') {
     return pagesFromStl(text)
+  }
+  if (kind === 'scc') {
+    return pagesFromScc(text)
+  }
+  if (kind === 'usf') {
+    return pagesFromUsf(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1527,6 +1535,40 @@ export function pagesFromStl(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp phụ đề STL cần các mốc thời gian.')
+}
+
+export function pagesFromScc(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = trimmed
+    .split(/\r?\n/)
+    .map((line) => {
+      const match = line.match(/^\s*\d{2}:\d{2}:\d{2}:\d{2}\s+(.*)$/)
+      return match ? match[1]!.replace(/\|/g, '\n').trim() : ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp phụ đề SCC cần các mốc thời gian.')
+}
+
+export function pagesFromUsf(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = [...trimmed.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/gi)]
+    .map((match) =>
+      unescapeXml(match[1]!.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim(),
+    )
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp phụ đề USF cần các thẻ text.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

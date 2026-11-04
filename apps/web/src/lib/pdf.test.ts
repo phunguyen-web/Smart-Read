@@ -57,11 +57,15 @@ import {
   formatSamiTime,
   formatSubTime,
   formatStlTime,
+  formatSccTime,
+  formatUsfTime,
   toTtml,
   toSbv,
   toSami,
   toSub,
   toStl,
+  toScc,
+  toUsf,
   escapeTypst,
   toJsonl,
   toLatex,
@@ -119,6 +123,8 @@ import {
   pagesFromSami,
   pagesFromSub,
   pagesFromStl,
+  pagesFromScc,
+  pagesFromUsf,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -193,12 +199,15 @@ import {
   addHeaderFooter,
   addNamedDest,
   addNamedDestsForSelection,
+  destNamesForPage,
   namedDestNameForPage,
+  namedDestViewOf,
   clearNamedDests,
   duplicateNamedDest,
   renameNamedDest,
   removeNamedDest,
   setNamedDestPage,
+  setNamedDestView,
   parseNamedDestPageInput,
   NAMED_DEST_LEAF_SIZE,
   destNameTreeChildSpan,
@@ -1096,6 +1105,56 @@ describe('pdf edits', () => {
     expect(emptyClearDoc.catalog.lookupMaybe(PDFName.of('Dests'), PDFDict)).toBeUndefined()
     await expect(clearNamedDests(bytes)).rejects.toThrow(/đích tên/)
 
+    expect(namedDestViewOf(undefined)).toBe('XYZ')
+    expect(namedDestViewOf({ name: 'ChapTwo', pageIndex: 1 })).toBe('XYZ')
+    expect(destNamesForPage(await listNamedDests(named), 1)).toEqual(['ChapTwo'])
+    expect(destNamesForPage(await listNamedDests(named), 0)).toEqual([])
+    expect(await listNamedDests(await setNamedDestView(named, 'ChapTwo', 'XYZ'))).toEqual([
+      { name: 'ChapTwo', pageIndex: 1 },
+    ])
+    const fitDest = await setNamedDestView(named, 'ChapTwo', 'Fit')
+    expect(await listNamedDests(fitDest)).toEqual([{ name: 'ChapTwo', pageIndex: 1, view: 'Fit' }])
+    const fitDoc = await PDFDocument.load(fitDest)
+    const fitArray = fitDoc.context.lookup(
+      fitDoc.catalog.lookup(PDFName.of('Dests'), PDFDict).get(PDFName.of('ChapTwo')),
+      PDFArray,
+    )
+    expect(fitArray.get(1)).toEqual(PDFName.of('Fit'))
+    const fitHDest = await setNamedDestView(named, 'ChapTwo', 'FitH')
+    expect(await listNamedDests(fitHDest)).toEqual([{ name: 'ChapTwo', pageIndex: 1, view: 'FitH' }])
+    const fitHDoc = await PDFDocument.load(fitHDest)
+    const fitHArray = fitHDoc.context.lookup(
+      fitHDoc.catalog.lookup(PDFName.of('Dests'), PDFDict).get(PDFName.of('ChapTwo')),
+      PDFArray,
+    )
+    expect(fitHArray.get(1)).toEqual(PDFName.of('FitH'))
+    expect(await listNamedDests(await setNamedDestPage(fitDest, 'ChapTwo', 0))).toEqual([
+      { name: 'ChapTwo', pageIndex: 0, view: 'Fit' },
+    ])
+    expect(await listNamedDests(await duplicateNamedDest(fitDest, 'ChapTwo', 'ChapFit'))).toEqual([
+      { name: 'ChapFit', pageIndex: 1, view: 'Fit' },
+      { name: 'ChapTwo', pageIndex: 1, view: 'Fit' },
+    ])
+    const foreignFit = await PDFDocument.load(bytes)
+    const foreignFitPages = foreignFit.getPages()
+    const fitRef = foreignFit.context.register(
+      foreignFit.context.obj([foreignFitPages[0]!.ref, PDFName.of('Fit')]),
+    )
+    const fitBhRef = foreignFit.context.register(
+      foreignFit.context.obj([foreignFitPages[1]!.ref, PDFName.of('FitBH'), null]),
+    )
+    const fitCatalog = foreignFit.context.obj({})
+    fitCatalog.set(PDFName.of('Whole'), fitRef)
+    fitCatalog.set(PDFName.of('Wide'), fitBhRef)
+    foreignFit.catalog.set(PDFName.of('Dests'), fitCatalog)
+    expect(await listNamedDests(new Uint8Array(await foreignFit.save()))).toEqual([
+      { name: 'Whole', pageIndex: 0, view: 'Fit' },
+      { name: 'Wide', pageIndex: 1, view: 'FitH' },
+    ])
+    await expect(setNamedDestView(named, 'Missing', 'Fit')).rejects.toThrow(/đích tên/)
+    await expect(setNamedDestView(named, 'ChapTwo', 'FitR')).rejects.toThrow(/XYZ/)
+    await expect(setNamedDestView(bytes, 'ChapTwo', 'Fit')).rejects.toThrow(/đích tên/)
+
     expect(toRomanNumeral(2)).toBe('ii')
     expect(toRomanNumeral(4, true)).toBe('IV')
     expect(formatPageLabel('trang', 3)).toBe('Trang 3')
@@ -1814,6 +1873,26 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(sourceKindFromFile(new File(['x'], 'notes.stl', { type: '' }))).toBe('stl')
     expect(sourceKindFromFile(new File(['x'], 'notes.stl', { type: 'text/x-spruce' }))).toBe('stl')
     expect(swapExtension('notes.stl', 'pdf')).toBe('notes.pdf')
+    expect(formatSccTime(4)).toBe('00:00:04:00')
+    expect(toScc(['Một', 'Hai\ndòng'])).toContain('Scenarist_SCC V1.0')
+    expect(toScc(['Một'])).toContain('00:00:00:00')
+    expect(pagesFromScc(toScc(['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('scc', toScc(['Hi']))).toEqual(['Hi'])
+    expect(pagesFromScc('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.scc', { type: '' }))).toBe('scc')
+    expect(sourceKindFromFile(new File(['x'], 'notes.scc', { type: 'text/x-scc' }))).toBe('scc')
+    expect(swapExtension('notes.scc', 'pdf')).toBe('notes.pdf')
+    expect(formatUsfTime(4)).toBe('00:00:04.000')
+    expect(toUsf('Demo', ['Một', 'Hai\ndòng'])).toContain('<USFSubtitles')
+    expect(toUsf('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(pagesFromUsf(toUsf('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('usf', toUsf('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromUsf('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.usf', { type: '' }))).toBe('usf')
+    expect(sourceKindFromFile(new File(['x'], 'notes.usf', { type: 'application/x-usf+xml' }))).toBe(
+      'usf',
+    )
+    expect(swapExtension('notes.usf', 'pdf')).toBe('notes.pdf')
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
     expect(toTtml('Demo', ['Một'])).toContain('<title>Demo</title>')

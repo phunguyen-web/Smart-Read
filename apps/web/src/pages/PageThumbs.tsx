@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { destNamesForPage, type NamedDestination } from '../lib/pdf.ts'
 import { renderPageThumbnail } from '../lib/extract.ts'
 
 type PageThumbsProps = {
@@ -7,6 +8,7 @@ type PageThumbsProps = {
   current: number
   selected: readonly number[]
   labels?: readonly string[]
+  dests?: readonly NamedDestination[]
   disabled?: boolean
   onSelect: (index: number, event: React.MouseEvent<HTMLButtonElement>) => void
   onReorder: (from: number, to: number) => void
@@ -18,6 +20,7 @@ export function PageThumbs({
   current,
   selected,
   labels,
+  dests,
   disabled,
   onSelect,
   onReorder,
@@ -76,6 +79,8 @@ export function PageThumbs({
         const isSelected = selectedSet.has(index)
         const physical = String(index + 1)
         const label = labels?.[index]?.trim() || physical
+        const destNames = destNamesForPage(dests ?? [], index)
+        const destNote = destNames.length > 0 ? `, đích ${destNames.join(', ')}` : ''
         const labelNote = label !== physical ? `, nhãn ${label}` : ''
         return (
           <button
@@ -89,7 +94,7 @@ export function PageThumbs({
             draggable={!disabled}
             aria-selected={isSelected}
             aria-current={isCurrent ? 'page' : undefined}
-            aria-label={`Trang ${index + 1}${labelNote}${isSelected ? ', đã chọn' : ''}. ${
+            aria-label={`Trang ${index + 1}${labelNote}${destNote}${isSelected ? ', đã chọn' : ''}. ${
               isSelected && selected.length > 1
                 ? 'Kéo để dời cả nhóm đã chọn.'
                 : 'Kéo để đổi thứ tự.'
@@ -128,6 +133,9 @@ export function PageThumbs({
           >
             <canvas aria-hidden="true" />
             <span>{label}</span>
+            {destNames.length > 0 ? (
+              <span className="thumb-dests">{destNames.join(', ')}</span>
+            ) : null}
           </button>
         )
       })}

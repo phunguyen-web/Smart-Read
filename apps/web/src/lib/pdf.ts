@@ -1958,9 +1958,15 @@ export type OutlineBookmark = {
   destName?: string
 }
 
+export type NamedDestView = 'XYZ' | 'Fit' | 'FitH'
+
+export const NAMED_DEST_VIEWS = ['XYZ', 'Fit', 'FitH'] as const
+
 export type NamedDestination = {
   name: string
   pageIndex: number
+  /** Viewer dest style. Omitted means XYZ (keep current zoom). */
+  view?: NamedDestView
 }
 
 export const MAX_NAMED_DESTS = 80
@@ -2068,6 +2074,31 @@ export function namedDestNameForPage(
   throw new Error(`Không thêm quá ${MAX_NAMED_DESTS} đích tên.`)
 }
 
+export function assertNamedDestView(value: string): NamedDestView {
+  if (value === 'XYZ' || value === 'Fit' || value === 'FitH') {
+    return value
+  }
+  throw new Error('Kiểu xem đích chỉ là XYZ, Fit hoặc FitH.')
+}
+
+export function namedDestViewOf(dest: NamedDestination | undefined): NamedDestView {
+  return dest?.view ?? 'XYZ'
+}
+
+function compactNamedDest(dest: NamedDestination): NamedDestination {
+  return dest.view && dest.view !== 'XYZ'
+    ? { name: dest.name, pageIndex: dest.pageIndex, view: dest.view }
+    : { name: dest.name, pageIndex: dest.pageIndex }
+}
+
+/** Dest names that point at one page, in list order. */
+export function destNamesForPage(
+  dests: readonly NamedDestination[],
+  pageIndex: number,
+): string[] {
+  return dests.filter((dest) => dest.pageIndex === pageIndex).map((dest) => dest.name)
+}
+
 /** 1-based dest page from the dest-row input. Invalid or out of range is null. */
 export function parseNamedDestPageInput(text: string, count: number): number | null {
   const trimmed = text.trim()
@@ -2107,11 +2138,31 @@ function unwrapDestArray(doc: PDFDocument, value: unknown): PDFArray | null {
   return null
 }
 
+function destViewFromArray(dest: unknown): NamedDestView {
+  if (!(dest instanceof PDFArray) || dest.size() < 2) {
+    return 'XYZ'
+  }
+  const style = dest.get(1)
+  const raw =
+    style instanceof PDFName
+      ? style.asString().startsWith('/')
+        ? style.asString().slice(1)
+        : style.asString()
+      : ''
+  if (raw === 'Fit' || raw === 'FitB') {
+    return 'Fit'
+  }
+  if (raw === 'FitH' || raw === 'FitBH') {
+    return 'FitH'
+  }
+  return 'XYZ'
+}
+
 function walkDestNameTree(
   doc: PDFDocument,
   pages: { ref: PDFRef }[],
   node: unknown,
-  dests: Map<string, number>,
+  dests: Map<string, NamedDestination>,
   seen: Set<number>,
 ): void {
   let current = node
@@ -2129,9 +2180,10 @@ function walkDestNameTree(
   if (names instanceof PDFArray) {
     for (let index = 0; index + 1 < names.size(); index += 2) {
       const name = decodeDestName(names.get(index))
-      const pageIndex = pageIndexForDest(pages, unwrapDestArray(doc, names.get(index + 1)))
+      const destArray = unwrapDestArray(doc, names.get(index + 1))
+      const pageIndex = pageIndexForDest(pages, destArray)
       if (name && pageIndex >= 0) {
-        dests.set(name, pageIndex)
+        dests.set(name, compactNamedDest({ name, pageIndex, view: destViewFromArray(destArray) }))
       }
     }
   }
@@ -2143,9 +2195,9 @@ function walkDestNameTree(
   }
 }
 
-function collectNamedDests(doc: PDFDocument): Map<string, number> {
+function collectNamedDests(doc: PDFDocument): Map<string, NamedDestination> {
   const pages = doc.getPages()
-  const dests = new Map<string, number>()
+  const dests = new Map<string, NamedDestination>()
   const catalogDests = doc.catalog.lookupMaybe(PDFName.of('Dests'), PDFDict)
   if (catalogDests) {
     for (const key of catalogDests.keys()) {
@@ -2153,9 +2205,10 @@ function collectNamedDests(doc: PDFDocument): Map<string, number> {
       if (!name || name === 'Type') {
         continue
       }
-      const pageIndex = pageIndexForDest(pages, unwrapDestArray(doc, catalogDests.get(key)))
+      const destArray = unwrapDestArray(doc, catalogDests.get(key))
+      const pageIndex = pageIndexForDest(pages, destArray)
       if (pageIndex >= 0) {
-        dests.set(name, pageIndex)
+        dests.set(name, compactNamedDest({ name, pageIndex, view: destViewFromArray(destArray) }))
       }
     }
   }
@@ -2166,22 +2219,32 @@ function collectNamedDests(doc: PDFDocument): Map<string, number> {
   return dests
 }
 
-function destsFromMap(map: Map<string, number>): NamedDestination[] {
-  return [...map.entries()]
-    .map(([name, pageIndex]) => ({ name, pageIndex }))
+function destsFromMap(map: Map<string, NamedDestination>): NamedDestination[] {
+  return [...map.values()]
+    .map((dest) => compactNamedDest(dest))
     .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
 }
 
-function destArrayForPage(doc: PDFDocument, pageIndex: number) {
+function destArrayForPage(doc: PDFDocument, pageIndex: number, view: NamedDestView = 'XYZ') {
   const page = doc.getPages()[pageIndex]
   if (!page) {
     return null
   }
+  if (view === 'Fit') {
+    return doc.context.obj([page.ref, PDFName.of('Fit')])
+  }
+  if (view === 'FitH') {
+    return doc.context.obj([page.ref, PDFName.of('FitH'), null])
+  }
   return doc.context.obj([page.ref, PDFName.of('XYZ'), null, null, null])
 }
 
-function destRefForPage(doc: PDFDocument, pageIndex: number): PDFRef | null {
-  const destArray = destArrayForPage(doc, pageIndex)
+function destRefForPage(
+  doc: PDFDocument,
+  pageIndex: number,
+  view: NamedDestView = 'XYZ',
+): PDFRef | null {
+  const destArray = destArrayForPage(doc, pageIndex, view)
   return destArray ? doc.context.register(destArray) : null
 }
 
@@ -2363,7 +2426,7 @@ function destNameTree(
 function rewriteNamedDests(doc: PDFDocument, dests: readonly NamedDestination[]): void {
   const style = destNameTreeStyleFromDoc(doc)
   const pages = doc.getPages()
-  const unique = new Map<string, number>()
+  const unique = new Map<string, NamedDestination>()
   for (const dest of dests) {
     if (
       dest.name &&
@@ -2372,7 +2435,7 @@ function rewriteNamedDests(doc: PDFDocument, dests: readonly NamedDestination[])
       dest.pageIndex >= 0 &&
       dest.pageIndex < pages.length
     ) {
-      unique.set(dest.name, dest.pageIndex)
+      unique.set(dest.name, compactNamedDest(dest))
     }
   }
   const items = destsFromMap(unique)
@@ -2392,7 +2455,7 @@ function rewriteNamedDests(doc: PDFDocument, dests: readonly NamedDestination[])
   const catalog = doc.context.obj({})
   const named: { name: string; destRef: PDFRef }[] = []
   for (const dest of items) {
-    const destRef = destRefForPage(doc, dest.pageIndex)
+    const destRef = destRefForPage(doc, dest.pageIndex, namedDestViewOf(dest))
     if (!destRef) {
       continue
     }
@@ -2414,7 +2477,15 @@ function writeCatalogNamedDests(
 ): void {
   const merged = collectNamedDests(doc)
   for (const dest of dests) {
-    merged.set(dest.name, dest.pageIndex)
+    const current = merged.get(dest.name)
+    merged.set(
+      dest.name,
+      compactNamedDest({
+        name: dest.name,
+        pageIndex: dest.pageIndex,
+        view: dest.view ?? current?.view,
+      }),
+    )
   }
   rewriteNamedDests(doc, destsFromMap(merged))
 }
@@ -2561,7 +2632,7 @@ function walkOutline(
   depth: number,
   items: OutlineBookmark[],
   seen: Set<number>,
-  named: Map<string, number>,
+  named: Map<string, NamedDestination>,
 ): void {
   let currentRef = startRef
   let guard = 0
@@ -2575,7 +2646,7 @@ function walkOutline(
     const title = decodeOutlineTitle(current.lookupMaybe(PDFName.of('Title'), PDFString, PDFHexString))
     const { dest, destName } = outlineItemDest(doc, current)
     const explicit = unwrapDestArray(doc, dest)
-    const namedPage = destName ? (named.get(destName) ?? -1) : -1
+    const namedPage = destName ? (named.get(destName)?.pageIndex ?? -1) : -1
     const pageIndex = explicit ? pageIndexForDest(pages, explicit) : namedPage
     const count = current.lookupMaybe(PDFName.of('Count'), PDFNumber)
     const closed = count instanceof PDFNumber && count.asNumber() < 0
@@ -2747,9 +2818,7 @@ async function writeOutlineBookmarks(
 /** Named destinations from catalog `/Dests` and the `/Names` `/Dests` name tree. */
 export async function listNamedDests(bytes: Uint8Array): Promise<NamedDestination[]> {
   const doc = await PDFDocument.load(bytes)
-  return [...collectNamedDests(doc).entries()]
-    .map(([name, pageIndex]) => ({ name, pageIndex }))
-    .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
+  return destsFromMap(collectNamedDests(doc))
 }
 
 /** Add or keep a catalog named destination for one page. Duplicate names on another page are refused. */
@@ -2766,13 +2835,13 @@ export async function addNamedDest(
   }
   const existing = collectNamedDests(doc)
   const current = existing.get(label)
-  if (current != null && current !== pageIndex) {
+  if (current != null && current.pageIndex !== pageIndex) {
     throw new Error('Tên đích đã dùng.')
   }
   if (current == null && existing.size >= MAX_NAMED_DESTS) {
     throw new Error(`Không thêm quá ${MAX_NAMED_DESTS} đích tên.`)
   }
-  writeCatalogNamedDests(doc, [{ name: label, pageIndex }])
+  writeCatalogNamedDests(doc, [compactNamedDest({ name: label, pageIndex, view: current?.view })])
   return new Uint8Array(await doc.save())
 }
 
@@ -2792,9 +2861,9 @@ export async function renameNamedDest(
   if (oldLabel !== newLabel && dests.has(newLabel)) {
     throw new Error('Tên đích đã dùng.')
   }
-  const pageIndex = dests.get(oldLabel)!
+  const current = dests.get(oldLabel)!
   dests.delete(oldLabel)
-  dests.set(newLabel, pageIndex)
+  dests.set(newLabel, compactNamedDest({ ...current, name: newLabel }))
   const outline = await listOutlineBookmarks(bytes)
   rewriteNamedDests(doc, destsFromMap(dests))
   const nextBytes = new Uint8Array(await doc.save())
@@ -2828,7 +2897,7 @@ export async function duplicateNamedDest(
   if (dests.size >= MAX_NAMED_DESTS) {
     throw new Error(`Không thêm quá ${MAX_NAMED_DESTS} đích tên.`)
   }
-  dests.set(label, dests.get(source)!)
+  dests.set(label, compactNamedDest({ ...dests.get(source)!, name: label }))
   rewriteNamedDests(doc, destsFromMap(dests))
   return new Uint8Array(await doc.save())
 }
@@ -2849,7 +2918,26 @@ export async function setNamedDestPage(
   if (!dests.has(label)) {
     throw new Error('Chưa có đích tên này.')
   }
-  dests.set(label, pageIndex)
+  dests.set(label, compactNamedDest({ ...dests.get(label)!, pageIndex }))
+  rewriteNamedDests(doc, destsFromMap(dests))
+  return new Uint8Array(await doc.save())
+}
+
+/** Set XYZ, Fit, or FitH on an existing named destination. Same view is a no-op write. */
+export async function setNamedDestView(
+  bytes: Uint8Array,
+  name: string,
+  view: string,
+): Promise<Uint8Array> {
+  const label = assertNamedDestName(name)
+  const style = assertNamedDestView(view)
+  const doc = await PDFDocument.load(bytes)
+  const dests = collectNamedDests(doc)
+  const current = dests.get(label)
+  if (!current) {
+    throw new Error('Chưa có đích tên này.')
+  }
+  dests.set(label, compactNamedDest({ ...current, view: style }))
   rewriteNamedDests(doc, destsFromMap(dests))
   return new Uint8Array(await doc.save())
 }
@@ -2903,7 +2991,7 @@ export async function addNamedDestsForSelection(
   for (const pageIndex of unique) {
     const name = namedDestNameForPage(pageIndex, taken)
     taken.add(name)
-    dests.set(name, pageIndex)
+    dests.set(name, compactNamedDest({ name, pageIndex }))
   }
   rewriteNamedDests(doc, destsFromMap(dests))
   return new Uint8Array(await doc.save())

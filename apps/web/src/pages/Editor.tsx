@@ -35,9 +35,12 @@ import {
   listNamedDests,
   listOutlineBookmarks,
   parseNamedDestPageInput,
+  namedDestViewOf,
+  NAMED_DEST_VIEWS,
   renameNamedDest,
   removeNamedDest,
   setNamedDestPage,
+  setNamedDestView,
   listPageLabels,
   moveOutlineItem,
   outlineIndexAfterIndent,
@@ -1009,9 +1012,9 @@ export function Editor() {
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục
-          (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích),
+          (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích / kiểu xem XYZ Fit FitH / đích trên thumbnail),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -1021,7 +1024,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -1083,6 +1086,7 @@ export function Editor() {
             current={page}
             selected={selected}
             labels={viewerLabels}
+            dests={namedDests}
             disabled={busy}
             onSelect={onThumbSelect}
             onReorder={(from, to) => {
@@ -2360,6 +2364,33 @@ export function Editor() {
                   Xóa mọi đích
                 </button>
               </div>
+              <div className="preset-row" role="group" aria-label="Kiểu xem đích">
+                {NAMED_DEST_VIEWS.map((view) => (
+                    <button
+                      key={view}
+                      type="button"
+                      disabled={busy || namedDestAt == null}
+                      aria-pressed={
+                        namedDestAt != null &&
+                        namedDestViewOf(namedDests.find((dest) => dest.name === namedDestAt)) ===
+                          view
+                      }
+                      aria-label={
+                        namedDestAt == null
+                          ? `Chọn một đích tên rồi gắn kiểu xem ${view}`
+                          : `Gắn kiểu xem ${view} cho đích ${namedDestAt}`
+                      }
+                      onClick={() => {
+                        if (namedDestAt == null) {
+                          return
+                        }
+                        void run((bytes) => setNamedDestView(bytes, namedDestAt, view))
+                      }}
+                    >
+                      {view}
+                    </button>
+                ))}
+              </div>
               {namedDests.length > 0 ? (
                 <ol className="outline-list" aria-label="Danh sách đích tên">
                   {namedDests.map((dest) => (
@@ -2377,6 +2408,7 @@ export function Editor() {
                         }}
                       >
                         {dest.name} · trang {dest.pageIndex + 1}
+                        {dest.view && dest.view !== 'XYZ' ? ` · ${dest.view}` : ''}
                       </button>
                     </li>
                   ))}

@@ -259,6 +259,11 @@ button:disabled {
   white-space: nowrap;
 }
 
+.thumb .thumb-dests {
+  font-size: 10px;
+  font-weight: 550;
+}
+
 .thumb.selected {
   background: #f8eadc;
   border-color: #e8c4a2;

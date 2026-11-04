@@ -44,6 +44,8 @@ export type ExportFormat =
   | 'sami'
   | 'sub'
   | 'stl'
+  | 'scc'
+  | 'usf'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -900,6 +902,49 @@ $FontSize           = 24
 $Title              = ${heading}
 
 ${cues}
+`
+}
+
+export function formatSccTime(totalSeconds: number): string {
+  return formatStlTime(totalSeconds)
+}
+
+export function toScc(pages: string[]): string {
+  const cues = pages
+    .map((text, index) => {
+      const start = formatSccTime(index * CUE_SECONDS)
+      const content = (text.trim() || '(không có chữ)').replace(/\r?\n/g, '|')
+      return `${start}\t${content}`
+    })
+    .join('\n')
+  return `Scenarist_SCC V1.0\n\n${cues}\n`
+}
+
+export function formatUsfTime(totalSeconds: number): string {
+  return formatTtmlTime(totalSeconds)
+}
+
+export function toUsf(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const cues = pages
+    .map((text, index) => {
+      const start = formatUsfTime(index * CUE_SECONDS)
+      const end = formatUsfTime((index + 1) * CUE_SECONDS)
+      const body = escapeHtml(text.trim() || '(không có chữ)').replace(/\r?\n/g, '<br/>')
+      return `    <subtitle start="${start}" stop="${end}">
+      <text>${body}</text>
+    </subtitle>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<USFSubtitles version="1.0">
+  <metadata>
+    <title>${heading}</title>
+  </metadata>
+  <subtitles>
+${cues}
+  </subtitles>
+</USFSubtitles>
 `
 }
 
@@ -1788,6 +1833,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-microdvd;charset=utf-8'
     case 'stl':
       return 'text/x-spruce;charset=utf-8'
+    case 'scc':
+      return 'text/x-scc;charset=utf-8'
+    case 'usf':
+      return 'application/x-usf+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
