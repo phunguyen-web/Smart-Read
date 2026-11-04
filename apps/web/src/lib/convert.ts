@@ -54,6 +54,8 @@ export type ExportFormat =
   | 'jats'
   | 'ris'
   | 'enw'
+  | 'csljson'
+  | 'nbib'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1121,6 +1123,32 @@ export function toEnw(title: string, pages: string[]): string {
     .join('\n')}`
 }
 
+export function toCsljson(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const items = pages.map((text, index) => ({
+    id: `page-${index + 1}`,
+    type: 'document',
+    title: `Trang ${index + 1}`,
+    'container-title': heading,
+    note: text.trim() || '(không có chữ)',
+  }))
+  return `${JSON.stringify(items, null, 2)}\n`
+}
+
+export function escapeNbib(value: string): string {
+  return value.replace(/\r?\n/g, '|')
+}
+
+export function toNbib(title: string, pages: string[]): string {
+  const heading = escapeNbib((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  return `${pages
+    .map((text, index) => {
+      const note = escapeNbib(text.trim() || '(không có chữ)')
+      return `PMID- ${index + 1}\nTI  - Trang ${index + 1}\nJT  - ${heading}\nAB  - ${note}\n`
+    })
+    .join('\n')}`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2026,6 +2054,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-research-info-systems;charset=utf-8'
     case 'enw':
       return 'application/x-endnote-refer;charset=utf-8'
+    case 'csljson':
+      return 'application/vnd.citationstyles.csl+json;charset=utf-8'
+    case 'nbib':
+      return 'application/x-nbib;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

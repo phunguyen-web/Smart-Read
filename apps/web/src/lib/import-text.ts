@@ -57,6 +57,8 @@ export type ImportedTextKind =
   | 'jats'
   | 'ris'
   | 'enw'
+  | 'csljson'
+  | 'nbib'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -414,6 +416,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'enw') {
     return pagesFromEnw(text)
+  }
+  if (kind === 'csljson') {
+    return pagesFromCsljson(text)
+  }
+  if (kind === 'nbib') {
+    return pagesFromNbib(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1789,6 +1797,75 @@ export function pagesFromEnw(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp EndNote cần các mục %0.')
+}
+
+export function pagesFromCsljson(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  let data: unknown
+  try {
+    data = JSON.parse(trimmed)
+  } catch {
+    throw new Error('Tệp CSL-JSON không hợp lệ.')
+  }
+  const items = Array.isArray(data) ? data : []
+  const pages = items
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return ''
+      }
+      const rec = item as { note?: unknown; abstract?: unknown; title?: unknown }
+      if (typeof rec.note === 'string' && rec.note.trim()) {
+        return rec.note
+      }
+      if (typeof rec.abstract === 'string' && rec.abstract.trim()) {
+        return rec.abstract
+      }
+      if (typeof rec.title === 'string' && rec.title.trim() && !/^Trang\s+\d+$/.test(rec.title.trim())) {
+        return rec.title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp CSL-JSON cần các mục note / abstract / title.')
+}
+
+export function unescapeNbib(value: string): string {
+  return value.replace(/\|/g, '\n')
+}
+
+export function pagesFromNbib(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = trimmed.split(/(?=^PMID-)/m)
+  const pages = records
+    .map((record) => {
+      const abs = record.match(/^\s*AB\s+-\s+(.*)$/m)
+      if (abs) {
+        return unescapeNbib(abs[1]!.trim())
+      }
+      const nab = record.match(/^\s*NAB\s+-\s+(.*)$/m)
+      if (nab) {
+        return unescapeNbib(nab[1]!.trim())
+      }
+      const title = record.match(/^\s*TI\s+-\s+(.*)$/m)
+      if (title && !/^Trang\s+\d+$/.test(title[1]!.trim())) {
+        return unescapeNbib(title[1]!.trim())
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp NBIB cần các mục PMID / AB.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

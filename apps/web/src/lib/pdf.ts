@@ -2111,6 +2111,41 @@ export function namedDestXyzOf(dest: NamedDestination | undefined): NamedDestXyz
   return dest?.xyz ?? { left: null, top: null, zoom: null }
 }
 
+export const NAMED_DEST_XYZ_EDGES = ['top-left', 'top', 'top-right'] as const
+export type NamedDestXyzEdge = (typeof NAMED_DEST_XYZ_EDGES)[number]
+
+export function assertNamedDestXyzEdge(value: string): NamedDestXyzEdge {
+  if (value === 'top-left' || value === 'top' || value === 'top-right') {
+    return value
+  }
+  throw new Error('Mé XYZ chỉ là top-left, top hoặc top-right.')
+}
+
+/** XYZ left/top from a page size. Zoom stays unset. Origin is PDF bottom-left. */
+export function namedDestXyzFromPageSize(
+  pageSize: PageSize,
+  edge: NamedDestXyzEdge = 'top-left',
+): NamedDestXyz {
+  const style = assertNamedDestXyzEdge(edge)
+  const width = pageSize.width
+  const height = pageSize.height
+  if (style === 'top') {
+    return { left: null, top: height, zoom: null }
+  }
+  if (style === 'top-right') {
+    return { left: width, top: height, zoom: null }
+  }
+  return { left: 0, top: height, zoom: null }
+}
+
+/** XYZ left/top from an A4, Letter, or A5 portrait preset. */
+export function namedDestXyzFromPaper(
+  paper: PaperId,
+  edge: NamedDestXyzEdge = 'top-left',
+): NamedDestXyz {
+  return namedDestXyzFromPageSize(PAPER_SIZES[paper].portrait, edge)
+}
+
 function compactNamedDestXyz(xyz: NamedDestXyz | undefined): NamedDestXyz | undefined {
   if (!xyz) {
     return undefined

@@ -76,6 +76,9 @@ import {
   toJats,
   toRis,
   toEnw,
+  toCsljson,
+  toNbib,
+  escapeNbib,
   escapePs,
   escapeRis,
   escapeEnw,
@@ -146,6 +149,8 @@ import {
   pagesFromJats,
   pagesFromRis,
   pagesFromEnw,
+  pagesFromCsljson,
+  pagesFromNbib,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -224,6 +229,8 @@ import {
   namedDestNameForPage,
   namedDestViewOf,
   namedDestXyzOf,
+  namedDestXyzFromPageSize,
+  namedDestXyzFromPaper,
   clearNamedDests,
   duplicateNamedDest,
   renameNamedDest,
@@ -1345,6 +1352,34 @@ describe('pdf edits', () => {
     await expect(setNamedDestXyz(named, 'ChapTwo', { left: 1, top: 2, zoom: 0 })).rejects.toThrow(
       /XYZ/,
     )
+    expect(namedDestXyzFromPageSize({ width: A4_WIDTH, height: A4_HEIGHT }, 'top-left')).toEqual({
+      left: 0,
+      top: A4_HEIGHT,
+      zoom: null,
+    })
+    expect(namedDestXyzFromPageSize({ width: LETTER_WIDTH, height: LETTER_HEIGHT }, 'top')).toEqual({
+      left: null,
+      top: LETTER_HEIGHT,
+      zoom: null,
+    })
+    expect(namedDestXyzFromPaper('a4', 'top-left')).toEqual({
+      left: 0,
+      top: A4_HEIGHT,
+      zoom: null,
+    })
+    expect(namedDestXyzFromPaper('letter', 'top-right')).toEqual({
+      left: LETTER_WIDTH,
+      top: LETTER_HEIGHT,
+      zoom: null,
+    })
+    expect(namedDestXyzFromPaper('a5', 'top-left')).toEqual({
+      left: 0,
+      top: A5_HEIGHT,
+      zoom: null,
+    })
+    expect(await listNamedDests(await setNamedDestXyz(named, 'ChapTwo', namedDestXyzFromPaper('a4')))).toEqual([
+      { name: 'ChapTwo', pageIndex: 1, xyz: { left: 0, top: A4_HEIGHT, zoom: null } },
+    ])
 
     expect(toRomanNumeral(2)).toBe('ii')
     expect(toRomanNumeral(4, true)).toBe('IV')
@@ -2186,6 +2221,34 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
       sourceKindFromFile(new File(['x'], 'notes.enw', { type: 'application/x-endnote-refer' })),
     ).toBe('enw')
     expect(swapExtension('notes.enw', 'pdf')).toBe('notes.pdf')
+
+    expect(toCsljson('Demo', ['Một', 'Hai\ndòng'])).toContain('"type": "document"')
+    expect(toCsljson('Demo', ['Một'])).toContain('"container-title": "Demo"')
+    expect(toCsljson('Demo', ['Một'])).toContain('"note": "Một"')
+    expect(pagesFromCsljson(toCsljson('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('csljson', toCsljson('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromCsljson('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromCsljson('[{"title":"Một"},{"abstract":"Hai"}]')).toEqual(['Một', 'Hai'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.csljson', { type: '' }))).toBe('csljson')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.csl.json', { type: 'application/vnd.citationstyles.csl+json' }),
+      ),
+    ).toBe('csljson')
+    expect(swapExtension('notes.csljson', 'pdf')).toBe('notes.pdf')
+
+    expect(escapeNbib('Hai\ndòng')).toBe('Hai|dòng')
+    expect(toNbib('Demo', ['Một', 'Hai\ndòng'])).toContain('PMID- 1')
+    expect(toNbib('Demo', ['Một'])).toContain('JT  - Demo')
+    expect(toNbib('Demo', ['Một'])).toContain('AB  - Một')
+    expect(pagesFromNbib(toNbib('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('nbib', toNbib('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromNbib('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.nbib', { type: '' }))).toBe('nbib')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.nbib', { type: 'application/x-nbib' })),
+    ).toBe('nbib')
+    expect(swapExtension('notes.nbib', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
