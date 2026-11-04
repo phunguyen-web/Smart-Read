@@ -40,6 +40,8 @@ export type ImportedTextKind =
   | 'vtt'
   | 'lrc'
   | 'ics'
+  | 'cue'
+  | 'ass'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -346,6 +348,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'ics') {
     return pagesFromIcs(text)
+  }
+  if (kind === 'cue') {
+    return pagesFromCue(text)
+  }
+  if (kind === 'ass') {
+    return pagesFromAss(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1275,6 +1283,58 @@ export function pagesFromIcs(text: string): string[] {
     }
   }
   throw new Error('Tệp lịch cần các sự kiện VEVENT.')
+}
+
+const CUE_TRACK_TITLE = /^\s*TITLE\s+"([^"]*)"\s*$/im
+
+export function pagesFromCue(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  if (/^\s*TRACK\s+\d+\s+AUDIO\b/im.test(trimmed)) {
+    const pages = trimmed
+      .split(/^\s*TRACK\s+\d+\s+AUDIO\b.*$/im)
+      .slice(1)
+      .map((chunk) => {
+        const title = chunk.match(CUE_TRACK_TITLE)
+        return title ? title[1]!.trim() : ''
+      })
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  throw new Error('Tệp cue cần các TRACK.')
+}
+
+function unescapeAss(value: string): string {
+  return value.replace(/\\N/g, '\n').replace(/\\\{/g, '{').replace(/\\\}/g, '}')
+}
+
+export function pagesFromAss(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = trimmed
+    .split(/\r?\n/)
+    .map((line) => {
+      const match = line.match(/^\s*Dialogue:\s*(.*)$/i)
+      if (!match) {
+        return ''
+      }
+      const fields = match[1]!.split(',')
+      if (fields.length < 10) {
+        return ''
+      }
+      return unescapeAss(fields.slice(9).join(',').trim())
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp phụ đề ASS cần các dòng Dialogue.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

@@ -1,4 +1,4 @@
-import { PDFDict, PDFDocument, PDFName, PDFNumber, degrees } from 'pdf-lib'
+import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, degrees } from 'pdf-lib'
 import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import {
@@ -41,11 +41,17 @@ import {
   formatVttTime,
   formatLrcTime,
   formatIcsDate,
+  formatCueIndex,
+  formatAssTime,
   escapeIcs,
+  escapeCue,
+  escapeAss,
   toSrt,
   toVtt,
   toLrc,
   toIcs,
+  toCue,
+  toAss,
   escapeTypst,
   toJsonl,
   toLatex,
@@ -96,6 +102,8 @@ import {
   pagesFromVtt,
   pagesFromLrc,
   pagesFromIcs,
+  pagesFromCue,
+  pagesFromAss,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -172,6 +180,8 @@ import {
   renameNamedDest,
   removeNamedDest,
   setNamedDestPage,
+  parseNamedDestPageInput,
+  NAMED_DEST_LEAF_SIZE,
   addOutlineBookmarks,
   addOutlineFolder,
   bookletPreviewSheets,
@@ -922,6 +932,79 @@ describe('pdf edits', () => {
     await expect(setNamedDestPage(named, 'ChapTwo', 9)).rejects.toThrow(/trang đích/)
     await expect(setNamedDestPage(bytes, 'ChapTwo', 0)).rejects.toThrow(/đích tên/)
     await expect(setNamedDestPage(named, '  ', 0)).rejects.toThrow(/tên đích/)
+    expect(parseNamedDestPageInput('2', 2)).toBe(1)
+    expect(parseNamedDestPageInput('1', 2)).toBe(0)
+    expect(parseNamedDestPageInput('', 2)).toBeNull()
+    expect(parseNamedDestPageInput('0', 2)).toBeNull()
+    expect(parseNamedDestPageInput('3', 2)).toBeNull()
+    expect(parseNamedDestPageInput('1.5', 2)).toBeNull()
+
+    const foreign = await PDFDocument.load(bytes)
+    const foreignPages = foreign.getPages()
+    const destAlpha = foreign.context.register(
+      foreign.context.obj([foreignPages[0]!.ref, PDFName.of('XYZ'), null, null, null]),
+    )
+    const destBeta = foreign.context.register(
+      foreign.context.obj([foreignPages[1]!.ref, PDFName.of('XYZ'), null, null, null]),
+    )
+    const leafA = foreign.context.obj({})
+    leafA.set(PDFName.of('Limits'), foreign.context.obj([PDFHexString.fromText('Alpha'), PDFHexString.fromText('Alpha')]))
+    const namesA = foreign.context.obj([])
+    namesA.push(PDFHexString.fromText('Alpha'))
+    namesA.push(destAlpha)
+    leafA.set(PDFName.of('Names'), namesA)
+    const leafB = foreign.context.obj({})
+    leafB.set(PDFName.of('Limits'), foreign.context.obj([PDFHexString.fromText('Beta'), PDFHexString.fromText('Beta')]))
+    const namesB = foreign.context.obj([])
+    namesB.push(PDFHexString.fromText('Beta'))
+    namesB.push(destBeta)
+    leafB.set(PDFName.of('Names'), namesB)
+    const kids = foreign.context.obj([])
+    kids.push(foreign.context.register(leafA))
+    kids.push(foreign.context.register(leafB))
+    const tree = foreign.context.obj({})
+    tree.set(PDFName.of('Kids'), kids)
+    const namesDict = foreign.context.obj({})
+    namesDict.set(PDFName.of('Dests'), tree)
+    foreign.catalog.set(PDFName.of('Names'), namesDict)
+    const foreignBytes = new Uint8Array(await foreign.save())
+    expect(await listNamedDests(foreignBytes)).toEqual([
+      { name: 'Alpha', pageIndex: 0 },
+      { name: 'Beta', pageIndex: 1 },
+    ])
+    const mergedKids = await addNamedDest(foreignBytes, 'ChapTwo', 1)
+    expect(await listNamedDests(mergedKids)).toEqual([
+      { name: 'Alpha', pageIndex: 0 },
+      { name: 'Beta', pageIndex: 1 },
+      { name: 'ChapTwo', pageIndex: 1 },
+    ])
+
+    let branched = bytes
+    for (const name of ['ChapA', 'ChapB', 'ChapC', 'ChapD', 'ChapE']) {
+      branched = await addNamedDest(branched, name, name === 'ChapE' ? 1 : 0)
+    }
+    expect(NAMED_DEST_LEAF_SIZE).toBe(4)
+    const branchedDoc = await PDFDocument.load(branched)
+    const branchedTree = branchedDoc.catalog
+      .lookup(PDFName.of('Names'), PDFDict)
+      .lookup(PDFName.of('Dests'), PDFDict)
+    expect(branchedTree.lookup(PDFName.of('Kids'), PDFArray).size()).toBe(2)
+    expect(branchedTree.lookupMaybe(PDFName.of('Names'), PDFArray)).toBeUndefined()
+    expect(await listNamedDests(branched)).toEqual([
+      { name: 'ChapA', pageIndex: 0 },
+      { name: 'ChapB', pageIndex: 0 },
+      { name: 'ChapC', pageIndex: 0 },
+      { name: 'ChapD', pageIndex: 0 },
+      { name: 'ChapE', pageIndex: 1 },
+    ])
+    const retargetLeaf = await setNamedDestPage(branched, 'ChapA', 1)
+    expect(await listNamedDests(retargetLeaf)).toEqual([
+      { name: 'ChapA', pageIndex: 1 },
+      { name: 'ChapB', pageIndex: 0 },
+      { name: 'ChapC', pageIndex: 0 },
+      { name: 'ChapD', pageIndex: 0 },
+      { name: 'ChapE', pageIndex: 1 },
+    ])
 
     expect(toRomanNumeral(2)).toBe('ii')
     expect(toRomanNumeral(4, true)).toBe('IV')
@@ -1575,6 +1658,28 @@ describe('conversion helpers', () => {
     expect(sourceKindFromFile(new File(['x'], 'notes.ics', { type: '' }))).toBe('ics')
     expect(sourceKindFromFile(new File(['x'], 'notes.ics', { type: 'text/calendar' }))).toBe('ics')
     expect(swapExtension('notes.ics', 'pdf')).toBe('notes.pdf')
+    expect(formatCueIndex(4)).toBe('00:04:00')
+    expect(escapeCue('a"b\nc')).toBe("a'b c")
+    expect(toCue('Demo', ['Một', 'Hai\ndòng'])).toContain('TITLE "Demo"')
+    expect(toCue('Demo', ['Một'])).toContain('TRACK 01 AUDIO')
+    expect(pagesFromCue(toCue('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai dòng'])
+    expect(pagesFromImportedText('cue', toCue('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromCue('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.cue', { type: '' }))).toBe('cue')
+    expect(sourceKindFromFile(new File(['x'], 'notes.cue', { type: 'application/x-cue' }))).toBe(
+      'cue',
+    )
+    expect(swapExtension('notes.cue', 'pdf')).toBe('notes.pdf')
+    expect(formatAssTime(4)).toBe('0:00:04.00')
+    expect(escapeAss('Một\nhai {x}')).toBe('Một\\Nhai \\{x\\}')
+    expect(toAss('Demo', ['Một', 'Hai\ndòng'])).toContain('[Script Info]')
+    expect(toAss('Demo', ['Một'])).toContain('Title: Demo')
+    expect(pagesFromAss(toAss('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('ass', toAss('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromAss('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.ass', { type: '' }))).toBe('ass')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ssa', { type: 'text/x-ssa' }))).toBe('ass')
+    expect(swapExtension('notes.ass', 'pdf')).toBe('notes.pdf')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: '' }))).toBe('cbz')
     expect(sourceKindFromFile(new File(['x'], 'comic.cbz', { type: 'application/vnd.comicbook+zip' }))).toBe(
       'cbz',

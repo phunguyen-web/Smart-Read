@@ -37,6 +37,8 @@ export type ExportFormat =
   | 'vtt'
   | 'lrc'
   | 'ics'
+  | 'cue'
+  | 'ass'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -704,6 +706,69 @@ export function toIcs(title: string, pages: string[]): string {
     })
     .join('\n')
   return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${events}\nEND:VCALENDAR\n`
+}
+
+export function escapeCue(value: string): string {
+  return value.replace(/\r?\n/g, ' ').replace(/"/g, "'")
+}
+
+export function formatCueIndex(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.trunc(totalSeconds))
+  const minutes = Math.floor(clamped / 60)
+  const seconds = clamped % 60
+  return `${padTimePart(minutes)}:${padTimePart(seconds)}:00`
+}
+
+export function toCue(title: string, pages: string[]): string {
+  const heading = escapeCue(title.trim() || 'Tài liệu')
+  const tracks = pages
+    .map((text, index) => {
+      const body = escapeCue(text.trim() || '(không có chữ)')
+      const number = String(index + 1).padStart(2, '0')
+      return [
+        `  TRACK ${number} AUDIO`,
+        `    TITLE "${body}"`,
+        `    INDEX 01 ${formatCueIndex(index * CUE_SECONDS)}`,
+      ].join('\n')
+    })
+    .join('\n')
+  return `TITLE "${heading}"\nFILE "document.bin" WAVE\n${tracks}\n`
+}
+
+export function formatAssTime(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.trunc(totalSeconds))
+  const hours = Math.floor(clamped / 3600)
+  const minutes = Math.floor((clamped % 3600) / 60)
+  const seconds = clamped % 60
+  return `${hours}:${padTimePart(minutes)}:${padTimePart(seconds)}.00`
+}
+
+export function escapeAss(value: string): string {
+  return value.replace(/\r?\n/g, '\\N').replace(/\{/g, '\\{').replace(/\}/g, '\\}')
+}
+
+export function toAss(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const events = pages
+    .map((text, index) => {
+      const start = formatAssTime(index * CUE_SECONDS)
+      const end = formatAssTime((index + 1) * CUE_SECONDS)
+      const body = escapeAss(text.trim() || '(không có chữ)')
+      return `Dialogue: 0,${start},${end},Default,,0,0,0,,${body}`
+    })
+    .join('\n')
+  return `[Script Info]
+Title: ${heading}
+ScriptType: v4.00+
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+${events}
+`
 }
 
 export function toLatex(title: string, pages: string[]): string {
@@ -1577,6 +1642,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-lrc;charset=utf-8'
     case 'ics':
       return 'text/calendar;charset=utf-8'
+    case 'cue':
+      return 'application/x-cue;charset=utf-8'
+    case 'ass':
+      return 'text/x-ssa;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

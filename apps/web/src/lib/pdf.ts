@@ -1965,6 +1965,7 @@ export type NamedDestination = {
 
 export const MAX_NAMED_DESTS = 80
 export const MAX_NAMED_DEST_NAME = 64
+export const NAMED_DEST_LEAF_SIZE = 4
 export const NAMED_DEST_NAME = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/
 
 /** Deepest outline item the editor will write (root 0 … nested folder 2, its pages 3). */
@@ -2047,6 +2048,19 @@ export function assertNamedDestName(text: string): string {
     throw new Error('Tên đích chỉ dùng chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.')
   }
   return name
+}
+
+/** 1-based dest page from the dest-row input. Invalid or out of range is null. */
+export function parseNamedDestPageInput(text: string, count: number): number | null {
+  const trimmed = text.trim()
+  if (!trimmed || !/^\d+$/.test(trimmed)) {
+    return null
+  }
+  const page = Number.parseInt(trimmed, 10)
+  if (!Number.isInteger(page) || page < 1 || page > count) {
+    return null
+  }
+  return page - 1
 }
 
 function decodeDestName(value: unknown): string {
@@ -2148,6 +2162,58 @@ function destArrayForPage(doc: PDFDocument, pageIndex: number) {
   return doc.context.obj([page.ref, PDFName.of('XYZ'), null, null, null])
 }
 
+function destRefForPage(doc: PDFDocument, pageIndex: number): PDFRef | null {
+  const destArray = destArrayForPage(doc, pageIndex)
+  return destArray ? doc.context.register(destArray) : null
+}
+
+function destNameLeaf(
+  doc: PDFDocument,
+  items: readonly { name: string; destRef: PDFRef }[],
+): PDFDict {
+  const namesArray = doc.context.obj([])
+  for (const item of items) {
+    namesArray.push(PDFHexString.fromText(item.name))
+    namesArray.push(item.destRef)
+  }
+  const leaf = doc.context.obj({})
+  leaf.set(PDFName.of('Names'), namesArray)
+  if (items.length > 0) {
+    leaf.set(
+      PDFName.of('Limits'),
+      doc.context.obj([
+        PDFHexString.fromText(items[0]!.name),
+        PDFHexString.fromText(items[items.length - 1]!.name),
+      ]),
+    )
+  }
+  return leaf
+}
+
+/** Flat `/Names` when dests fit one leaf; otherwise a `/Kids` tree other writers can merge. */
+function destNameTree(doc: PDFDocument, items: readonly { name: string; destRef: PDFRef }[]): PDFDict {
+  if (items.length <= NAMED_DEST_LEAF_SIZE) {
+    const tree = destNameLeaf(doc, items)
+    tree.delete(PDFName.of('Limits'))
+    return tree
+  }
+  const kids = doc.context.obj([])
+  for (let start = 0; start < items.length; start += NAMED_DEST_LEAF_SIZE) {
+    const chunk = items.slice(start, start + NAMED_DEST_LEAF_SIZE)
+    kids.push(doc.context.register(destNameLeaf(doc, chunk)))
+  }
+  const tree = doc.context.obj({})
+  tree.set(PDFName.of('Kids'), kids)
+  tree.set(
+    PDFName.of('Limits'),
+    doc.context.obj([
+      PDFHexString.fromText(items[0]!.name),
+      PDFHexString.fromText(items[items.length - 1]!.name),
+    ]),
+  )
+  return tree
+}
+
 /** Replace catalog `/Dests` and the `/Names` `/Dests` name tree. */
 function rewriteNamedDests(doc: PDFDocument, dests: readonly NamedDestination[]): void {
   const pages = doc.getPages()
@@ -2178,26 +2244,22 @@ function rewriteNamedDests(doc: PDFDocument, dests: readonly NamedDestination[])
   }
 
   const catalog = doc.context.obj({})
-  const namesArray = doc.context.obj([])
+  const named: { name: string; destRef: PDFRef }[] = []
   for (const dest of items) {
-    const destArray = destArrayForPage(doc, dest.pageIndex)
-    if (!destArray) {
+    const destRef = destRefForPage(doc, dest.pageIndex)
+    if (!destRef) {
       continue
     }
-    const destRef = doc.context.register(destArray)
     catalog.set(PDFName.of(dest.name), destRef)
-    namesArray.push(PDFHexString.fromText(dest.name))
-    namesArray.push(destRef)
+    named.push({ name: dest.name, destRef })
   }
   doc.catalog.set(PDFName.of('Dests'), catalog)
-  const tree = doc.context.obj({})
-  tree.set(PDFName.of('Names'), namesArray)
   let namesDict = doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)
   if (!namesDict) {
     namesDict = doc.context.obj({})
     doc.catalog.set(PDFName.of('Names'), namesDict)
   }
-  namesDict.set(PDFName.of('Dests'), tree)
+  namesDict.set(PDFName.of('Dests'), destNameTree(doc, named))
 }
 
 function writeCatalogNamedDests(

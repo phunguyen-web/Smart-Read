@@ -31,6 +31,7 @@ import {
   indentOutlineItem,
   listNamedDests,
   listOutlineBookmarks,
+  parseNamedDestPageInput,
   renameNamedDest,
   removeNamedDest,
   setNamedDestPage,
@@ -247,6 +248,7 @@ export function Editor() {
   const [outlineAt, setOutlineAt] = useState<number | null>(null)
   const [namedDests, setNamedDests] = useState<NamedDestination[]>([])
   const [namedDestAt, setNamedDestAt] = useState<string | null>(null)
+  const [destPage, setDestPage] = useState('')
   const [showBookletPreview, setShowBookletPreview] = useState(false)
   const [pageLabelStyle, setPageLabelStyle] = useState<PageLabelStyle>('decimal')
   const [lockedPdf, setLockedPdf] = useState<{
@@ -1004,9 +1006,9 @@ export function Editor() {
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
           hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục
-          (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích / đổi tên đích / xóa đích),
+          (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -1016,7 +1018,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -2197,6 +2199,16 @@ export function Editor() {
                   aria-label="Tên đích PDF cho trang hiện tại"
                 />
               </label>
+              <label className="overlay-field">
+                Trang đích
+                <input
+                  inputMode="numeric"
+                  value={destPage}
+                  disabled={busy || namedDestAt == null}
+                  onChange={(event) => setDestPage(event.target.value)}
+                  aria-label="Số trang đích cho đích tên đã chọn"
+                />
+              </label>
               <div className="preset-row" role="group" aria-label="Đích tên PDF">
                 <button
                   type="button"
@@ -2225,17 +2237,27 @@ export function Editor() {
                 </button>
                 <button
                   type="button"
-                  disabled={busy || namedDestAt == null}
+                  disabled={
+                    busy ||
+                    namedDestAt == null ||
+                    parseNamedDestPageInput(destPage, doc.pageCount) == null
+                  }
                   aria-label={
                     namedDestAt == null
-                      ? 'Chọn một đích tên rồi gắn trang hiện tại'
-                      : `Gắn đích ${namedDestAt} vào trang ${page + 1}`
+                      ? 'Chọn một đích tên rồi nhập trang đích'
+                      : parseNamedDestPageInput(destPage, doc.pageCount) == null
+                        ? 'Nhập số trang đích hợp lệ'
+                        : `Gắn đích ${namedDestAt} vào trang ${destPage}`
                   }
                   onClick={() => {
                     if (namedDestAt == null) {
                       return
                     }
-                    void run((bytes) => setNamedDestPage(bytes, namedDestAt, page))
+                    const destPageIndex = parseNamedDestPageInput(destPage, doc.pageCount)
+                    if (destPageIndex == null) {
+                      return
+                    }
+                    void run((bytes) => setNamedDestPage(bytes, namedDestAt, destPageIndex))
                   }}
                 >
                   Gắn trang đích
@@ -2291,6 +2313,7 @@ export function Editor() {
                         onClick={() => {
                           setNamedDestAt(dest.name)
                           setDestName(dest.name)
+                          setDestPage(String(dest.pageIndex + 1))
                           goToPage(dest.pageIndex, 'replace')
                         }}
                       >
