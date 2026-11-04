@@ -86,6 +86,8 @@ import {
   toMarcxml,
   toDublincore,
   toOnix,
+  toUnixref,
+  toBibjson,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -167,6 +169,8 @@ import {
   pagesFromMarcxml,
   pagesFromDublincore,
   pagesFromOnix,
+  pagesFromUnixref,
+  pagesFromBibjson,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1508,12 +1512,24 @@ describe('pdf edits', () => {
       top: null,
       zoom: 1,
     })
+    expect(namedDestXyzFromZoomPreset('50', { left: 10, top: 20, zoom: 2 })).toEqual({
+      left: 10,
+      top: 20,
+      zoom: 0.5,
+    })
     expect(namedDestXyzFromZoomPreset('100', { left: 10, top: 20, zoom: 2 })).toEqual({
       left: 10,
       top: 20,
       zoom: 1,
     })
+    expect(namedDestXyzFromZoomPreset('200', { left: 10, top: 20, zoom: 1 })).toEqual({
+      left: 10,
+      top: 20,
+      zoom: 2,
+    })
+    expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
     expect(namedDestXyzZoomFromPreset('100')).toBe(1)
+    expect(namedDestXyzZoomFromPreset('200')).toBe(2)
     expect(namedDestXyzFromZoomPreset('fit-width', { left: 10, top: 20, zoom: 2 })).toEqual({
       left: 0,
       top: 20,
@@ -1534,6 +1550,16 @@ describe('pdf edits', () => {
       left: 10,
       top: 20,
       zoom: 1,
+    })
+    expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', '50')).toEqual({
+      left: 10,
+      top: 20,
+      zoom: 0.5,
+    })
+    expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', '200')).toEqual({
+      left: 10,
+      top: 20,
+      zoom: 2,
     })
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
@@ -2571,6 +2597,48 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toBe('onix')
     expect(swapExtension('notes.onix', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.onix.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toUnixref('Demo', ['Một', 'Hai\ndòng'])).toContain('<doi_records')
+    expect(toUnixref('Demo', ['Một'])).toContain('<full_title>Demo</full_title>')
+    expect(toUnixref('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromUnixref(toUnixref('Demo', ['Một', 'Hai\ndòng']))).toEqual([
+      'Một',
+      'Hai\ndòng',
+    ])
+    expect(pagesFromImportedText('unixref', toUnixref('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromUnixref('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromUnixref('<doi_records><doi_record><title>Một</title></doi_record></doi_records>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.unixref', { type: '' }))).toBe('unixref')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.unixref.xml', { type: 'application/vnd.crossref.unixref+xml' }),
+      ),
+    ).toBe('unixref')
+    expect(sourceKindFromFile(new File(['x'], 'notes.crossref.xml', { type: '' }))).toBe('unixref')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromUnixref('<doi_records></doi_records>')).toThrow(/doi_record/)
+    expect(swapExtension('notes.unixref', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.unixref.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.crossref.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toBibjson('Demo', ['Một', 'Hai\ndòng'])).toContain('"type": "article"')
+    expect(toBibjson('Demo', ['Một'])).toContain('"name": "Demo"')
+    expect(toBibjson('Demo', ['Một'])).toContain('"note": "Một"')
+    expect(pagesFromBibjson(toBibjson('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('bibjson', toBibjson('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromBibjson('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromBibjson('[{"title":"Một"}]')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.json', { type: '' }))).toBe('json')
+    expect(sourceKindFromFile(new File(['x'], 'notes.bibjson', { type: '' }))).toBe('bibjson')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.bib.json', { type: 'application/vnd.citationstyles.bibjson+json' }),
+      ),
+    ).toBe('bibjson')
+    expect(swapExtension('notes.bibjson', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.bib.json', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

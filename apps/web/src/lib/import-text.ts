@@ -67,6 +67,8 @@ export type ImportedTextKind =
   | 'marcxml'
   | 'dublincore'
   | 'onix'
+  | 'unixref'
+  | 'bibjson'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -454,6 +456,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'onix') {
     return pagesFromOnix(text)
+  }
+  if (kind === 'unixref') {
+    return pagesFromUnixref(text)
+  }
+  if (kind === 'bibjson') {
+    return pagesFromBibjson(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -2173,6 +2181,72 @@ export function pagesFromOnix(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp ONIX cần các mục <Product> / <Text>.')
+}
+
+export function pagesFromUnixref(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<doi_record\b[^>]*>([\s\S]*?)<\/doi_record>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const note = xmlTagText(record, 'description')
+      if (note) {
+        return note
+      }
+      const abs = xmlTagText(record, 'abstract')
+      if (abs) {
+        return abs
+      }
+      const title = xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp Unixref cần các mục <doi_record> / <description>.')
+}
+
+export function pagesFromBibjson(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  let data: unknown
+  try {
+    data = JSON.parse(trimmed)
+  } catch {
+    throw new Error('Tệp BibJSON không hợp lệ.')
+  }
+  const items = Array.isArray(data) ? data : []
+  const pages = items
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return ''
+      }
+      const rec = item as { note?: unknown; abstract?: unknown; title?: unknown }
+      if (typeof rec.note === 'string' && rec.note.trim()) {
+        return rec.note
+      }
+      if (typeof rec.abstract === 'string' && rec.abstract.trim()) {
+        return rec.abstract
+      }
+      if (typeof rec.title === 'string' && rec.title.trim() && !/^Trang\s+\d+$/.test(rec.title.trim())) {
+        return rec.title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp BibJSON cần các mục note / abstract / title.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

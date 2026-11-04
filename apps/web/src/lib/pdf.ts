@@ -2198,22 +2198,30 @@ export const NAMED_DEST_XYZ_EDGE_LABELS: Record<NamedDestXyzEdge, string> = {
   'bottom-right': 'Phải dưới trang',
 }
 
-export const NAMED_DEST_XYZ_ZOOM_PRESETS = ['100', 'fit-width'] as const
+export const NAMED_DEST_XYZ_ZOOM_PRESETS = ['50', '100', '200', 'fit-width'] as const
 export type NamedDestXyzZoomPreset = (typeof NAMED_DEST_XYZ_ZOOM_PRESETS)[number]
 
 export function assertNamedDestXyzZoomPreset(value: string): NamedDestXyzZoomPreset {
-  if (value === '100' || value === 'fit-width') {
+  if (value === '50' || value === '100' || value === '200' || value === 'fit-width') {
     return value
   }
-  throw new Error('Zoom XYZ chỉ là 100 hoặc fit-width.')
+  throw new Error('Zoom XYZ chỉ là 50, 100, 200 hoặc fit-width.')
 }
 
 export const NAMED_DEST_XYZ_ZOOM_LABELS: Record<NamedDestXyzZoomPreset, string> = {
+  '50': '50%',
   '100': '100%',
+  '200': '200%',
   'fit-width': 'Vừa rộng',
 }
 
-/** 100% is zoom 1. Fit-width is Letter portrait width divided by the page width. */
+const NAMED_DEST_XYZ_ZOOM_SCALE: Record<Exclude<NamedDestXyzZoomPreset, 'fit-width'>, number> = {
+  '50': 0.5,
+  '100': 1,
+  '200': 2,
+}
+
+/** 50%/100%/200% are zoom 0.5/1/2. Fit-width is Letter portrait width divided by the page width. */
 export function namedDestXyzZoomFromPreset(
   preset: NamedDestXyzZoomPreset,
   pageWidth?: number,
@@ -2224,10 +2232,10 @@ export function namedDestXyzZoomFromPreset(
       pageWidth != null && Number.isFinite(pageWidth) && pageWidth > 0 ? pageWidth : LETTER_WIDTH
     return LETTER_WIDTH / width
   }
-  return 1
+  return NAMED_DEST_XYZ_ZOOM_SCALE[style]
 }
 
-/** XYZ zoom preset. 100% keeps left/top. Fit-width pins left to 0. */
+/** XYZ zoom preset. 50%/100%/200% keep left/top. Fit-width pins left to 0. */
 export function namedDestXyzFromZoomPreset(
   preset: NamedDestXyzZoomPreset,
   base: NamedDestXyz = { left: null, top: null, zoom: null },

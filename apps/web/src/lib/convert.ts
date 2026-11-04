@@ -64,6 +64,8 @@ export type ExportFormat =
   | 'marcxml'
   | 'dublincore'
   | 'onix'
+  | 'unixref'
+  | 'bibjson'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1349,6 +1351,47 @@ ${records}
 `
 }
 
+export function toUnixref(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <doi_record>
+    <crossref>
+      <journal>
+        <journal_metadata>
+          <full_title>${heading}</full_title>
+        </journal_metadata>
+        <journal_article>
+          <titles>
+            <title>Trang ${index + 1}</title>
+          </titles>
+          <description>${note}</description>
+        </journal_article>
+      </journal>
+    </crossref>
+  </doi_record>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<doi_records>
+${records}
+</doi_records>
+`
+}
+
+export function toBibjson(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const items = pages.map((text, index) => ({
+    id: `page-${index + 1}`,
+    type: 'article',
+    title: `Trang ${index + 1}`,
+    journal: { name: heading },
+    note: text.trim() || '(không có chữ)',
+  }))
+  return `${JSON.stringify(items, null, 2)}\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2274,6 +2317,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.dublincore+xml;charset=utf-8'
     case 'onix':
       return 'application/onix+xml;charset=utf-8'
+    case 'unixref':
+      return 'application/vnd.crossref.unixref+xml;charset=utf-8'
+    case 'bibjson':
+      return 'application/vnd.citationstyles.bibjson+json;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
