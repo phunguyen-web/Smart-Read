@@ -58,6 +58,8 @@ export type ExportFormat =
   | 'nbib'
   | 'cslyaml'
   | 'enxml'
+  | 'mods'
+  | 'cff'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1189,6 +1191,49 @@ ${records}
 `
 }
 
+export function toMods(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <mods>
+    <titleInfo>
+      <title>Trang ${index + 1}</title>
+    </titleInfo>
+    <relatedItem type="host">
+      <titleInfo>
+        <title>${heading}</title>
+      </titleInfo>
+    </relatedItem>
+    <note>${note}</note>
+  </mods>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<modsCollection xmlns="http://www.loc.gov/mods/v3">
+${records}
+</modsCollection>
+`
+}
+
+export function toCff(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const refs = pages
+    .map((text, index) => {
+      const note = text.trim() || '(không có chữ)'
+      return `  - type: generic
+    title: ${escapeYaml(`Trang ${index + 1}`)}
+    notes: ${escapeYaml(note)}`
+    })
+    .join('\n')
+  return `cff-version: 1.2.0
+message: Smart-Read page export
+title: ${escapeYaml(heading)}
+references:
+${refs}
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2102,6 +2147,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.citationstyles.csl+yaml;charset=utf-8'
     case 'enxml':
       return 'application/x-endnote+xml;charset=utf-8'
+    case 'mods':
+      return 'application/mods+xml;charset=utf-8'
+    case 'cff':
+      return 'application/citation-file+yaml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

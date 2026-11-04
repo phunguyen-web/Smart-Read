@@ -61,6 +61,8 @@ export type ImportedTextKind =
   | 'nbib'
   | 'cslyaml'
   | 'enxml'
+  | 'mods'
+  | 'cff'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -430,6 +432,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'enxml') {
     return pagesFromEnxml(text)
+  }
+  if (kind === 'mods') {
+    return pagesFromMods(text)
+  }
+  if (kind === 'cff') {
+    return pagesFromCff(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -1950,6 +1958,67 @@ export function pagesFromEnxml(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp EndNote XML cần các mục <record> / <notes>.')
+}
+
+export function pagesFromMods(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<mods\b(?!Collection)[^>]*>([\s\S]*?)<\/mods>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const note = xmlTagText(record, 'note')
+      if (note) {
+        return note
+      }
+      const abs = xmlTagText(record, 'abstract')
+      if (abs) {
+        return abs
+      }
+      const title = xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp MODS cần các mục <mods> / <note>.')
+}
+
+export function pagesFromCff(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const refs = trimmed.match(/^references:\s*\n([\s\S]*)$/m)
+  const body = refs ? refs[1]! : trimmed
+  const records = body.split(/^(?=(?: {0,2})- )/m)
+  const pages = records
+    .map((record) => {
+      const notes = yamlField(record, 'notes')
+      if (notes) {
+        return notes
+      }
+      const abs = yamlField(record, 'abstract')
+      if (abs) {
+        return abs
+      }
+      const title = yamlField(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp CFF cần các mục notes / abstract / title.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

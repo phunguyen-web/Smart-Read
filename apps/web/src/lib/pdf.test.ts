@@ -80,6 +80,8 @@ import {
   toNbib,
   toCslyaml,
   toEnxml,
+  toMods,
+  toCff,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -155,6 +157,8 @@ import {
   pagesFromNbib,
   pagesFromCslyaml,
   pagesFromEnxml,
+  pagesFromMods,
+  pagesFromCff,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1403,11 +1407,50 @@ describe('pdf edits', () => {
       top: 280,
       zoom: null,
     })
+    expect(await namedDestXyzFromDestPage(named, 'ChapTwo', 'bottom-left')).toEqual({
+      left: 0,
+      top: 0,
+      zoom: null,
+    })
+    expect(await namedDestXyzFromDestPage(named, 'ChapTwo', 'bottom')).toEqual({
+      left: null,
+      top: 0,
+      zoom: null,
+    })
+    expect(await namedDestXyzFromDestPage(named, 'ChapTwo', 'bottom-right')).toEqual({
+      left: 200,
+      top: 0,
+      zoom: null,
+    })
+    expect(namedDestXyzFromPageSize({ width: A4_WIDTH, height: A4_HEIGHT }, 'bottom-left')).toEqual({
+      left: 0,
+      top: 0,
+      zoom: null,
+    })
+    expect(namedDestXyzFromPageSize({ width: A4_WIDTH, height: A4_HEIGHT }, 'bottom')).toEqual({
+      left: null,
+      top: 0,
+      zoom: null,
+    })
+    expect(namedDestXyzFromPageSize({ width: LETTER_WIDTH, height: LETTER_HEIGHT }, 'bottom-right')).toEqual({
+      left: LETTER_WIDTH,
+      top: 0,
+      zoom: null,
+    })
     expect(
       await listNamedDests(
         await setNamedDestXyz(named, 'ChapTwo', await namedDestXyzFromDestPage(named, 'ChapTwo', 'top')),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: null, top: 280, zoom: null } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          named,
+          'ChapTwo',
+          await namedDestXyzFromDestPage(named, 'ChapTwo', 'bottom-left'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 0, top: 0, zoom: null } }])
     await expect(namedDestXyzFromDestPage(named, 'Missing', 'top')).rejects.toThrow(/đích tên/)
 
     expect(toRomanNumeral(2)).toBe('ii')
@@ -2311,6 +2354,38 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toBe('enxml')
     expect(swapExtension('notes.enxml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.endnote.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toMods('Demo', ['Một', 'Hai\ndòng'])).toContain('<modsCollection')
+    expect(toMods('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toMods('Demo', ['Một'])).toContain('<note>Một</note>')
+    expect(pagesFromMods(toMods('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('mods', toMods('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromMods('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromMods('<modsCollection><mods><title>Một</title></mods></modsCollection>')).toEqual([
+      'Một',
+    ])
+    expect(sourceKindFromFile(new File(['x'], 'notes.mods', { type: '' }))).toBe('mods')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.mods.xml', { type: 'application/mods+xml' })),
+    ).toBe('mods')
+    expect(swapExtension('notes.mods', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.mods.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toCff('Demo', ['Một', 'Hai\ndòng'])).toContain('cff-version: 1.2.0')
+    expect(toCff('Demo', ['Một'])).toContain('title: "Demo"')
+    expect(toCff('Demo', ['Một'])).toContain('notes: "Một"')
+    expect(pagesFromCff(toCff('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('cff', toCff('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromCff('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromCff('- title: Một\n- abstract: Hai')).toEqual(['Một', 'Hai'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.cff', { type: '' }))).toBe('cff')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.citation.cff', { type: 'application/citation-file+yaml' }),
+      ),
+    ).toBe('cff')
+    expect(swapExtension('notes.cff', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.citation.cff', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
