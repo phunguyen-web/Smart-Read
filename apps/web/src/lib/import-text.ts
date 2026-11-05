@@ -95,6 +95,8 @@ export type ImportedTextKind =
   | 'ebucore'
   | 'mpeg7'
   | 'aes57'
+  | 'lom'
+  | 'imscp'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -566,6 +568,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'aes57') {
     return pagesFromAes57(text)
+  }
+  if (kind === 'lom') {
+    return pagesFromLom(text)
+  }
+  if (kind === 'imscp') {
+    return pagesFromImscp(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -3257,6 +3265,66 @@ export function pagesFromAes57(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp AES57 cần các mục <audioObject> / <description>.')
+}
+
+export function pagesFromLom(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<(?:lom:)?lom\b[^>]*>([\s\S]*?)<\/(?:lom:)?lom>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'lom:description') || xmlTagText(record, 'description')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'lom:keyword') || xmlTagText(record, 'keyword')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'lom:title') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp IEEE LOM cần các mục <lom> / <description>.')
+}
+
+export function pagesFromImscp(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<(?:imscp:)?item\b[^>]*>([\s\S]*?)<\/(?:imscp:)?item>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'imscp:description') || xmlTagText(record, 'description')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'imscp:note') || xmlTagText(record, 'note')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'imscp:title') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp IMS CP cần các mục <item> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

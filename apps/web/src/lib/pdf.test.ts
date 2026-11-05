@@ -114,6 +114,8 @@ import {
   toEbucore,
   toMpeg7,
   toAes57,
+  toLom,
+  toImscp,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -223,6 +225,8 @@ import {
   pagesFromEbucore,
   pagesFromMpeg7,
   pagesFromAes57,
+  pagesFromLom,
+  pagesFromImscp,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1767,6 +1771,30 @@ describe('pdf edits', () => {
       top: LETTER_HEIGHT / 4,
       zoom: null,
     })
+    expect(
+      namedDestXyzFromAxisPreset('three-quarter-left', { left: 10, top: 20, zoom: 2 }, 200, 280),
+    ).toEqual({
+      left: 150,
+      top: 20,
+      zoom: 2,
+    })
+    expect(
+      namedDestXyzFromAxisPreset('three-quarter-top', { left: 10, top: 20, zoom: 2 }, 200, 280),
+    ).toEqual({
+      left: 10,
+      top: 210,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('three-quarter-left')).toEqual({
+      left: (LETTER_WIDTH * 3) / 4,
+      top: null,
+      zoom: null,
+    })
+    expect(namedDestXyzFromAxisPreset('three-quarter-top')).toEqual({
+      left: null,
+      top: (LETTER_HEIGHT * 3) / 4,
+      zoom: null,
+    })
     expect(namedDestXyzAxisNeedsPageSize('max-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('max-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('far')).toBe(true)
@@ -1777,6 +1805,8 @@ describe('pdf edits', () => {
     expect(namedDestXyzAxisNeedsPageSize('mid-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('quarter-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('quarter-top')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('three-quarter-left')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('three-quarter-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('origin')).toBe(false)
     expect(namedDestXyzAxisNeedsPageSize('home')).toBe(false)
     expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
@@ -1991,6 +2021,34 @@ describe('pdf edits', () => {
         await setNamedDestXyz(zoomed, 'ChapTwo', await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'quarter-top')),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 70, zoom: 2 } }])
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'three-quarter-left')).toEqual({
+      left: 150,
+      top: 20,
+      zoom: 2,
+    })
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'three-quarter-top')).toEqual({
+      left: 10,
+      top: 210,
+      zoom: 2,
+    })
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'three-quarter-left'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 150, top: 20, zoom: 2 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'three-quarter-top'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 210, zoom: 2 } }])
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
       top: 20,
@@ -3689,6 +3747,51 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(swapExtension('notes.aes57', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.aes57.xml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.aes', 'pdf')).toBe('notes.pdf')
+
+    expect(toLom('Demo', ['Một', 'Hai\ndòng'])).toContain('<lomCollection')
+    expect(toLom('Demo', ['Một'])).toContain('<string>Demo</string>')
+    expect(toLom('Demo', ['Một'])).toContain('<string>Một</string>')
+    expect(pagesFromLom(toLom('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('lom', toLom('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromLom('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromLom('<lomCollection><lom><general><title><string>Một</string></title></general></lom></lomCollection>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.lom', { type: '' }))).toBe('lom')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.lom.xml', { type: 'application/lom+xml' })),
+    ).toBe('lom')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ieee-lom', { type: '' }))).toBe('lom')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromLom('<lomCollection></lomCollection>')).toThrow(/<lom>/)
+    expect(swapExtension('notes.lom', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.lom.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.ieee-lom', 'pdf')).toBe('notes.pdf')
+
+    expect(toImscp('Demo', ['Một', 'Hai\ndòng'])).toContain('<manifest')
+    expect(toImscp('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toImscp('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromImscp(toImscp('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('imscp', toImscp('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromImscp('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromImscp('<manifest><organizations><organization><item><title>Một</title></item></organization></organizations></manifest>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.imscp', { type: '' }))).toBe('imscp')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.imscp.xml', { type: 'application/imscp+xml' })),
+    ).toBe('imscp')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ims', { type: '' }))).toBe('imscp')
+    expect(sourceKindFromFile(new File(['x'], 'imsmanifest.xml', { type: '' }))).toBe('imscp')
+    expect(sourceKindFromFile(new File(['x'], 'course.imsmanifest.xml', { type: '' }))).toBe(
+      'imscp',
+    )
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromImscp('<manifest></manifest>')).toThrow(/<item>/)
+    expect(swapExtension('notes.imscp', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.imscp.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.ims', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('imsmanifest.xml', 'pdf')).toBe('imsmanifest.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

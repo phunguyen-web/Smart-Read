@@ -92,6 +92,8 @@ export type ExportFormat =
   | 'ebucore'
   | 'mpeg7'
   | 'aes57'
+  | 'lom'
+  | 'imscp'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2030,6 +2032,57 @@ ${records}
 `
 }
 
+export function toLom(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <lom>
+    <general>
+      <title>
+        <string>${heading}</string>
+      </title>
+      <identifier>
+        <catalog>page</catalog>
+        <entry>Trang ${index + 1}</entry>
+      </identifier>
+      <description>
+        <string>${note}</string>
+      </description>
+    </general>
+  </lom>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<lomCollection xmlns="http://ltsc.ieee.org/xsd/LOM">
+${records}
+</lomCollection>
+`
+}
+
+export function toImscp(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `      <item identifier="ITEM-${index + 1}">
+        <title>Trang ${index + 1}</title>
+        <description>${note}</description>
+      </item>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<manifest xmlns="http://www.imsglobal.org/xsd/imscp_v1p1" identifier="MANIFEST-1">
+  <organizations default="ORG-1">
+    <organization identifier="ORG-1">
+      <title>${heading}</title>
+${records}
+    </organization>
+  </organizations>
+</manifest>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3011,6 +3064,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/mpeg7+xml;charset=utf-8'
     case 'aes57':
       return 'application/aes57+xml;charset=utf-8'
+    case 'lom':
+      return 'application/lom+xml;charset=utf-8'
+    case 'imscp':
+      return 'application/imscp+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
