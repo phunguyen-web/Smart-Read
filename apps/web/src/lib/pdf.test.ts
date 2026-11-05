@@ -120,6 +120,8 @@ import {
   toNitf,
   toSportsml,
   toEventsml,
+  toNewsmlg2,
+  toRnews,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -235,6 +237,8 @@ import {
   pagesFromNitf,
   pagesFromSportsml,
   pagesFromEventsml,
+  pagesFromNewsmlg2,
+  pagesFromRnews,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1851,6 +1855,30 @@ describe('pdf edits', () => {
       top: LETTER_HEIGHT / 16,
       zoom: null,
     })
+    expect(
+      namedDestXyzFromAxisPreset('thirty-second-left', { left: 10, top: 20, zoom: 2 }, 200, 280),
+    ).toEqual({
+      left: 6.25,
+      top: 20,
+      zoom: 2,
+    })
+    expect(
+      namedDestXyzFromAxisPreset('thirty-second-top', { left: 10, top: 20, zoom: 2 }, 200, 280),
+    ).toEqual({
+      left: 10,
+      top: 8.75,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('thirty-second-left')).toEqual({
+      left: LETTER_WIDTH / 32,
+      top: null,
+      zoom: null,
+    })
+    expect(namedDestXyzFromAxisPreset('thirty-second-top')).toEqual({
+      left: null,
+      top: LETTER_HEIGHT / 32,
+      zoom: null,
+    })
     expect(namedDestXyzAxisNeedsPageSize('max-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('max-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('far')).toBe(true)
@@ -1867,6 +1895,8 @@ describe('pdf edits', () => {
     expect(namedDestXyzAxisNeedsPageSize('eighth-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('sixteenth-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('sixteenth-top')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('thirty-second-left')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('thirty-second-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('origin')).toBe(false)
     expect(namedDestXyzAxisNeedsPageSize('home')).toBe(false)
     expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
@@ -2165,6 +2195,34 @@ describe('pdf edits', () => {
         ),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 17.5, zoom: 2 } }])
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'thirty-second-left')).toEqual({
+      left: 6.25,
+      top: 20,
+      zoom: 2,
+    })
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'thirty-second-top')).toEqual({
+      left: 10,
+      top: 8.75,
+      zoom: 2,
+    })
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'thirty-second-left'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 6.25, top: 20, zoom: 2 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'thirty-second-top'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 8.75, zoom: 2 } }])
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
       top: 20,
@@ -3988,6 +4046,53 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromEventsml('<eventsML></eventsML>')).toThrow(/<eventsItem>/)
     expect(swapExtension('notes.eventsml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.eventsml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toNewsmlg2('Demo', ['Một', 'Hai\ndòng'])).toContain('<newsMessage')
+    expect(toNewsmlg2('Demo', ['Một'])).toContain('<headline>Demo</headline>')
+    expect(toNewsmlg2('Demo', ['Một'])).toContain('<body>Một</body>')
+    expect(pagesFromNewsmlg2(toNewsmlg2('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('newsmlg2', toNewsmlg2('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromNewsmlg2('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromNewsmlg2(
+        '<newsMessage><packageItem><itemMeta><headline>Một</headline></itemMeta></packageItem></newsMessage>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.newsmlg2', { type: '' }))).toBe('newsmlg2')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.newsmlg2.xml', { type: 'application/vnd.iptc.g2+xml' }),
+      ),
+    ).toBe('newsmlg2')
+    expect(sourceKindFromFile(new File(['x'], 'notes.newsml-g2', { type: '' }))).toBe('newsmlg2')
+    expect(sourceKindFromFile(new File(['x'], 'notes.nar', { type: '' }))).toBe('newsmlg2')
+    expect(sourceKindFromFile(new File(['x'], 'notes.newsml', { type: '' }))).toBe('newsml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromNewsmlg2('<newsMessage></newsMessage>')).toThrow(/<packageItem>/)
+    expect(swapExtension('notes.newsmlg2', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.newsmlg2.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.newsml-g2', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.nar', 'pdf')).toBe('notes.pdf')
+
+    expect(toRnews('Demo', ['Một', 'Hai\ndòng'])).toContain('<rNews')
+    expect(toRnews('Demo', ['Một'])).toContain('<headline>Demo</headline>')
+    expect(toRnews('Demo', ['Một'])).toContain('<articleBody>Một</articleBody>')
+    expect(pagesFromRnews(toRnews('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('rnews', toRnews('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromRnews('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromRnews(
+        '<rNews><NewsArticle><headline>Một</headline></NewsArticle></rNews>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.rnews', { type: '' }))).toBe('rnews')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.rnews.xml', { type: 'application/vnd.iptc.rnews+xml' })),
+    ).toBe('rnews')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromRnews('<rNews></rNews>')).toThrow(/<NewsArticle>/)
+    expect(swapExtension('notes.rnews', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.rnews.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

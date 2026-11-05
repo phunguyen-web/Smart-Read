@@ -101,6 +101,8 @@ export type ImportedTextKind =
   | 'nitf'
   | 'sportsml'
   | 'eventsml'
+  | 'newsmlg2'
+  | 'rnews'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -590,6 +592,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'eventsml') {
     return pagesFromEventsml(text)
+  }
+  if (kind === 'newsmlg2') {
+    return pagesFromNewsmlg2(text)
+  }
+  if (kind === 'rnews') {
+    return pagesFromRnews(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -3469,6 +3477,70 @@ export function pagesFromEventsml(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp EventsML cần các mục <eventsItem> / <description>.')
+}
+
+export function pagesFromNewsmlg2(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<(?:nar:)?packageItem\b[^>]*>([\s\S]*?)<\/(?:nar:)?packageItem>/gi),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'nar:body') || xmlTagText(record, 'body')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'nar:description') || xmlTagText(record, 'description')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'nar:headline') || xmlTagText(record, 'headline')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp NewsML-G2 cần các mục <packageItem> / <body>.')
+}
+
+export function pagesFromRnews(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<(?:rnews:)?NewsArticle\b[^>]*>([\s\S]*?)<\/(?:rnews:)?NewsArticle>/gi),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'rnews:articleBody') || xmlTagText(record, 'articleBody')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'rnews:description') || xmlTagText(record, 'description')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'rnews:headline') || xmlTagText(record, 'headline')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp rNews cần các mục <NewsArticle> / <articleBody>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

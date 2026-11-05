@@ -98,6 +98,8 @@ export type ExportFormat =
   | 'nitf'
   | 'sportsml'
   | 'eventsml'
+  | 'newsmlg2'
+  | 'rnews'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2187,6 +2189,48 @@ ${records}
 `
 }
 
+export function toNewsmlg2(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <packageItem>
+    <itemMeta>
+      <itemId>Trang ${index + 1}</itemId>
+      <headline>${heading}</headline>
+    </itemMeta>
+    <inlineXML>
+      <body>${note}</body>
+    </inlineXML>
+  </packageItem>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<newsMessage xmlns="http://iptc.org/std/nar/2006-10-01/">
+${records}
+</newsMessage>
+`
+}
+
+export function toRnews(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <NewsArticle>
+    <headline>${heading}</headline>
+    <identifier>Trang ${index + 1}</identifier>
+    <articleBody>${note}</articleBody>
+  </NewsArticle>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rNews xmlns="http://iptc.org/std/rNews/0.1/">
+${records}
+</rNews>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3180,6 +3224,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/sportsml+xml;charset=utf-8'
     case 'eventsml':
       return 'application/eventsml+xml;charset=utf-8'
+    case 'newsmlg2':
+      return 'application/vnd.iptc.g2+xml;charset=utf-8'
+    case 'rnews':
+      return 'application/vnd.iptc.rnews+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
