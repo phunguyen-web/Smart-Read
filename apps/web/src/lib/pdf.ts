@@ -1108,6 +1108,33 @@ export async function mergePdf(
   return new Uint8Array(await doc.save())
 }
 
+/** Use the extra PDF filename (without `.pdf`) as an outline title when merging. */
+export function mergeBookmarkTitle(filename: string): string {
+  const base = filename.replace(/\.pdf$/i, '').normalize('NFC').replace(/\s+/g, ' ').trim()
+  const label = (base || 'Tài liệu gộp').slice(0, MAX_OUTLINE_TITLE).trim()
+  return assertOutlineTitle(label || 'Tài liệu gộp')
+}
+
+/** Merge `extra` into `base` and add one outline bookmark covering the inserted pages. */
+export async function mergePdfWithBookmark(
+  base: Uint8Array,
+  extra: Uint8Array,
+  title: string,
+  insertAt?: number,
+): Promise<Uint8Array> {
+  const extraDoc = await PDFDocument.load(extra)
+  const extraCount = extraDoc.getPageCount()
+  if (extraCount < 1) {
+    throw new Error('Không có trang để gộp.')
+  }
+  const baseDoc = await PDFDocument.load(base)
+  const baseCount = baseDoc.getPageCount()
+  const at = insertAt == null ? baseCount : Math.max(0, Math.min(insertAt, baseCount))
+  const merged = await mergePdf(base, extra, at)
+  const indexes = Array.from({ length: extraCount }, (_, index) => at + index)
+  return addOutlineBookmarks(merged, indexes, mergeBookmarkTitle(title))
+}
+
 export type WatermarkStyle = 'diagonal' | 'footer' | 'header'
 
 export const WATERMARK_STYLES = ['diagonal', 'footer', 'header'] as const
@@ -3932,6 +3959,81 @@ export async function setOutlineNamedDest(
 export async function listOutlineBookmarks(bytes: Uint8Array): Promise<OutlineBookmark[]> {
   const doc = await PDFDocument.load(bytes)
   return readOutlineChain(doc)
+}
+
+export type OutlineSplitPart = {
+  title: string
+  /** Inclusive start page index. */
+  start: number
+  /** Exclusive end page index. */
+  end: number
+}
+
+/**
+ * Split ranges from top-level outline items (`depth === 0`).
+ * Pages before the first bookmark become `Trang đầu`. Duplicate starts are skipped.
+ */
+export function outlineSplitRanges(
+  outline: readonly OutlineBookmark[],
+  pageCountValue: number,
+): OutlineSplitPart[] {
+  const count = Math.trunc(pageCountValue)
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error('Không có trang để tách.')
+  }
+  const tops = outline.filter((item) => item.depth === 0)
+  if (tops.length === 0) {
+    throw new Error('Cần dấu trang mục lục để tách theo dấu trang.')
+  }
+  const starts: { title: string; page: number }[] = []
+  for (const item of tops) {
+    const page = Math.max(0, Math.min(count - 1, Math.trunc(item.pageIndex)))
+    const last = starts[starts.length - 1]
+    if (!last || last.page !== page) {
+      starts.push({ title: item.title, page })
+    }
+  }
+  const parts: OutlineSplitPart[] = []
+  if (starts[0]!.page > 0) {
+    parts.push({ title: 'Trang đầu', start: 0, end: starts[0]!.page })
+  }
+  for (let index = 0; index < starts.length; index += 1) {
+    const next = index + 1 < starts.length ? starts[index + 1]!.page : count
+    if (next > starts[index]!.page) {
+      parts.push({
+        title: starts[index]!.title,
+        start: starts[index]!.page,
+        end: next,
+      })
+    }
+  }
+  if (parts.length === 0) {
+    throw new Error('Cần dấu trang mục lục để tách theo dấu trang.')
+  }
+  return parts
+}
+
+/** Split the PDF into one part per top-level outline bookmark. */
+export async function splitByOutline(
+  bytes: Uint8Array,
+): Promise<{ title: string; bytes: Uint8Array }[]> {
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  const ranges = outlineSplitRanges(await listOutlineBookmarks(bytes), count)
+  const parts: { title: string; bytes: Uint8Array }[] = []
+  for (const range of ranges) {
+    const indexes = Array.from(
+      { length: range.end - range.start },
+      (_, offset) => range.start + offset,
+    )
+    const dst = await PDFDocument.create()
+    const copied = await dst.copyPages(src, indexes)
+    for (const page of copied) {
+      dst.addPage(page)
+    }
+    parts.push({ title: range.title, bytes: new Uint8Array(await dst.save()) })
+  }
+  return parts
 }
 
 /** Append outline bookmarks for selected pages. Empty indexes or an empty title are refused. */

@@ -115,6 +115,8 @@ export type ImportedTextKind =
   | 'gpx'
   | 'osm'
   | 'georss'
+  | 'wkt'
+  | 'gml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -646,6 +648,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'georss') {
     return pagesFromGeorss(text)
+  }
+  if (kind === 'wkt') {
+    return pagesFromWkt(text)
+  }
+  if (kind === 'gml') {
+    return pagesFromGml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -4169,6 +4177,102 @@ export function pagesFromGeorss(text: string): string[] {
     return capPages(items)
   }
   throw new Error('Tệp GeoRSS cần các mục <entry> / <summary>.')
+}
+
+function isWktPointLine(line: string): boolean {
+  return /^\s*POINT\s*\(/i.test(line)
+}
+
+export function pagesFromWkt(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages: string[] = []
+  let current: string[] | null = null
+  for (const line of trimmed.split(/\r?\n/)) {
+    if (/^\s*#/.test(line) && current == null) {
+      continue
+    }
+    if (isWktPointLine(line)) {
+      if (current) {
+        const page = current.join('\n').trim()
+        if (page) {
+          pages.push(page)
+        }
+      }
+      const rest = line.replace(/^\s*POINT\s*\([^)]*\)\s*/i, '').replace(/^\|\s*/, '')
+      current = rest ? [rest] : []
+      continue
+    }
+    if (current) {
+      current.push(line)
+    }
+  }
+  if (current) {
+    const page = current.join('\n').trim()
+    if (page) {
+      pages.push(page)
+    }
+  }
+  if (pages.length === 0) {
+    throw new Error('Tệp WKT cần các mục POINT.')
+  }
+  return capPages(pages)
+}
+
+function textFromGmlMember(record: string): string {
+  const body =
+    xmlTagText(record, 'gml:description') ||
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'gml:text') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const note = xmlTagText(record, 'gml:note') || xmlTagText(record, 'note')
+  if (note) {
+    return note
+  }
+  const title = xmlTagText(record, 'gml:name') || xmlTagText(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function gmlRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(
+    `<(?:gml:)?${tag}\\b[^>]*>([\\s\\S]*?)</(?:gml:)?${tag}>`,
+    'gi',
+  )
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromGmlMember(match[1]!))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromGml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = gmlRecords(trimmed, 'featureMember')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const many = gmlRecords(trimmed, 'featureMembers')
+  if (many.length > 0) {
+    return capPages(many)
+  }
+  const members = gmlRecords(trimmed, 'member')
+  if (members.length > 0) {
+    return capPages(members)
+  }
+  const points = gmlRecords(trimmed, 'Point')
+  if (points.length > 0) {
+    return capPages(points)
+  }
+  throw new Error('Tệp GML cần các mục <featureMember> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

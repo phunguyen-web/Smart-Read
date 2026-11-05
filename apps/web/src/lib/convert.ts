@@ -112,6 +112,8 @@ export type ExportFormat =
   | 'gpx'
   | 'osm'
   | 'georss'
+  | 'wkt'
+  | 'gml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2475,6 +2477,39 @@ ${entries}
 `
 }
 
+export function toWkt(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const records = pages
+    .map((text) => {
+      const note = text.trim() || '(không có chữ)'
+      return `POINT (0 0)\n${note}`
+    })
+    .join('\n')
+  return `# ${heading}\n${records}\n`
+}
+
+export function toGml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const members = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <gml:featureMember>
+    <gml:Point gml:id="p${index + 1}">
+      <gml:name>Trang ${index + 1}</gml:name>
+      <gml:description>${note}</gml:description>
+      <gml:pos>0 0</gml:pos>
+    </gml:Point>
+  </gml:featureMember>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gml:FeatureCollection xmlns:gml="http://www.opengis.net/gml/3.2">
+  <gml:name>${heading}</gml:name>
+${members}
+</gml:FeatureCollection>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3496,6 +3531,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.osm+xml;charset=utf-8'
     case 'georss':
       return 'application/georss+xml;charset=utf-8'
+    case 'wkt':
+      return 'application/wkt;charset=utf-8'
+    case 'gml':
+      return 'application/gml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

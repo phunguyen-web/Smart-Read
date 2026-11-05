@@ -105,8 +105,10 @@ import {
   interleaveHalvesOrder,
   isIdentityOrder,
   keepPages,
+  mergeBookmarkTitle,
   mergeInsertIndex,
   mergePdf,
+  mergePdfWithBookmark,
   movePages,
   nUpPages,
   orientPages,
@@ -124,6 +126,7 @@ import {
   SCALE_PERCENTS,
   scalePages,
   setMetadata,
+  splitByOutline,
   splitEvery,
   splitPagesInHalf,
   TINT_IDS,
@@ -159,6 +162,8 @@ import {
   readImageFiles,
   readPdfFile,
   readSourceFile,
+  outlineSplitPartName,
+  outlineSplitZipName,
   splitPartName,
   splitZipName,
   swapExtension,
@@ -305,6 +310,7 @@ export function Editor() {
     pages: number
   } | null>(null)
   const [mergeWhere, setMergeWhere] = useState<MergeWhere>('end')
+  const [mergeBookmark, setMergeBookmark] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const startedHistory = useMemo(() => getHydratedHistory(), [])
@@ -977,7 +983,11 @@ export function Editor() {
       return
     }
     const at = mergeInsertIndex(doc.pageCount, page, mergeWhere)
-    await run((bytes) => mergePdf(bytes, mergePending.bytes, at))
+    await run((bytes) =>
+      mergeBookmark
+        ? mergePdfWithBookmark(bytes, mergePending.bytes, mergePending.name, at)
+        : mergePdf(bytes, mergePending.bytes, at),
+    )
     goToPage(at, 'replace')
     setMergePending(null)
   }
@@ -1054,11 +1064,11 @@ export function Editor() {
           thêm trang bìa, gộp
           2/4 trang mỗi tờ, xếp sách gấp (xem tờ in), lật ngang/dọc, cắt đôi trên/dưới hoặc trái/phải, xoay khổ
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
-          thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
-          hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ (trên trái/trên giữa/trên phải/giữa/dưới trái/dưới giữa/dưới phải), che chữ (dòng/khối/trang), tô vàng, gạch chân, gạch ngang và ký tên, đánh dấu mục lục
+          thành nhiều PDF hoặc tách theo dấu trang mục lục, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
+          hoàn tác (giữ khi tải lại trang), gộp tệp (tuỳ chọn gắn dấu trang), sửa thông tin tài liệu, chèn chữ (trên trái/trên giữa/trên phải/giữa/dưới trái/dưới giữa/dưới phải), che chữ (dòng/khối/trang), tô vàng, gạch chân, gạch ngang và ký tên, đánh dấu mục lục
           (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích / kiểu xem XYZ Fit FitH FitV FitR FitB FitBH FitBV / gắn XYZ trái đỉnh zoom / khổ A4 Letter A5 trái trên / mé trái trên / trên / phải trên / trái giữa / giữa / phải giữa / trái dưới / dưới / phải dưới theo khổ trang đích / zoom 50% / 75% / 100% / 125% / 150% / 200% / vừa rộng / vừa cao / vừa trang / giữ zoom / giữ trái / giữ trên / trái 0 / trên 0 / gốc / về gốc / đích trên thumbnail, bấm tên đích để chọn),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
-          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, KML, GPX, OSM, GeoRSS, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, FOXML, EDM, LIDO, VRA, CDWA Lite, SPECTRUM, Darwin Core, Object ID, EAC-CPF, CIDOC CRM, METS Rights, TextMD, PBCore, EBUCore, RTF, DOCX, ODT, ODS, XLSX,
+          mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, KML, GPX, OSM, GeoRSS, WKT, GML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, FOXML, EDM, LIDO, VRA, CDWA Lite, SPECTRUM, Darwin Core, Object ID, EAC-CPF, CIDOC CRM, METS Rights, TextMD, PBCore, EBUCore, RTF, DOCX, ODT, ODS, XLSX,
           PPTX, ODP, FB2, EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF.
         </p>
       </header>
@@ -1068,7 +1078,7 @@ export function Editor() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, KML, GPX, OSM, GeoRSS, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, FOXML, EDM, LIDO, VRA, CDWA Lite, SPECTRUM, Darwin Core, Object ID, EAC-CPF, CIDOC CRM, METS Rights, TextMD, PBCore, EBUCore, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, KML, GPX, OSM, GeoRSS, WKT, GML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, FOXML, EDM, LIDO, VRA, CDWA Lite, SPECTRUM, Darwin Core, Object ID, EAC-CPF, CIDOC CRM, METS Rights, TextMD, PBCore, EBUCore, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chỉnh sửa"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>
@@ -1575,6 +1585,40 @@ export function Editor() {
                 }}
               >
                 Tải ZIP các phần
+              </button>
+              <button
+                type="button"
+                disabled={busy || outline.every((item) => item.depth !== 0)}
+                aria-label="Tách PDF theo dấu trang mục lục cấp trên và tải ZIP"
+                onClick={() => {
+                  void (async () => {
+                    if (!doc) {
+                      return
+                    }
+                    setBusy(true)
+                    setError(null)
+                    try {
+                      const parts = await splitByOutline(doc.bytes)
+                      const blob = await zipPdfParts(
+                        parts.map((part, index) => ({
+                          name: outlineSplitPartName(doc.name, part.title, index + 1, parts.length),
+                          bytes: part.bytes,
+                        })),
+                      )
+                      downloadBlob(blob, outlineSplitZipName(doc.name))
+                    } catch (cause) {
+                      setError(
+                        cause instanceof Error
+                          ? cause.message
+                          : 'Không tách được theo dấu trang mục lục.',
+                      )
+                    } finally {
+                      setBusy(false)
+                    }
+                  })()
+                }}
+              >
+                Tách theo dấu trang
               </button>
             </fieldset>
             <div className="tool-row">
@@ -3033,6 +3077,14 @@ export function Editor() {
                     </label>
                   ))}
                 </fieldset>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={mergeBookmark}
+                    onChange={(event) => setMergeBookmark(event.target.checked)}
+                  />
+                  Gắn dấu trang “{mergeBookmarkTitle(mergePending.name)}”
+                </label>
                 <div className="tool-row">
                   <button type="button" className="primary" disabled={busy} onClick={() => void confirmMerge()}>
                     Gộp vào đây

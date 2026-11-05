@@ -134,6 +134,8 @@ import {
   toGpx,
   toOsm,
   toGeorss,
+  toWkt,
+  toGml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -263,6 +265,8 @@ import {
   pagesFromGpx,
   pagesFromOsm,
   pagesFromGeorss,
+  pagesFromWkt,
+  pagesFromGml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -320,6 +324,8 @@ import {
   imageZipName,
   isImageKind,
   sourceKindFromFile,
+  outlineSplitPartName,
+  outlineSplitZipName,
   splitPartName,
   splitZipName,
   swapExtension,
@@ -457,8 +463,10 @@ import {
   bookletSheetCount,
   bookletSlotOrder,
   MAX_METADATA_LENGTH,
+  mergeBookmarkTitle,
   mergeInsertIndex,
   mergePdf,
+  mergePdfWithBookmark,
   nUpCellRects,
   needsOrientation,
   nUpPages,
@@ -490,6 +498,8 @@ import {
   scaleFactor,
   scalePages,
   setMetadata,
+  outlineSplitRanges,
+  splitByOutline,
   splitEvery,
   splitPagesInHalf,
   textPagesToPdf,
@@ -728,6 +738,43 @@ describe('pdf edits', () => {
     const loaded = await JSZip.loadAsync(await zip.arrayBuffer())
     expect(loaded.file('demo-phan-1-cua-2.pdf')).toBeTruthy()
     expect(splitZipName('demo.pdf')).toBe('demo-tach.zip')
+  })
+
+  it('splits by top-level outline bookmarks and merges with a bookmark', async () => {
+    const bytes = await samplePdf(['A', 'B', 'C', 'D'])
+    expect(mergeBookmarkTitle('phu-luc.pdf')).toBe('phu-luc')
+    expect(mergeBookmarkTitle('.pdf')).toBe('Tài liệu gộp')
+    await expect(splitByOutline(bytes)).rejects.toThrow(/dấu trang/)
+    const marked = await addOutlineBookmarks(bytes, [0], 'Mở đầu')
+    const marked2 = await addOutlineBookmarks(marked, [2], 'Phần hai')
+    expect(outlineSplitRanges(await listOutlineBookmarks(marked2), 4)).toEqual([
+      { title: 'Mở đầu', start: 0, end: 2 },
+      { title: 'Phần hai', start: 2, end: 4 },
+    ])
+    const late = await addOutlineBookmarks(bytes, [2], 'Giữa')
+    expect(outlineSplitRanges(await listOutlineBookmarks(late), 4)).toEqual([
+      { title: 'Trang đầu', start: 0, end: 2 },
+      { title: 'Giữa', start: 2, end: 4 },
+    ])
+    const parts = await splitByOutline(marked2)
+    expect(parts).toHaveLength(2)
+    expect(parts[0]!.title).toBe('Mở đầu')
+    expect(await pageCount(parts[0]!.bytes)).toBe(2)
+    expect(await pageCount(parts[1]!.bytes)).toBe(2)
+    expect(outlineSplitPartName('demo.pdf', 'Phần hai', 2, 2)).toBe('demo-phan-2-Phần-hai.pdf')
+    expect(outlineSplitZipName('demo.pdf')).toBe('demo-tach-muc-luc.zip')
+    const extra = await samplePdf(['X'])
+    const merged = await mergePdfWithBookmark(bytes, extra, 'Phụ lục.pdf')
+    expect(await pageCount(merged)).toBe(5)
+    expect(await listOutlineBookmarks(merged)).toEqual([
+      { title: 'Phụ lục', pageIndex: 4, depth: 0 },
+    ])
+    const front = await mergePdfWithBookmark(bytes, extra, 'Bìa', 0)
+    expect((await listOutlineBookmarks(front))[0]).toEqual({
+      title: 'Bìa',
+      pageIndex: 0,
+      depth: 0,
+    })
   })
 
   it('builds a PDF from imported text pages and wraps long lines', async () => {
@@ -4500,6 +4547,44 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromGeorss('<feed></feed>')).toThrow(/<entry>/)
     expect(swapExtension('notes.georss', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.georss.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toWkt('Demo', ['Một', 'Hai\ndòng'])).toContain('POINT (0 0)')
+    expect(toWkt('Demo', ['Một'])).toContain('# Demo')
+    expect(toWkt('Demo', ['Một'])).toContain('Một')
+    expect(pagesFromWkt(toWkt('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('wkt', toWkt('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromWkt('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromWkt('POINT (1 2)\nMột')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(sourceKindFromFile(new File(['x'], 'notes.wkt', { type: '' }))).toBe('wkt')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.wkt.txt', { type: 'application/wkt' })),
+    ).toBe('wkt')
+    expect(() => pagesFromWkt('# Demo\n')).toThrow(/POINT/)
+    expect(swapExtension('notes.wkt', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.wkt.txt', 'pdf')).toBe('notes.pdf')
+
+    expect(toGml('Demo', ['Một', 'Hai\ndòng'])).toContain('http://www.opengis.net/gml/3.2')
+    expect(toGml('Demo', ['Một'])).toContain('<gml:name>Demo</gml:name>')
+    expect(toGml('Demo', ['Một'])).toContain('<gml:description>Một</gml:description>')
+    expect(pagesFromGml(toGml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('gml', toGml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromGml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromGml(
+        '<gml:FeatureCollection xmlns:gml="http://www.opengis.net/gml/3.2"><gml:featureMember><gml:name>Một</gml:name></gml:featureMember></gml:FeatureCollection>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.gml', { type: '' }))).toBe('gml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.gml.xml', { type: 'application/gml+xml' })),
+    ).toBe('gml')
+    expect(() => pagesFromGml('<gml:FeatureCollection></gml:FeatureCollection>')).toThrow(
+      /<featureMember>/,
+    )
+    expect(swapExtension('notes.gml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.gml.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
