@@ -111,6 +111,8 @@ export type ImportedTextKind =
   | 'jsonfeed'
   | 'as2'
   | 'geojson'
+  | 'kml'
+  | 'gpx'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -630,6 +632,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'geojson') {
     return pagesFromGeojson(text)
+  }
+  if (kind === 'kml') {
+    return pagesFromKml(text)
+  }
+  if (kind === 'gpx') {
+    return pagesFromGpx(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -3977,6 +3985,80 @@ export function pagesFromGeojson(text: string): string[] {
     }
   }
   throw new Error('Tệp GeoJSON cần các mục features / description.')
+}
+
+function textFromKmlPlacemark(record: string): string {
+  const body = xmlTagText(record, 'kml:description') || xmlTagText(record, 'description')
+  if (body) {
+    return body
+  }
+  const note = xmlTagText(record, 'kml:text') || xmlTagText(record, 'text')
+  if (note) {
+    return note
+  }
+  const title = xmlTagText(record, 'kml:name') || xmlTagText(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+export function pagesFromKml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<(?:kml:)?Placemark\b[^>]*>([\s\S]*?)<\/(?:kml:)?Placemark>/gi),
+  ]
+  const pages = records.map((match) => textFromKmlPlacemark(match[1]!)).filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp KML cần các mục <Placemark> / <description>.')
+}
+
+function textFromGpxWaypoint(record: string): string {
+  const body = xmlTagText(record, 'gpx:desc') || xmlTagText(record, 'desc')
+  if (body) {
+    return body
+  }
+  const note = xmlTagText(record, 'gpx:cmt') || xmlTagText(record, 'cmt')
+  if (note) {
+    return note
+  }
+  const title = xmlTagText(record, 'gpx:name') || xmlTagText(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function gpxRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:gpx:)?${tag}\\b[^>]*>([\\s\\S]*?)</(?:gpx:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromGpxWaypoint(match[1]!))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromGpx(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = gpxRecords(trimmed, 'wpt')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const tracks = gpxRecords(trimmed, 'trkpt')
+  if (tracks.length > 0) {
+    return capPages(tracks)
+  }
+  const routes = gpxRecords(trimmed, 'rtept')
+  if (routes.length > 0) {
+    return capPages(routes)
+  }
+  throw new Error('Tệp GPX cần các mục <wpt> / <desc>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

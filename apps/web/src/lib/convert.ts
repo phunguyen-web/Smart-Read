@@ -108,6 +108,8 @@ export type ExportFormat =
   | 'jsonfeed'
   | 'as2'
   | 'geojson'
+  | 'kml'
+  | 'gpx'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2390,6 +2392,48 @@ export function toGeojson(title: string, pages: string[]): string {
   )}\n`
 }
 
+export function toKml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const marks = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `    <Placemark>
+      <name>Trang ${index + 1}</name>
+      <description>${note}</description>
+    </Placemark>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>${heading}</name>
+${marks}
+  </Document>
+</kml>
+`
+}
+
+export function toGpx(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const points = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <wpt lat="0" lon="0">
+    <name>Trang ${index + 1}</name>
+    <desc>${note}</desc>
+  </wpt>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Smart-Read" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>${heading}</name>
+  </metadata>
+${points}
+</gpx>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3403,6 +3447,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/activity+json;charset=utf-8'
     case 'geojson':
       return 'application/geo+json;charset=utf-8'
+    case 'kml':
+      return 'application/vnd.google-earth.kml+xml;charset=utf-8'
+    case 'gpx':
+      return 'application/gpx+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

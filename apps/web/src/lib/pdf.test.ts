@@ -130,6 +130,8 @@ import {
   toJsonfeed,
   toAs2,
   toGeojson,
+  toKml,
+  toGpx,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -255,6 +257,8 @@ import {
   pagesFromJsonfeed,
   pagesFromAs2,
   pagesFromGeojson,
+  pagesFromKml,
+  pagesFromGpx,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -414,6 +418,8 @@ import {
   redactPages,
   REDACT_SIZES,
   OVERLAY_PRESETS,
+  strikeoutPages,
+  strikeoutStrokeForBox,
   underlinePages,
   underlineStrokeForBox,
   CROP_MARGINS,
@@ -621,6 +627,10 @@ describe('pdf edits', () => {
     expect(stroke.thickness).toBeGreaterThan(0)
     expect(stroke.start.x).toBe(box.x)
     expect(stroke.end.x).toBe(box.x + box.width)
+    const strike = strikeoutStrokeForBox(box)
+    expect(strike.thickness).toBeGreaterThan(0)
+    expect(strike.start.y).toBe(box.y + box.height / 2)
+    expect(strike.end.x).toBe(box.x + box.width)
     const highlighted = await highlightPages(bytes, [0], { xRatio: 0.5, yRatio: 0.5 }, 'block')
     expect(await pageCount(highlighted)).toBe(1)
     const lined = await highlightPages(bytes, [0], OVERLAY_PRESETS['top-left'], 'line')
@@ -631,8 +641,13 @@ describe('pdf edits', () => {
     expect(await pageCount(underlined)).toBe(1)
     const pageLine = await underlinePages(bytes, [0], OVERLAY_PRESETS.center, 'page')
     expect(await pageCount(pageLine)).toBe(1)
+    const struck = await strikeoutPages(bytes, [0], OVERLAY_PRESETS['top-left'], 'block')
+    expect(await pageCount(struck)).toBe(1)
+    const pageStrike = await strikeoutPages(bytes, [0], OVERLAY_PRESETS.center, 'page')
+    expect(await pageCount(pageStrike)).toBe(1)
     await expect(highlightPages(bytes, [])).rejects.toThrow(/tô vàng/)
     await expect(underlinePages(bytes, [])).rejects.toThrow(/gạch chân/)
+    await expect(strikeoutPages(bytes, [])).rejects.toThrow(/gạch ngang/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -4394,6 +4409,40 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.geojson', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.geojson.json', 'pdf')).toBe('notes.pdf')
+
+    expect(toKml('Demo', ['Một', 'Hai\ndòng'])).toContain('http://www.opengis.net/kml/2.2')
+    expect(toKml('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toKml('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromKml(toKml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('kml', toKml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromKml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromKml('<kml><Placemark><name>Một</name></Placemark></kml>')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.kml', { type: '' }))).toBe('kml')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.kml.xml', { type: 'application/vnd.google-earth.kml+xml' }),
+      ),
+    ).toBe('kml')
+    expect(() => pagesFromKml('<kml></kml>')).toThrow(/<Placemark>/)
+    expect(swapExtension('notes.kml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.kml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toGpx('Demo', ['Một', 'Hai\ndòng'])).toContain('www.topografix.com/GPX/1/1')
+    expect(toGpx('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toGpx('Demo', ['Một'])).toContain('<desc>Một</desc>')
+    expect(pagesFromGpx(toGpx('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('gpx', toGpx('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromGpx('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromGpx('<gpx><wpt lat="0" lon="0"><name>Một</name></wpt></gpx>')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.gpx', { type: '' }))).toBe('gpx')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.gpx.xml', { type: 'application/gpx+xml' })),
+    ).toBe('gpx')
+    expect(() => pagesFromGpx('<gpx></gpx>')).toThrow(/<wpt>/)
+    expect(swapExtension('notes.gpx', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.gpx.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
