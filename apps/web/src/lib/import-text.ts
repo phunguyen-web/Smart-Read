@@ -93,6 +93,8 @@ export type ImportedTextKind =
   | 'textmd'
   | 'pbcore'
   | 'ebucore'
+  | 'mpeg7'
+  | 'aes57'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -558,6 +560,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'ebucore') {
     return pagesFromEbucore(text)
+  }
+  if (kind === 'mpeg7') {
+    return pagesFromMpeg7(text)
+  }
+  if (kind === 'aes57') {
+    return pagesFromAes57(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -3182,6 +3190,73 @@ export function pagesFromEbucore(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp EBUCore cần các mục <coreMetadata> / <description>.')
+}
+
+export function pagesFromMpeg7(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(
+      /<(?:mpeg7:)?MultimediaContent\b[^>]*>([\s\S]*?)<\/(?:mpeg7:)?MultimediaContent>/gi,
+    ),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value =
+        xmlTagText(record, 'mpeg7:FreeTextAnnotation') || xmlTagText(record, 'FreeTextAnnotation')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'mpeg7:Abstract') || xmlTagText(record, 'Abstract')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'mpeg7:Title') || xmlTagText(record, 'Title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp MPEG-7 cần các mục <MultimediaContent> / <FreeTextAnnotation>.')
+}
+
+export function pagesFromAes57(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<(?:aes:)?audioObject\b[^>]*>([\s\S]*?)<\/(?:aes:)?audioObject>/gi),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'aes:description') || xmlTagText(record, 'description')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'aes:note') || xmlTagText(record, 'note')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'aes:title') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp AES57 cần các mục <audioObject> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

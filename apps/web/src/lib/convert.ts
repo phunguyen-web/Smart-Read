@@ -90,6 +90,8 @@ export type ExportFormat =
   | 'textmd'
   | 'pbcore'
   | 'ebucore'
+  | 'mpeg7'
+  | 'aes57'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1980,6 +1982,54 @@ ${records}
 `
 }
 
+export function toMpeg7(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <Description>
+    <MultimediaContent>
+      <CreationInformation>
+        <Creation>
+          <Title>${heading}</Title>
+        </Creation>
+      </CreationInformation>
+      <MediaIdentification>
+        <EntityIdentifier>Trang ${index + 1}</EntityIdentifier>
+      </MediaIdentification>
+      <TextAnnotation>
+        <FreeTextAnnotation>${note}</FreeTextAnnotation>
+      </TextAnnotation>
+    </MultimediaContent>
+  </Description>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Mpeg7 xmlns="urn:mpeg:mpeg7:schema:2001">
+${records}
+</Mpeg7>
+`
+}
+
+export function toAes57(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <audioObject>
+    <title>${heading}</title>
+    <identifier>Trang ${index + 1}</identifier>
+    <description>${note}</description>
+  </audioObject>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<aes xmlns="http://www.aes.org/aes57/2011">
+${records}
+</aes>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2957,6 +3007,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/pbcore+xml;charset=utf-8'
     case 'ebucore':
       return 'application/ebucore+xml;charset=utf-8'
+    case 'mpeg7':
+      return 'application/mpeg7+xml;charset=utf-8'
+    case 'aes57':
+      return 'application/aes57+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

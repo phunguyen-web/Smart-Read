@@ -89,6 +89,8 @@ import {
   toTextmd,
   toPbcore,
   toEbucore,
+  toMpeg7,
+  toAes57,
   toJson,
   toJsonl,
   toLatex,
@@ -196,6 +198,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'textmd', label: 'TextMD', hint: 'NISO TextMD XML, textNote mỗi trang' },
   { id: 'pbcore', label: 'PBCore', hint: 'PBCore XML, pbcoreDescription mỗi trang' },
   { id: 'ebucore', label: 'EBUCore', hint: 'EBUCore XML, description mỗi trang' },
+  { id: 'mpeg7', label: 'MPEG-7', hint: 'MPEG-7 XML, FreeTextAnnotation mỗi trang' },
+  { id: 'aes57', label: 'AES57', hint: 'AES57 XML, description mỗi trang' },
   { id: 'srt', label: 'SRT', hint: 'Phụ đề .srt, một cue mỗi trang' },
   { id: 'vtt', label: 'VTT', hint: 'WebVTT, NOTE title + một cue mỗi trang' },
   { id: 'lrc', label: 'LRC', hint: 'Lời bài hát [mm:ss.xx], một dòng mỗi trang' },
@@ -831,6 +835,16 @@ export function Convert() {
       } else if (format === 'ebucore') {
         downloadBlob(
           new Blob([toEbucore(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'mpeg7') {
+        downloadBlob(
+          new Blob([toMpeg7(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'aes57') {
+        downloadBlob(
+          new Blob([toAes57(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
       } else if (format === 'docx' || format === 'doc') {

@@ -112,6 +112,8 @@ import {
   toTextmd,
   toPbcore,
   toEbucore,
+  toMpeg7,
+  toAes57,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -219,6 +221,8 @@ import {
   pagesFromTextmd,
   pagesFromPbcore,
   pagesFromEbucore,
+  pagesFromMpeg7,
+  pagesFromAes57,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1743,6 +1747,26 @@ describe('pdf edits', () => {
       top: LETTER_HEIGHT / 2,
       zoom: null,
     })
+    expect(namedDestXyzFromAxisPreset('quarter-left', { left: 10, top: 20, zoom: 2 }, 200, 280)).toEqual({
+      left: 50,
+      top: 20,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('quarter-top', { left: 10, top: 20, zoom: 2 }, 200, 280)).toEqual({
+      left: 10,
+      top: 70,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('quarter-left')).toEqual({
+      left: LETTER_WIDTH / 4,
+      top: null,
+      zoom: null,
+    })
+    expect(namedDestXyzFromAxisPreset('quarter-top')).toEqual({
+      left: null,
+      top: LETTER_HEIGHT / 4,
+      zoom: null,
+    })
     expect(namedDestXyzAxisNeedsPageSize('max-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('max-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('far')).toBe(true)
@@ -1751,6 +1775,8 @@ describe('pdf edits', () => {
     expect(namedDestXyzAxisNeedsPageSize('focus')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('mid-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('mid-top')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('quarter-left')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('quarter-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('origin')).toBe(false)
     expect(namedDestXyzAxisNeedsPageSize('home')).toBe(false)
     expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
@@ -1945,6 +1971,26 @@ describe('pdf edits', () => {
         await setNamedDestXyz(zoomed, 'ChapTwo', await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'mid-top')),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 140, zoom: 2 } }])
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'quarter-left')).toEqual({
+      left: 50,
+      top: 20,
+      zoom: 2,
+    })
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'quarter-top')).toEqual({
+      left: 10,
+      top: 70,
+      zoom: 2,
+    })
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(zoomed, 'ChapTwo', await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'quarter-left')),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 50, top: 20, zoom: 2 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(zoomed, 'ChapTwo', await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'quarter-top')),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 70, zoom: 2 } }])
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
       top: 20,
@@ -3601,6 +3647,48 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(swapExtension('notes.ebucore', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.ebucore.xml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.ebu', 'pdf')).toBe('notes.pdf')
+
+    expect(toMpeg7('Demo', ['Một', 'Hai\ndòng'])).toContain('<Mpeg7')
+    expect(toMpeg7('Demo', ['Một'])).toContain('<Title>Demo</Title>')
+    expect(toMpeg7('Demo', ['Một'])).toContain('<FreeTextAnnotation>Một</FreeTextAnnotation>')
+    expect(pagesFromMpeg7(toMpeg7('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('mpeg7', toMpeg7('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromMpeg7('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromMpeg7(
+        '<Mpeg7><Description><MultimediaContent><Title>Một</Title></MultimediaContent></Description></Mpeg7>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.mpeg7', { type: '' }))).toBe('mpeg7')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.mpeg7.xml', { type: 'application/mpeg7+xml' })),
+    ).toBe('mpeg7')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mp7', { type: '' }))).toBe('mpeg7')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromMpeg7('<Mpeg7></Mpeg7>')).toThrow(/<MultimediaContent>/)
+    expect(swapExtension('notes.mpeg7', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.mpeg7.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.mp7', 'pdf')).toBe('notes.pdf')
+
+    expect(toAes57('Demo', ['Một', 'Hai\ndòng'])).toContain('<aes')
+    expect(toAes57('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toAes57('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromAes57(toAes57('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('aes57', toAes57('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromAes57('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromAes57('<aes><audioObject><title>Một</title></audioObject></aes>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.aes57', { type: '' }))).toBe('aes57')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.aes57.xml', { type: 'application/aes57+xml' })),
+    ).toBe('aes57')
+    expect(sourceKindFromFile(new File(['x'], 'notes.aes', { type: '' }))).toBe('aes57')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromAes57('<aes></aes>')).toThrow(/<audioObject>/)
+    expect(swapExtension('notes.aes57', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.aes57.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.aes', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
