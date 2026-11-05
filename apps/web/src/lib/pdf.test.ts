@@ -108,6 +108,8 @@ import {
   toObjectid,
   toEac,
   toCrm,
+  toRights,
+  toTextmd,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -211,6 +213,8 @@ import {
   pagesFromObjectid,
   pagesFromEac,
   pagesFromCrm,
+  pagesFromRights,
+  pagesFromTextmd,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1695,10 +1699,32 @@ describe('pdf edits', () => {
       top: LETTER_HEIGHT,
       zoom: 1,
     })
+    expect(namedDestXyzFromAxisPreset('mid', { left: 10, top: 20, zoom: 2 }, 200, 280)).toEqual({
+      left: 100,
+      top: 140,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('focus', { left: 10, top: 20, zoom: 2 }, 200, 280)).toEqual({
+      left: 100,
+      top: 140,
+      zoom: 1,
+    })
+    expect(namedDestXyzFromAxisPreset('mid')).toEqual({
+      left: LETTER_WIDTH / 2,
+      top: LETTER_HEIGHT / 2,
+      zoom: null,
+    })
+    expect(namedDestXyzFromAxisPreset('focus')).toEqual({
+      left: LETTER_WIDTH / 2,
+      top: LETTER_HEIGHT / 2,
+      zoom: 1,
+    })
     expect(namedDestXyzAxisNeedsPageSize('max-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('max-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('far')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('end')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('mid')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('focus')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('origin')).toBe(false)
     expect(namedDestXyzAxisNeedsPageSize('home')).toBe(false)
     expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
@@ -1853,6 +1879,26 @@ describe('pdf edits', () => {
         await setNamedDestXyz(zoomed, 'ChapTwo', await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'end')),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 200, top: 280, zoom: 1 } }])
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'mid')).toEqual({
+      left: 100,
+      top: 140,
+      zoom: 2,
+    })
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'focus')).toEqual({
+      left: 100,
+      top: 140,
+      zoom: 1,
+    })
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(zoomed, 'ChapTwo', await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'mid')),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 100, top: 140, zoom: 2 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(zoomed, 'ChapTwo', await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'focus')),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 100, top: 140, zoom: 1 } }])
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
       top: 20,
@@ -3414,6 +3460,55 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(swapExtension('notes.cidoc', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.cidoc.xml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.cidoc-crm', 'pdf')).toBe('notes.pdf')
+
+    expect(toRights('Demo', ['Một', 'Hai\ndòng'])).toContain('<RightsDeclarationMD')
+    expect(toRights('Demo', ['Một'])).toContain('<RightsHolderName>Demo</RightsHolderName>')
+    expect(toRights('Demo', ['Một'])).toContain('<ConstraintDescription>Một</ConstraintDescription>')
+    expect(pagesFromRights(toRights('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('rights', toRights('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromRights('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromRights(
+        '<RightsDeclarationMD><RightsDeclaration><RightsHolder><RightsHolderName>Một</RightsHolderName></RightsHolder></RightsDeclaration></RightsDeclarationMD>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.rights', { type: '' }))).toBe('rights')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.rights.xml', { type: 'application/metsrights+xml' })),
+    ).toBe('rights')
+    expect(sourceKindFromFile(new File(['x'], 'notes.metsrights', { type: '' }))).toBe('rights')
+    expect(sourceKindFromFile(new File(['x'], 'notes.rmd', { type: '' }))).toBe('rights')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromRights('<RightsDeclarationMD></RightsDeclarationMD>')).toThrow(
+      /<RightsDeclaration>/,
+    )
+    expect(swapExtension('notes.rights', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.rights.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.metsrights', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.metsrights.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.rmd', 'pdf')).toBe('notes.pdf')
+
+    expect(toTextmd('Demo', ['Một', 'Hai\ndòng'])).toContain('<textMD')
+    expect(toTextmd('Demo', ['Một'])).toContain('<encoding_platform>Demo</encoding_platform>')
+    expect(toTextmd('Demo', ['Một'])).toContain('<textNote>Một</textNote>')
+    expect(pagesFromTextmd(toTextmd('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('textmd', toTextmd('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromTextmd('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromTextmd(
+        '<textMD><encoding><encoding_platform>Một</encoding_platform></encoding></textMD>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.textmd', { type: '' }))).toBe('textmd')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.textmd.xml', { type: 'application/textmd+xml' })),
+    ).toBe('textmd')
+    expect(sourceKindFromFile(new File(['x'], 'notes.tmd', { type: '' }))).toBe('textmd')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromTextmd('<textMD></textMD>')).toThrow(/<encoding>/)
+    expect(swapExtension('notes.textmd', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.textmd.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.tmd', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

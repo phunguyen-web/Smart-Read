@@ -89,6 +89,8 @@ export type ImportedTextKind =
   | 'objectid'
   | 'eac'
   | 'crm'
+  | 'rights'
+  | 'textmd'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -542,6 +544,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'crm') {
     return pagesFromCrm(text)
+  }
+  if (kind === 'rights') {
+    return pagesFromRights(text)
+  }
+  if (kind === 'textmd') {
+    return pagesFromTextmd(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -3026,6 +3034,76 @@ export function pagesFromCrm(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp CIDOC CRM cần các mục <E31_Document> / <P3_has_note>.')
+}
+
+export function pagesFromRights(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(
+      /<(?:rts:)?RightsDeclaration(?!MD)\b[^>]*>([\s\S]*?)<\/(?:rts:)?RightsDeclaration>/gi,
+    ),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value =
+        xmlTagText(record, 'rts:ConstraintDescription') ||
+        xmlTagText(record, 'ConstraintDescription')
+      if (value) {
+        return value
+      }
+      const note =
+        xmlTagText(record, 'rts:OtherConstraintDescription') ||
+        xmlTagText(record, 'OtherConstraintDescription')
+      if (note) {
+        return note
+      }
+      const title =
+        xmlTagText(record, 'rts:RightsHolderName') || xmlTagText(record, 'RightsHolderName')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp METS Rights cần các mục <RightsDeclaration> / <ConstraintDescription>.')
+}
+
+export function pagesFromTextmd(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<(?:tm:)?encoding\b[^>]*>([\s\S]*?)<\/(?:tm:)?encoding>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'tm:textNote') || xmlTagText(record, 'textNote')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'tm:processingNote') || xmlTagText(record, 'processingNote')
+      if (note) {
+        return note
+      }
+      const title =
+        xmlTagText(record, 'tm:encoding_platform') || xmlTagText(record, 'encoding_platform')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp TextMD cần các mục <encoding> / <textNote>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

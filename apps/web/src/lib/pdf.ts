@@ -2256,6 +2256,8 @@ export const NAMED_DEST_XYZ_AXIS_PRESETS = [
   'max-top',
   'far',
   'end',
+  'mid',
+  'focus',
 ] as const
 export type NamedDestXyzAxisPreset = (typeof NAMED_DEST_XYZ_AXIS_PRESETS)[number]
 
@@ -2264,7 +2266,7 @@ export function assertNamedDestXyzAxisPreset(value: string): NamedDestXyzAxisPre
     return value as NamedDestXyzAxisPreset
   }
   throw new Error(
-    'Trục XYZ chỉ là keep-left, keep-top, zero-left, zero-top, origin, home, max-left, max-top, far hoặc end.',
+    'Trục XYZ chỉ là keep-left, keep-top, zero-left, zero-top, origin, home, max-left, max-top, far, end, mid hoặc focus.',
   )
 }
 
@@ -2279,14 +2281,23 @@ export const NAMED_DEST_XYZ_AXIS_LABELS: Record<NamedDestXyzAxisPreset, string> 
   'max-top': 'Trên hết',
   far: 'Xa hết',
   end: 'Về xa',
+  mid: 'Giữa hết',
+  focus: 'Về giữa',
 }
 
 export function namedDestXyzAxisNeedsPageSize(preset: NamedDestXyzAxisPreset): boolean {
   const style = assertNamedDestXyzAxisPreset(preset)
-  return style === 'max-left' || style === 'max-top' || style === 'far' || style === 'end'
+  return (
+    style === 'max-left' ||
+    style === 'max-top' ||
+    style === 'far' ||
+    style === 'end' ||
+    style === 'mid' ||
+    style === 'focus'
+  )
 }
 
-/** Keep-left leaves left null and keeps top/zoom. Keep-top leaves top null and keeps left/zoom. Zero-left sets left 0 and keeps top/zoom. Zero-top sets top 0 and keeps left/zoom. Origin sets left 0 and top 0 and keeps zoom. Home sets left 0, top 0, and zoom 1. Max-left sets left to dest page width and keeps top/zoom. Max-top sets top to dest page height and keeps left/zoom. Far sets left to dest page width and top to dest page height and keeps zoom. End sets left to dest page width, top to dest page height, and zoom 1. Max-left, max-top, far, and end need dest page size (Letter fallback). */
+/** Keep-left leaves left null and keeps top/zoom. Keep-top leaves top null and keeps left/zoom. Zero-left sets left 0 and keeps top/zoom. Zero-top sets top 0 and keeps left/zoom. Origin sets left 0 and top 0 and keeps zoom. Home sets left 0, top 0, and zoom 1. Max-left sets left to dest page width and keeps top/zoom. Max-top sets top to dest page height and keeps left/zoom. Far sets left to dest page width and top to dest page height and keeps zoom. End sets left to dest page width, top to dest page height, and zoom 1. Mid sets left to dest page width / 2 and top to dest page height / 2 and keeps zoom. Focus sets left to dest page width / 2, top to dest page height / 2, and zoom 1. Max-left, max-top, far, end, mid, and focus need dest page size (Letter fallback). */
 export function namedDestXyzFromAxisPreset(
   preset: NamedDestXyzAxisPreset,
   base: NamedDestXyz = { left: null, top: null, zoom: null },
@@ -2325,7 +2336,13 @@ export function namedDestXyzFromAxisPreset(
   if (style === 'far') {
     return { left: width, top: height, zoom: base.zoom ?? null }
   }
-  return { left: width, top: height, zoom: 1 }
+  if (style === 'end') {
+    return { left: width, top: height, zoom: 1 }
+  }
+  if (style === 'mid') {
+    return { left: width / 2, top: height / 2, zoom: base.zoom ?? null }
+  }
+  return { left: width / 2, top: height / 2, zoom: 1 }
 }
 
 const NAMED_DEST_XYZ_ZOOM_SCALE: Record<

@@ -86,6 +86,8 @@ export type ExportFormat =
   | 'objectid'
   | 'eac'
   | 'crm'
+  | 'rights'
+  | 'textmd'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1890,6 +1892,50 @@ ${records}
 `
 }
 
+export function toRights(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <RightsDeclaration RIGHTSCATEGORY="COPYRIGHTED">
+    <RightsHolder>
+      <RightsHolderName>${heading}</RightsHolderName>
+    </RightsHolder>
+    <Context CONTEXTCLASS="GENERAL PUBLIC">
+      <UserName>Trang ${index + 1}</UserName>
+      <Constraints CONSTRAINTTYPE="OTHER">
+        <ConstraintDescription>${note}</ConstraintDescription>
+      </Constraints>
+    </Context>
+  </RightsDeclaration>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<RightsDeclarationMD xmlns="http://cosimo.stanford.edu/sdr/metsrights/">
+${records}
+</RightsDeclarationMD>
+`
+}
+
+export function toTextmd(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <encoding>
+    <encoding_platform>${heading}</encoding_platform>
+    <encoding_software>Trang ${index + 1}</encoding_software>
+    <textNote>${note}</textNote>
+  </encoding>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<textMD xmlns="info:lc/xmlns/textMD-v3">
+${records}
+</textMD>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2859,6 +2905,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/eac-cpf+xml;charset=utf-8'
     case 'crm':
       return 'application/cidoc-crm+xml;charset=utf-8'
+    case 'rights':
+      return 'application/metsrights+xml;charset=utf-8'
+    case 'textmd':
+      return 'application/textmd+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
