@@ -82,6 +82,8 @@ export type ExportFormat =
   | 'vra'
   | 'cdwa'
   | 'spectrum'
+  | 'dwc'
+  | 'objectid'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1799,6 +1801,44 @@ ${records}
 `
 }
 
+export function toDwc(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <dwr:SimpleDarwinRecord>
+    <dwc:institutionName>${heading}</dwc:institutionName>
+    <dwc:catalogNumber>Trang ${index + 1}</dwc:catalogNumber>
+    <dcterms:description>${note}</dcterms:description>
+  </dwr:SimpleDarwinRecord>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<dwr:DarwinRecordSet xmlns:dwr="http://rs.tdwg.org/dwc/xsd/simpledarwincore/" xmlns:dwc="http://rs.tdwg.org/dwc/terms/" xmlns:dcterms="http://purl.org/dc/terms/">
+${records}
+</dwr:DarwinRecordSet>
+`
+}
+
+export function toObjectid(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <object>
+    <title>${heading}</title>
+    <objectNumber>Trang ${index + 1}</objectNumber>
+    <distinguishingFeatures>${note}</distinguishingFeatures>
+  </object>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<objectid>
+${records}
+</objectid>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2760,6 +2800,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/cdwa+xml;charset=utf-8'
     case 'spectrum':
       return 'application/spectrum+xml;charset=utf-8'
+    case 'dwc':
+      return 'application/vnd.tdwg.dwc+xml;charset=utf-8'
+    case 'objectid':
+      return 'application/objectid+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

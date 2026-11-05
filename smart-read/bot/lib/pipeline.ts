@@ -18,14 +18,14 @@ export const PIPELINE_STAGES = [
     subagent: "pdf-editor",
     title: "PDF editor",
     summary:
-      "Implement in-browser PDF page operations: rotate, reverse, interleave halves / split odd-even, 2-up / 4-up, booklet impose with a print-sheet preview, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, cover page, page border, crop or pad margins, unify mixed page sizes, reading tint, page background color, auto-crop whitespace, grayscale, find text, go to page (number, viewer label, or dest name), remove blank or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, text overlay, outline bookmarks (including dest-less nested folders (depth 3, per-folder collapse, rename/remove, move up/down, indent/outdent, retarget dest, named destinations via addNamedDest / listNamedDests / renameNamedDest / setNamedDestPage / parseNamedDestPageInput / setNamedDestView / setNamedDestXyz / parseNamedDestXyzInput / namedDestXyzFromPaper / namedDestXyzFromDestPage / namedDestXyzFromZoomPreset / namedDestXyzFromAxisPreset / namedDestXyzZoomFromDestPage / destNamesForPage / duplicateNamedDest / addNamedDestsForSelection / namedDestNameForPage / clearNamedDests / removeNamedDest / setOutlineNamedDest) that can collapse or clear), page labels (shown on thumbnails), extract embedded images, open a password-protected PDF, and password-protect a download copy.",
+      "Implement in-browser PDF page operations: rotate, reverse, interleave halves / split odd-even, 2-up / 4-up, booklet impose with a print-sheet preview, flip horizontal/vertical, split pages in half, orient portrait/landscape, scale 50/75/125/150%, page numbers, watermark, header/footer, cover page, page border, crop or pad margins, unify mixed page sizes, reading tint, page background color, auto-crop whitespace, grayscale, find text, go to page (number, viewer label, or dest name), remove blank or duplicate-text pages, fit to A4/Letter/A5, invert selection, delete, duplicate, extract, keep, split, insert blank or images, reorder, merge, metadata, persist undo, text overlay, outline bookmarks (including dest-less nested folders (depth 3, per-folder collapse, rename/remove, move up/down, indent/outdent, retarget dest, named destinations via addNamedDest / listNamedDests / renameNamedDest / setNamedDestPage / parseNamedDestPageInput / setNamedDestView / setNamedDestXyz / parseNamedDestXyzInput / namedDestXyzFromPaper / namedDestXyzFromDestPage / namedDestXyzFromZoomPreset / namedDestXyzFromAxisPreset / namedDestXyzAxisNeedsPageSize / namedDestXyzFromAxisDestPage / namedDestXyzZoomFromDestPage / destNamesForPage / duplicateNamedDest / addNamedDestsForSelection / namedDestNameForPage / clearNamedDests / removeNamedDest / setOutlineNamedDest) that can collapse or clear), page labels (shown on thumbnails), extract embedded images, open a password-protected PDF, and password-protect a download copy.",
   },
   {
     id: "format-converter",
     subagent: "format-converter",
     title: "Format converter",
     summary:
-      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, FOXML, EDM, LIDO, VRA, CDWA Lite, SPECTRUM, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP/CBZ; import TXT/MD/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff/Jupyter/BibTeX/SRT/VTT/LRC/ICS/CUE/ASS/TTML/SBV/SAMI/SUB/STL/SCC/USF/RT/MPL/DjVu/PS/TEI/JATS/RIS/ENW/CSL-JSON/NBIB/CSL-YAML/EndNote XML/MODS/CFF/DataCite/MARCXML/Dublin Core/ONIX/Unixref/BibJSON/PubMed/JSON-LD/BIBFRAME/Crossref/EAD/METS/PREMIS/MIX/ALTO/PAGE/FOXML/EDM/LIDO/VRA/CDWA Lite/SPECTRUM/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/CBZ/PNG/JPEG/WEBP as PDF.",
+      "Convert PDF (and extracted text) to TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, FOXML, EDM, LIDO, VRA, CDWA Lite, SPECTRUM, Darwin Core, Object ID, XLSX, DOCX/DOC, ODT, ODS, PPTX, ODP, FB2, EPUB, and MOBI; raster pages to PNG/JPEG/WEBP/CBZ; import TXT/MD/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff/Jupyter/BibTeX/SRT/VTT/LRC/ICS/CUE/ASS/TTML/SBV/SAMI/SUB/STL/SCC/USF/RT/MPL/DjVu/PS/TEI/JATS/RIS/ENW/CSL-JSON/NBIB/CSL-YAML/EndNote XML/MODS/CFF/DataCite/MARCXML/Dublin Core/ONIX/Unixref/BibJSON/PubMed/JSON-LD/BIBFRAME/Crossref/EAD/METS/PREMIS/MIX/ALTO/PAGE/FOXML/EDM/LIDO/VRA/CDWA Lite/SPECTRUM/Darwin Core/Object ID/RTF/DOCX/ODT/ODS/XLSX/PPTX/ODP/FB2/EPUB/CBZ/PNG/JPEG/WEBP as PDF.",
   },
   {
     id: "qa-reviewer",
@@ -653,6 +653,20 @@ export const SUPPORTED_FORMATS = [
     aliases: ["spectrum.xml"],
     role: "export",
     notes: "SPECTRUM museum XML (<record> + objectName title + objectNumber Trang n + briefDescription body). Uploading .spectrum / .spectrum.xml builds a PDF from briefDescription (then description, then objectName). JSON-shaped SPECTRUM uses pagesFromJson. Match .spectrum / .spectrum.xml before generic XML. <spectrum\\b> does not match as a <record> record.",
+  },
+  {
+    id: "dwc",
+    label: "Darwin Core",
+    aliases: ["dwc.xml", "darwincore", "darwincore.xml"],
+    role: "export",
+    notes: "Darwin Core XML (<SimpleDarwinRecord> + institutionName title + catalogNumber Trang n + dcterms:description body). Uploading .dwc / .dwc.xml / .darwincore / .darwincore.xml builds a PDF from description (then occurrenceRemarks, then scientificName). JSON-shaped Darwin Core uses pagesFromJson. Match .dwc / .dwc.xml / .darwincore / .darwincore.xml before generic XML. <DarwinRecordSet\\b> does not match as a <SimpleDarwinRecord> record.",
+  },
+  {
+    id: "objectid",
+    label: "Object ID",
+    aliases: ["objectid.xml", "oid"],
+    role: "export",
+    notes: "Object ID XML (<object> + title + objectNumber Trang n + distinguishingFeatures body). Uploading .objectid / .objectid.xml / .oid builds a PDF from distinguishingFeatures (then description, then title). JSON-shaped Object ID uses pagesFromJson. Match .objectid / .objectid.xml / .oid before generic XML. <objectid\\b> does not match as an <object> record.",
   },
   {
     id: "xlsx",

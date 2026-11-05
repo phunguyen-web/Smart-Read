@@ -104,6 +104,8 @@ import {
   toVra,
   toCdwa,
   toSpectrum,
+  toDwc,
+  toObjectid,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -203,6 +205,8 @@ import {
   pagesFromVra,
   pagesFromCdwa,
   pagesFromSpectrum,
+  pagesFromDwc,
+  pagesFromObjectid,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -286,6 +290,8 @@ import {
   namedDestXyzFromDestPage,
   namedDestXyzFromZoomPreset,
   namedDestXyzFromAxisPreset,
+  namedDestXyzAxisNeedsPageSize,
+  namedDestXyzFromAxisDestPage,
   namedDestXyzZoomFromPreset,
   namedDestXyzZoomFromDestPage,
   listPageSizes,
@@ -1645,6 +1651,30 @@ describe('pdf edits', () => {
       top: 0,
       zoom: 1,
     })
+    expect(namedDestXyzFromAxisPreset('max-left', { left: 10, top: 20, zoom: 2 }, 200, 280)).toEqual({
+      left: 200,
+      top: 20,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('max-top', { left: 10, top: 20, zoom: 2 }, 200, 280)).toEqual({
+      left: 10,
+      top: 280,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('max-left')).toEqual({
+      left: LETTER_WIDTH,
+      top: null,
+      zoom: null,
+    })
+    expect(namedDestXyzFromAxisPreset('max-top')).toEqual({
+      left: null,
+      top: LETTER_HEIGHT,
+      zoom: null,
+    })
+    expect(namedDestXyzAxisNeedsPageSize('max-left')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('max-top')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('origin')).toBe(false)
+    expect(namedDestXyzAxisNeedsPageSize('home')).toBe(false)
     expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
     expect(namedDestXyzZoomFromPreset('75')).toBe(0.75)
     expect(namedDestXyzZoomFromPreset('100')).toBe(1)
@@ -1757,6 +1787,26 @@ describe('pdf edits', () => {
         ),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 0, top: 0, zoom: 1 } }])
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'max-left')).toEqual({
+      left: 200,
+      top: 20,
+      zoom: 2,
+    })
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'max-top')).toEqual({
+      left: 10,
+      top: 280,
+      zoom: 2,
+    })
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(zoomed, 'ChapTwo', await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'max-left')),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 200, top: 20, zoom: 2 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(zoomed, 'ChapTwo', await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'max-top')),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 280, zoom: 2 } }])
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
       top: 20,
@@ -3229,6 +3279,47 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromSpectrum('<spectrum></spectrum>')).toThrow(/<record>/)
     expect(swapExtension('notes.spectrum', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.spectrum.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toDwc('Demo', ['Một', 'Hai\ndòng'])).toContain('<dwr:DarwinRecordSet')
+    expect(toDwc('Demo', ['Một'])).toContain('<dwc:institutionName>Demo</dwc:institutionName>')
+    expect(toDwc('Demo', ['Một'])).toContain('<dcterms:description>Một</dcterms:description>')
+    expect(pagesFromDwc(toDwc('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('dwc', toDwc('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromDwc('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromDwc(
+        '<dwr:DarwinRecordSet><dwr:SimpleDarwinRecord><dwc:scientificName>Một</dwc:scientificName></dwr:SimpleDarwinRecord></dwr:DarwinRecordSet>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.dwc', { type: '' }))).toBe('dwc')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.dwc.xml', { type: 'application/vnd.tdwg.dwc+xml' })),
+    ).toBe('dwc')
+    expect(sourceKindFromFile(new File(['x'], 'notes.darwincore', { type: '' }))).toBe('dwc')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromDwc('<dwr:DarwinRecordSet></dwr:DarwinRecordSet>')).toThrow(/<SimpleDarwinRecord>/)
+    expect(swapExtension('notes.dwc', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.dwc.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.darwincore', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.darwincore.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toObjectid('Demo', ['Một', 'Hai\ndòng'])).toContain('<objectid')
+    expect(toObjectid('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toObjectid('Demo', ['Một'])).toContain('<distinguishingFeatures>Một</distinguishingFeatures>')
+    expect(pagesFromObjectid(toObjectid('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('objectid', toObjectid('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromObjectid('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromObjectid('<objectid><object><title>Một</title></object></objectid>')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.objectid', { type: '' }))).toBe('objectid')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.objectid.xml', { type: 'application/objectid+xml' })),
+    ).toBe('objectid')
+    expect(sourceKindFromFile(new File(['x'], 'notes.oid', { type: '' }))).toBe('objectid')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromObjectid('<objectid></objectid>')).toThrow(/<object>/)
+    expect(swapExtension('notes.objectid', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.objectid.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.oid', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

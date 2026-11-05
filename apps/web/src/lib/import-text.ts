@@ -85,6 +85,8 @@ export type ImportedTextKind =
   | 'vra'
   | 'cdwa'
   | 'spectrum'
+  | 'dwc'
+  | 'objectid'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -526,6 +528,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'spectrum') {
     return pagesFromSpectrum(text)
+  }
+  if (kind === 'dwc') {
+    return pagesFromDwc(text)
+  }
+  if (kind === 'objectid') {
+    return pagesFromObjectid(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -2872,6 +2880,77 @@ export function pagesFromSpectrum(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp SPECTRUM cần các mục <record> / <briefDescription>.')
+}
+
+export function pagesFromDwc(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(
+      /<(?:dwr:)?SimpleDarwinRecord\b[^>]*>([\s\S]*?)<\/(?:dwr:)?SimpleDarwinRecord>/gi,
+    ),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value =
+        xmlTagText(record, 'dcterms:description') ||
+        xmlTagText(record, 'dwc:description') ||
+        xmlTagText(record, 'description')
+      if (value) {
+        return value
+      }
+      const note =
+        xmlTagText(record, 'dwc:occurrenceRemarks') || xmlTagText(record, 'occurrenceRemarks')
+      if (note) {
+        return note
+      }
+      const title =
+        xmlTagText(record, 'dwc:scientificName') || xmlTagText(record, 'scientificName')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp Darwin Core cần các mục <SimpleDarwinRecord> / <description>.')
+}
+
+export function pagesFromObjectid(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<(?:oid:)?object\b(?!:)[^>]*>([\s\S]*?)<\/(?:oid:)?object>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value =
+        xmlTagText(record, 'oid:distinguishingFeatures') ||
+        xmlTagText(record, 'distinguishingFeatures')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'oid:description') || xmlTagText(record, 'description')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'oid:title') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp Object ID cần các mục <object> / <distinguishingFeatures>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

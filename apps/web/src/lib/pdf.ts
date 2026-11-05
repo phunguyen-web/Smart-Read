@@ -2252,6 +2252,8 @@ export const NAMED_DEST_XYZ_AXIS_PRESETS = [
   'zero-top',
   'origin',
   'home',
+  'max-left',
+  'max-top',
 ] as const
 export type NamedDestXyzAxisPreset = (typeof NAMED_DEST_XYZ_AXIS_PRESETS)[number]
 
@@ -2259,7 +2261,9 @@ export function assertNamedDestXyzAxisPreset(value: string): NamedDestXyzAxisPre
   if ((NAMED_DEST_XYZ_AXIS_PRESETS as readonly string[]).includes(value)) {
     return value as NamedDestXyzAxisPreset
   }
-  throw new Error('Trục XYZ chỉ là keep-left, keep-top, zero-left, zero-top, origin hoặc home.')
+  throw new Error(
+    'Trục XYZ chỉ là keep-left, keep-top, zero-left, zero-top, origin, home, max-left hoặc max-top.',
+  )
 }
 
 export const NAMED_DEST_XYZ_AXIS_LABELS: Record<NamedDestXyzAxisPreset, string> = {
@@ -2269,12 +2273,21 @@ export const NAMED_DEST_XYZ_AXIS_LABELS: Record<NamedDestXyzAxisPreset, string> 
   'zero-top': 'Trên 0',
   origin: 'Gốc',
   home: 'Về gốc',
+  'max-left': 'Trái hết',
+  'max-top': 'Trên hết',
 }
 
-/** Keep-left leaves left null and keeps top/zoom. Keep-top leaves top null and keeps left/zoom. Zero-left sets left 0 and keeps top/zoom. Zero-top sets top 0 and keeps left/zoom. Origin sets left 0 and top 0 and keeps zoom. Home sets left 0, top 0, and zoom 1. Does not need dest page size. */
+export function namedDestXyzAxisNeedsPageSize(preset: NamedDestXyzAxisPreset): boolean {
+  const style = assertNamedDestXyzAxisPreset(preset)
+  return style === 'max-left' || style === 'max-top'
+}
+
+/** Keep-left leaves left null and keeps top/zoom. Keep-top leaves top null and keeps left/zoom. Zero-left sets left 0 and keeps top/zoom. Zero-top sets top 0 and keeps left/zoom. Origin sets left 0 and top 0 and keeps zoom. Home sets left 0, top 0, and zoom 1. Max-left sets left to dest page width and keeps top/zoom. Max-top sets top to dest page height and keeps left/zoom. Max-left and max-top need dest page size (Letter fallback). */
 export function namedDestXyzFromAxisPreset(
   preset: NamedDestXyzAxisPreset,
   base: NamedDestXyz = { left: null, top: null, zoom: null },
+  pageWidth?: number,
+  pageHeight?: number,
 ): NamedDestXyz {
   const style = assertNamedDestXyzAxisPreset(preset)
   if (style === 'keep-left') {
@@ -2292,7 +2305,17 @@ export function namedDestXyzFromAxisPreset(
   if (style === 'origin') {
     return { left: 0, top: 0, zoom: base.zoom ?? null }
   }
-  return { left: 0, top: 0, zoom: 1 }
+  if (style === 'home') {
+    return { left: 0, top: 0, zoom: 1 }
+  }
+  if (style === 'max-left') {
+    const width =
+      pageWidth != null && Number.isFinite(pageWidth) && pageWidth > 0 ? pageWidth : LETTER_WIDTH
+    return { left: width, top: base.top ?? null, zoom: base.zoom ?? null }
+  }
+  const height =
+    pageHeight != null && Number.isFinite(pageHeight) && pageHeight > 0 ? pageHeight : LETTER_HEIGHT
+  return { left: base.left ?? null, top: height, zoom: base.zoom ?? null }
 }
 
 const NAMED_DEST_XYZ_ZOOM_SCALE: Record<
@@ -2404,6 +2427,24 @@ export async function namedDestXyzZoomFromDestPage(
     throw new Error('Không đọc được khổ trang đích.')
   }
   return namedDestXyzFromZoomPreset(preset, namedDestXyzOf(dest), size.width, size.height)
+}
+
+/** XYZ axis from the dest's current left/top/zoom and its displayed page size. */
+export async function namedDestXyzFromAxisDestPage(
+  bytes: Uint8Array,
+  destName: string,
+  preset: NamedDestXyzAxisPreset,
+): Promise<NamedDestXyz> {
+  const dests = await listNamedDests(bytes)
+  const dest = dests.find((item) => item.name === destName)
+  if (!dest) {
+    throw new Error('Chưa có đích tên này.')
+  }
+  const size = (await listPageSizes(bytes))[dest.pageIndex]
+  if (!size) {
+    throw new Error('Không đọc được khổ trang đích.')
+  }
+  return namedDestXyzFromAxisPreset(preset, namedDestXyzOf(dest), size.width, size.height)
 }
 
 function compactNamedDestXyz(xyz: NamedDestXyz | undefined): NamedDestXyz | undefined {
