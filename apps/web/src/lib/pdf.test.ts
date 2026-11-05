@@ -128,6 +128,8 @@ import {
   toAnpa,
   toNinjs,
   toJsonfeed,
+  toAs2,
+  toGeojson,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -251,6 +253,8 @@ import {
   pagesFromAnpa,
   pagesFromNinjs,
   pagesFromJsonfeed,
+  pagesFromAs2,
+  pagesFromGeojson,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -404,10 +408,14 @@ import {
   addTextOverlay,
   addWatermark,
   assertRedactSize,
+  highlightPages,
+  HIGHLIGHT_FILL,
   redactBoxForPage,
   redactPages,
   REDACT_SIZES,
   OVERLAY_PRESETS,
+  underlinePages,
+  underlineStrokeForBox,
   CROP_MARGINS,
   a4SizeForPage,
   cropBoxAfterMargin,
@@ -603,6 +611,28 @@ describe('pdf edits', () => {
     const covered = await redactPages(bytes, [0], OVERLAY_PRESETS.center, 'page')
     expect(await pageCount(covered)).toBe(1)
     await expect(redactPages(bytes, [])).rejects.toThrow(/che chữ/)
+  })
+
+  it('highlights and underlines a line, block, or full page at a ratio', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(HIGHLIGHT_FILL.opacity).toBe(0.4)
+    const box = redactBoxForPage(200, 100, { xRatio: 0.5, yRatio: 0.5 }, 'block')
+    const stroke = underlineStrokeForBox(box)
+    expect(stroke.thickness).toBeGreaterThan(0)
+    expect(stroke.start.x).toBe(box.x)
+    expect(stroke.end.x).toBe(box.x + box.width)
+    const highlighted = await highlightPages(bytes, [0], { xRatio: 0.5, yRatio: 0.5 }, 'block')
+    expect(await pageCount(highlighted)).toBe(1)
+    const lined = await highlightPages(bytes, [0], OVERLAY_PRESETS['top-left'], 'line')
+    expect(await pageCount(lined)).toBe(1)
+    const covered = await highlightPages(bytes, [0], OVERLAY_PRESETS.center, 'page')
+    expect(await pageCount(covered)).toBe(1)
+    const underlined = await underlinePages(bytes, [0], OVERLAY_PRESETS['bottom-center'], 'line')
+    expect(await pageCount(underlined)).toBe(1)
+    const pageLine = await underlinePages(bytes, [0], OVERLAY_PRESETS.center, 'page')
+    expect(await pageCount(pageLine)).toBe(1)
+    await expect(highlightPages(bytes, [])).rejects.toThrow(/tô vàng/)
+    await expect(underlinePages(bytes, [])).rejects.toThrow(/gạch chân/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -4314,6 +4344,56 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toThrow(/content_text/)
     expect(swapExtension('notes.jsonfeed', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.jsonfeed.json', 'pdf')).toBe('notes.pdf')
+
+    expect(toAs2('Demo', ['Một', 'Hai\ndòng'])).toContain('www.w3.org/ns/activitystreams')
+    expect(toAs2('Demo', ['Một'])).toContain('"type": "OrderedCollection"')
+    expect(toAs2('Demo', ['Một'])).toContain('"content": "Một"')
+    expect(pagesFromAs2(toAs2('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('as2', toAs2('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromAs2('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromAs2(
+        '{"@context":"https://www.w3.org/ns/activitystreams","type":"OrderedCollection","orderedItems":[{"name":"Một"}]}',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.json', { type: '' }))).toBe('json')
+    expect(sourceKindFromFile(new File(['x'], 'notes.as2', { type: '' }))).toBe('as2')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.as2.json', { type: 'application/activity+json' }),
+      ),
+    ).toBe('as2')
+    expect(() =>
+      pagesFromAs2(
+        '{"@context":"https://www.w3.org/ns/activitystreams","type":"OrderedCollection","orderedItems":[]}',
+      ),
+    ).toThrow(/orderedItems/)
+    expect(swapExtension('notes.as2', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.as2.json', 'pdf')).toBe('notes.pdf')
+
+    expect(toGeojson('Demo', ['Một', 'Hai\ndòng'])).toContain('"type": "FeatureCollection"')
+    expect(toGeojson('Demo', ['Một'])).toContain('"name": "Demo"')
+    expect(toGeojson('Demo', ['Một'])).toContain('"description": "Một"')
+    expect(pagesFromGeojson(toGeojson('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('geojson', toGeojson('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromGeojson('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromGeojson(
+        '{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Một"},"geometry":null}]}',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.json', { type: '' }))).toBe('json')
+    expect(sourceKindFromFile(new File(['x'], 'notes.geojson', { type: '' }))).toBe('geojson')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.geojson.json', { type: 'application/geo+json' }),
+      ),
+    ).toBe('geojson')
+    expect(() => pagesFromGeojson('{"type":"FeatureCollection","features":[]}')).toThrow(
+      /features/,
+    )
+    expect(swapExtension('notes.geojson', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.geojson.json', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

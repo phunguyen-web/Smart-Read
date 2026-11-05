@@ -1982,6 +1982,81 @@ export async function redactPages(
   return new Uint8Array(await doc.save())
 }
 
+export const HIGHLIGHT_FILL = { r: 1, g: 0.92, b: 0.18, opacity: 0.4 } as const
+
+/** Paint a translucent yellow band over selected pages. Uses the overlay point except for full-page. */
+export async function highlightPages(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để tô vàng.')
+  }
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    page.drawRectangle({
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      color: rgb(HIGHLIGHT_FILL.r, HIGHLIGHT_FILL.g, HIGHLIGHT_FILL.b),
+      opacity: HIGHLIGHT_FILL.opacity,
+    })
+  }
+  return new Uint8Array(await doc.save())
+}
+
+export function underlineStrokeForBox(box: {
+  x: number
+  y: number
+  width: number
+  height: number
+}): { start: { x: number; y: number }; end: { x: number; y: number }; thickness: number } {
+  const thickness = Math.max(1.5, Math.min(8, box.height * 0.12))
+  return {
+    start: { x: box.x, y: box.y + thickness / 2 },
+    end: { x: box.x + box.width, y: box.y + thickness / 2 },
+    thickness,
+  }
+}
+
+/** Stroke a line along the bottom of the redact box on selected pages. */
+export async function underlinePages(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gạch chân.')
+  }
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const stroke = underlineStrokeForBox(box)
+    page.drawLine({
+      start: stroke.start,
+      end: stroke.end,
+      thickness: stroke.thickness,
+      color: rgb(0.22, 0.12, 0.08),
+    })
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

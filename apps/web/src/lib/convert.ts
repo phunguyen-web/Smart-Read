@@ -106,6 +106,8 @@ export type ExportFormat =
   | 'anpa'
   | 'ninjs'
   | 'jsonfeed'
+  | 'as2'
+  | 'geojson'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2344,6 +2346,50 @@ export function toJsonfeed(title: string, pages: string[]): string {
   )}\n`
 }
 
+export function toAs2(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const orderedItems = pages.map((text, index) => ({
+    type: 'Note',
+    id: `page-${index + 1}`,
+    name: `Trang ${index + 1}`,
+    content: text.trim() || '(không có chữ)',
+  }))
+  return `${JSON.stringify(
+    {
+      '@context': 'https://www.w3.org/ns/activitystreams',
+      type: 'OrderedCollection',
+      name: heading,
+      totalItems: orderedItems.length,
+      orderedItems,
+    },
+    null,
+    2,
+  )}\n`
+}
+
+export function toGeojson(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const features = pages.map((text, index) => ({
+    type: 'Feature',
+    id: `page-${index + 1}`,
+    properties: {
+      title: heading,
+      name: `Trang ${index + 1}`,
+      description: text.trim() || '(không có chữ)',
+    },
+    geometry: null,
+  }))
+  return `${JSON.stringify(
+    {
+      type: 'FeatureCollection',
+      name: heading,
+      features,
+    },
+    null,
+    2,
+  )}\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3353,6 +3399,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.iptc.ninjs+json;charset=utf-8'
     case 'jsonfeed':
       return 'application/feed+json;charset=utf-8'
+    case 'as2':
+      return 'application/activity+json;charset=utf-8'
+    case 'geojson':
+      return 'application/geo+json;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

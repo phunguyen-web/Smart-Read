@@ -105,6 +105,8 @@ import {
   toAnpa,
   toNinjs,
   toJsonfeed,
+  toAs2,
+  toGeojson,
   toJson,
   toJsonl,
   toLatex,
@@ -228,6 +230,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'anpa', label: 'ANPA', hint: 'ANPA XML, text mỗi trang' },
   { id: 'ninjs', label: 'NINJS', hint: 'IPTC News in JSON, body_text mỗi trang' },
   { id: 'jsonfeed', label: 'JSON Feed', hint: 'JSON Feed 1.1, content_text mỗi trang' },
+  { id: 'as2', label: 'Activity Streams', hint: 'Activity Streams 2.0, content mỗi trang' },
+  { id: 'geojson', label: 'GeoJSON', hint: 'FeatureCollection, description mỗi trang' },
   { id: 'srt', label: 'SRT', hint: 'Phụ đề .srt, một cue mỗi trang' },
   { id: 'vtt', label: 'VTT', hint: 'WebVTT, NOTE title + một cue mỗi trang' },
   { id: 'lrc', label: 'LRC', hint: 'Lời bài hát [mm:ss.xx], một dòng mỗi trang' },
@@ -943,6 +947,16 @@ export function Convert() {
       } else if (format === 'jsonfeed') {
         downloadBlob(
           new Blob([toJsonfeed(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'as2') {
+        downloadBlob(
+          new Blob([toAs2(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'geojson') {
+        downloadBlob(
+          new Blob([toGeojson(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
       } else if (format === 'docx' || format === 'doc') {

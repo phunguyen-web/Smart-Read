@@ -109,6 +109,8 @@ export type ImportedTextKind =
   | 'anpa'
   | 'ninjs'
   | 'jsonfeed'
+  | 'as2'
+  | 'geojson'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -622,6 +624,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'jsonfeed') {
     return pagesFromJsonfeed(text)
+  }
+  if (kind === 'as2') {
+    return pagesFromAs2(text)
+  }
+  if (kind === 'geojson') {
+    return pagesFromGeojson(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -3823,6 +3831,152 @@ export function pagesFromJsonfeed(text: string): string[] {
     }
   }
   throw new Error('Tệp JSON Feed cần các mục items / content_text.')
+}
+
+function textFromAs2Item(item: unknown): string {
+  if (!item || typeof item !== 'object') {
+    return ''
+  }
+  const rec = item as { content?: unknown; summary?: unknown; name?: unknown }
+  const body = firstJsonString(rec.content)
+  if (body) {
+    return body
+  }
+  const note = firstJsonString(rec.summary)
+  if (note) {
+    return note
+  }
+  const title = firstJsonString(rec.name)
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function as2ContextText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value
+  }
+  if (Array.isArray(value)) {
+    return value.map(as2ContextText).join(' ')
+  }
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>)
+      .map(as2ContextText)
+      .join(' ')
+  }
+  return ''
+}
+
+function as2Items(data: unknown): unknown[] | null {
+  if (Array.isArray(data)) {
+    return data
+  }
+  if (!data || typeof data !== 'object') {
+    return null
+  }
+  const rec = data as { '@context'?: unknown; type?: unknown; orderedItems?: unknown; items?: unknown }
+  const isAs2 =
+    /activitystreams/i.test(as2ContextText(rec['@context'])) ||
+    firstJsonString(rec.type) === 'OrderedCollection'
+  if (Array.isArray(rec.orderedItems) && (isAs2 || rec.orderedItems.length > 0)) {
+    return rec.orderedItems
+  }
+  if (isAs2 && Array.isArray(rec.items)) {
+    return rec.items
+  }
+  return isAs2 ? [] : null
+}
+
+export function pagesFromAs2(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    let data: unknown
+    try {
+      data = JSON.parse(trimmed)
+    } catch {
+      throw new Error('Tệp Activity Streams không hợp lệ.')
+    }
+    const items = as2Items(data)
+    if (items) {
+      const pages = items.map(textFromAs2Item).filter((page) => page.length > 0)
+      if (pages.length > 0) {
+        return capPages(pages)
+      }
+      throw new Error('Tệp Activity Streams cần các mục orderedItems / content.')
+    }
+    if (/^\s*\{/.test(trimmed)) {
+      return pagesFromJson(trimmed)
+    }
+  }
+  throw new Error('Tệp Activity Streams cần các mục orderedItems / content.')
+}
+
+function textFromGeojsonFeature(item: unknown): string {
+  if (!item || typeof item !== 'object') {
+    return ''
+  }
+  const rec = item as { properties?: unknown; description?: unknown; name?: unknown }
+  const props =
+    rec.properties && typeof rec.properties === 'object'
+      ? (rec.properties as { description?: unknown; text?: unknown; name?: unknown })
+      : null
+  const body = firstJsonString(props?.description) || firstJsonString(rec.description)
+  if (body) {
+    return body
+  }
+  const note = firstJsonString(props?.text)
+  if (note) {
+    return note
+  }
+  const title = firstJsonString(props?.name) || firstJsonString(rec.name)
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function geojsonFeatures(data: unknown): unknown[] | null {
+  if (Array.isArray(data)) {
+    return data
+  }
+  if (!data || typeof data !== 'object') {
+    return null
+  }
+  const rec = data as { type?: unknown; features?: unknown }
+  const kind = firstJsonString(rec.type)
+  const isCollection = kind === 'FeatureCollection'
+  if (Array.isArray(rec.features) && (isCollection || rec.features.length > 0)) {
+    return rec.features
+  }
+  if (kind === 'Feature') {
+    return [data]
+  }
+  return isCollection ? [] : null
+}
+
+export function pagesFromGeojson(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    let data: unknown
+    try {
+      data = JSON.parse(trimmed)
+    } catch {
+      throw new Error('Tệp GeoJSON không hợp lệ.')
+    }
+    const features = geojsonFeatures(data)
+    if (features) {
+      const pages = features.map(textFromGeojsonFeature).filter((page) => page.length > 0)
+      if (pages.length > 0) {
+        return capPages(pages)
+      }
+      throw new Error('Tệp GeoJSON cần các mục features / description.')
+    }
+    if (/^\s*\{/.test(trimmed)) {
+      return pagesFromJson(trimmed)
+    }
+  }
+  throw new Error('Tệp GeoJSON cần các mục features / description.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
