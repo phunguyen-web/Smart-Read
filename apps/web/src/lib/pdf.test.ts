@@ -118,6 +118,8 @@ import {
   toImscp,
   toNewsml,
   toNitf,
+  toSportsml,
+  toEventsml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -231,6 +233,8 @@ import {
   pagesFromImscp,
   pagesFromNewsml,
   pagesFromNitf,
+  pagesFromSportsml,
+  pagesFromEventsml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1823,6 +1827,30 @@ describe('pdf edits', () => {
       top: LETTER_HEIGHT / 8,
       zoom: null,
     })
+    expect(
+      namedDestXyzFromAxisPreset('sixteenth-left', { left: 10, top: 20, zoom: 2 }, 200, 280),
+    ).toEqual({
+      left: 12.5,
+      top: 20,
+      zoom: 2,
+    })
+    expect(
+      namedDestXyzFromAxisPreset('sixteenth-top', { left: 10, top: 20, zoom: 2 }, 200, 280),
+    ).toEqual({
+      left: 10,
+      top: 17.5,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('sixteenth-left')).toEqual({
+      left: LETTER_WIDTH / 16,
+      top: null,
+      zoom: null,
+    })
+    expect(namedDestXyzFromAxisPreset('sixteenth-top')).toEqual({
+      left: null,
+      top: LETTER_HEIGHT / 16,
+      zoom: null,
+    })
     expect(namedDestXyzAxisNeedsPageSize('max-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('max-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('far')).toBe(true)
@@ -1837,6 +1865,8 @@ describe('pdf edits', () => {
     expect(namedDestXyzAxisNeedsPageSize('three-quarter-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('eighth-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('eighth-top')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('sixteenth-left')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('sixteenth-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('origin')).toBe(false)
     expect(namedDestXyzAxisNeedsPageSize('home')).toBe(false)
     expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
@@ -2107,6 +2137,34 @@ describe('pdf edits', () => {
         ),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 35, zoom: 2 } }])
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'sixteenth-left')).toEqual({
+      left: 12.5,
+      top: 20,
+      zoom: 2,
+    })
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'sixteenth-top')).toEqual({
+      left: 10,
+      top: 17.5,
+      zoom: 2,
+    })
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'sixteenth-left'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 12.5, top: 20, zoom: 2 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'sixteenth-top'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 17.5, zoom: 2 } }])
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
       top: 20,
@@ -3888,6 +3946,48 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromNitf('<nitfCollection></nitfCollection>')).toThrow(/<nitf>/)
     expect(swapExtension('notes.nitf', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.nitf.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toSportsml('Demo', ['Một', 'Hai\ndòng'])).toContain('<sportsML')
+    expect(toSportsml('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toSportsml('Demo', ['Một'])).toContain('<narrative>Một</narrative>')
+    expect(pagesFromSportsml(toSportsml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('sportsml', toSportsml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromSportsml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromSportsml(
+        '<sportsML><sportsEvent><eventMetadata><name>Một</name></eventMetadata></sportsEvent></sportsML>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.sportsml', { type: '' }))).toBe('sportsml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.sportsml.xml', { type: 'application/sportsml+xml' })),
+    ).toBe('sportsml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.sml', { type: '' }))).toBe('sportsml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromSportsml('<sportsML></sportsML>')).toThrow(/<sportsEvent>/)
+    expect(swapExtension('notes.sportsml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.sportsml.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.sml', 'pdf')).toBe('notes.pdf')
+
+    expect(toEventsml('Demo', ['Một', 'Hai\ndòng'])).toContain('<eventsML')
+    expect(toEventsml('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toEventsml('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromEventsml(toEventsml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('eventsml', toEventsml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromEventsml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromEventsml(
+        '<eventsML><eventsItem><eventDetails><name>Một</name></eventDetails></eventsItem></eventsML>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.eventsml', { type: '' }))).toBe('eventsml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.eventsml.xml', { type: 'application/eventsml+xml' })),
+    ).toBe('eventsml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromEventsml('<eventsML></eventsML>')).toThrow(/<eventsItem>/)
+    expect(swapExtension('notes.eventsml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.eventsml.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

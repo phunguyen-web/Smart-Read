@@ -96,6 +96,8 @@ export type ExportFormat =
   | 'imscp'
   | 'newsml'
   | 'nitf'
+  | 'sportsml'
+  | 'eventsml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2143,6 +2145,48 @@ ${records}
 `
 }
 
+export function toSportsml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <sportsEvent>
+    <eventMetadata>
+      <eventId>Trang ${index + 1}</eventId>
+      <name>${heading}</name>
+    </eventMetadata>
+    <narrative>${note}</narrative>
+  </sportsEvent>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<sportsML xmlns="http://iptc.org/std/SportsML/2.2/">
+${records}
+</sportsML>
+`
+}
+
+export function toEventsml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <eventsItem>
+    <eventDetails>
+      <eventId>Trang ${index + 1}</eventId>
+      <name>${heading}</name>
+    </eventDetails>
+    <description>${note}</description>
+  </eventsItem>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<eventsML xmlns="http://iptc.org/std/EventsML-G2/2.0/">
+${records}
+</eventsML>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3132,6 +3176,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/newsml+xml;charset=utf-8'
     case 'nitf':
       return 'application/nitf+xml;charset=utf-8'
+    case 'sportsml':
+      return 'application/sportsml+xml;charset=utf-8'
+    case 'eventsml':
+      return 'application/eventsml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

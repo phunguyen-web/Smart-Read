@@ -99,6 +99,8 @@ export type ImportedTextKind =
   | 'imscp'
   | 'newsml'
   | 'nitf'
+  | 'sportsml'
+  | 'eventsml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -582,6 +584,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'nitf') {
     return pagesFromNitf(text)
+  }
+  if (kind === 'sportsml') {
+    return pagesFromSportsml(text)
+  }
+  if (kind === 'eventsml') {
+    return pagesFromEventsml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -3397,6 +3405,70 @@ export function pagesFromNitf(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp NITF cần các mục <nitf> / <p>.')
+}
+
+export function pagesFromSportsml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<(?:sportsml:)?sportsEvent\b[^>]*>([\s\S]*?)<\/(?:sportsml:)?sportsEvent>/gi),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'sportsml:narrative') || xmlTagText(record, 'narrative')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'sportsml:slugline') || xmlTagText(record, 'slugline')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'sportsml:name') || xmlTagText(record, 'name')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp SportsML cần các mục <sportsEvent> / <narrative>.')
+}
+
+export function pagesFromEventsml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<(?:eventsml:)?eventsItem\b[^>]*>([\s\S]*?)<\/(?:eventsml:)?eventsItem>/gi),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'eventsml:description') || xmlTagText(record, 'description')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'eventsml:note') || xmlTagText(record, 'note')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'eventsml:name') || xmlTagText(record, 'name')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp EventsML cần các mục <eventsItem> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
