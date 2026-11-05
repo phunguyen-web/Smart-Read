@@ -113,6 +113,8 @@ export type ImportedTextKind =
   | 'geojson'
   | 'kml'
   | 'gpx'
+  | 'osm'
+  | 'georss'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -638,6 +640,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'gpx') {
     return pagesFromGpx(text)
+  }
+  if (kind === 'osm') {
+    return pagesFromOsm(text)
+  }
+  if (kind === 'georss') {
+    return pagesFromGeorss(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -4059,6 +4067,108 @@ export function pagesFromGpx(text: string): string[] {
     return capPages(routes)
   }
   throw new Error('Tệp GPX cần các mục <wpt> / <desc>.')
+}
+
+function osmTagValue(record: string, key: string): string {
+  const tags = [...record.matchAll(/<(?:osm:)?tag\b([^>]*)\/?>/gi)]
+  for (const match of tags) {
+    const attrs = match[1]!
+    const name = attrs.match(/\bk\s*=\s*["']([^"']*)["']/i)?.[1]
+    const value = attrs.match(/\bv\s*=\s*["']([^"']*)["']/i)?.[1]
+    if (name && unescapeXml(name) === key && value) {
+      return unescapeXml(value).trim()
+    }
+  }
+  return ''
+}
+
+function textFromOsmNode(record: string): string {
+  const body = osmTagValue(record, 'text') || xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const note = osmTagValue(record, 'description') || xmlTagText(record, 'description')
+  if (note) {
+    return note
+  }
+  const title = osmTagValue(record, 'name') || xmlTagText(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function osmRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:osm:)?${tag}\\b[^>]*>([\\s\\S]*?)</(?:osm:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromOsmNode(match[1]!))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromOsm(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = osmRecords(trimmed, 'node')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const ways = osmRecords(trimmed, 'way')
+  if (ways.length > 0) {
+    return capPages(ways)
+  }
+  const relations = osmRecords(trimmed, 'relation')
+  if (relations.length > 0) {
+    return capPages(relations)
+  }
+  throw new Error('Tệp OSM cần các mục <node> / <tag>.')
+}
+
+function textFromGeorssEntry(record: string): string {
+  const body =
+    xmlTagText(record, 'summary') ||
+    xmlTagText(record, 'atom:summary') ||
+    xmlTagText(record, 'georss:description') ||
+    xmlTagText(record, 'description')
+  if (body) {
+    return body
+  }
+  const note =
+    xmlTagText(record, 'content') ||
+    xmlTagText(record, 'atom:content') ||
+    xmlTagText(record, 'georss:content')
+  if (note) {
+    return note
+  }
+  const title = xmlTagText(record, 'title') || xmlTagText(record, 'atom:title')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function georssRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:atom:|georss:)?${tag}\\b[^>]*>([\\s\\S]*?)</(?:atom:|georss:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromGeorssEntry(match[1]!))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromGeorss(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = georssRecords(trimmed, 'entry')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const items = georssRecords(trimmed, 'item')
+  if (items.length > 0) {
+    return capPages(items)
+  }
+  throw new Error('Tệp GeoRSS cần các mục <entry> / <summary>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

@@ -132,6 +132,8 @@ import {
   toGeojson,
   toKml,
   toGpx,
+  toOsm,
+  toGeorss,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -259,6 +261,8 @@ import {
   pagesFromGeojson,
   pagesFromKml,
   pagesFromGpx,
+  pagesFromOsm,
+  pagesFromGeorss,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -418,6 +422,9 @@ import {
   redactPages,
   REDACT_SIZES,
   OVERLAY_PRESETS,
+  signPages,
+  SIGNATURE_STROKE,
+  signatureStrokesForBox,
   strikeoutPages,
   strikeoutStrokeForBox,
   underlinePages,
@@ -648,6 +655,16 @@ describe('pdf edits', () => {
     await expect(highlightPages(bytes, [])).rejects.toThrow(/tô vàng/)
     await expect(underlinePages(bytes, [])).rejects.toThrow(/gạch chân/)
     await expect(strikeoutPages(bytes, [])).rejects.toThrow(/gạch ngang/)
+    expect(SIGNATURE_STROKE.b).toBeGreaterThan(SIGNATURE_STROKE.r)
+    const ink = signatureStrokesForBox(box)
+    expect(ink).toHaveLength(3)
+    expect(ink[0]!.start.x).toBe(box.x)
+    expect(ink[2]!.end.x).toBe(box.x + box.width)
+    const signed = await signPages(bytes, [0], OVERLAY_PRESETS['top-left'], 'block')
+    expect(await pageCount(signed)).toBe(1)
+    const pageSign = await signPages(bytes, [0], OVERLAY_PRESETS.center, 'page')
+    expect(await pageCount(pageSign)).toBe(1)
+    await expect(signPages(bytes, [])).rejects.toThrow(/ký tên/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -4443,6 +4460,46 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromGpx('<gpx></gpx>')).toThrow(/<wpt>/)
     expect(swapExtension('notes.gpx', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.gpx.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toOsm('Demo', ['Một', 'Hai\ndòng'])).toContain('osm version="0.6"')
+    expect(toOsm('Demo', ['Một'])).toContain('<note>Demo</note>')
+    expect(toOsm('Demo', ['Một'])).toContain('k="text" v="Một"')
+    expect(pagesFromOsm(toOsm('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('osm', toOsm('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromOsm('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromOsm('<osm><node id="1" lat="0" lon="0"><tag k="name" v="Một"/></node></osm>')).toEqual(
+      ['Một'],
+    )
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.osm', { type: '' }))).toBe('osm')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.osm.xml', { type: 'application/vnd.osm+xml' }),
+      ),
+    ).toBe('osm')
+    expect(() => pagesFromOsm('<osm></osm>')).toThrow(/<node>/)
+    expect(swapExtension('notes.osm', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.osm.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toGeorss('Demo', ['Một', 'Hai\ndòng'])).toContain('http://www.georss.org/georss')
+    expect(toGeorss('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toGeorss('Demo', ['Một'])).toContain('<summary>Một</summary>')
+    expect(pagesFromGeorss(toGeorss('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('georss', toGeorss('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromGeorss('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromGeorss('<feed><entry><title>Một</title></entry></feed>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.georss', { type: '' }))).toBe('georss')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.georss.xml', { type: 'application/georss+xml' }),
+      ),
+    ).toBe('georss')
+    expect(() => pagesFromGeorss('<feed></feed>')).toThrow(/<entry>/)
+    expect(swapExtension('notes.georss', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.georss.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

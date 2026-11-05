@@ -2101,6 +2101,65 @@ export async function strikeoutPages(
   return new Uint8Array(await doc.save())
 }
 
+export const SIGNATURE_STROKE = { r: 0.08, g: 0.18, b: 0.55 } as const
+
+export function signatureStrokesForBox(box: {
+  x: number
+  y: number
+  width: number
+  height: number
+}): { start: { x: number; y: number }; end: { x: number; y: number }; thickness: number }[] {
+  const thickness = Math.max(1.5, Math.min(8, box.height * 0.12))
+  const { x, y, width, height } = box
+  return [
+    {
+      start: { x, y: y + height * 0.35 },
+      end: { x: x + width * 0.35, y: y + height * 0.8 },
+      thickness,
+    },
+    {
+      start: { x: x + width * 0.35, y: y + height * 0.8 },
+      end: { x: x + width * 0.7, y: y + height * 0.2 },
+      thickness,
+    },
+    {
+      start: { x: x + width * 0.7, y: y + height * 0.2 },
+      end: { x: x + width, y: y + height * 0.45 },
+      thickness,
+    },
+  ]
+}
+
+/** Stroke a short ink signature through the redact box on selected pages. */
+export async function signPages(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để ký tên.')
+  }
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    for (const stroke of signatureStrokesForBox(box)) {
+      page.drawLine({
+        start: stroke.start,
+        end: stroke.end,
+        thickness: stroke.thickness,
+        color: rgb(SIGNATURE_STROKE.r, SIGNATURE_STROKE.g, SIGNATURE_STROKE.b),
+      })
+    }
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

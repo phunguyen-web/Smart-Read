@@ -110,6 +110,8 @@ export type ExportFormat =
   | 'geojson'
   | 'kml'
   | 'gpx'
+  | 'osm'
+  | 'georss'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2434,6 +2436,45 @@ ${points}
 `
 }
 
+export function toOsm(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const nodes = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <node id="${index + 1}" lat="0" lon="0" visible="true">
+    <tag k="name" v="Trang ${index + 1}"/>
+    <tag k="text" v="${note}"/>
+  </node>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="Smart-Read">
+  <note>${heading}</note>
+${nodes}
+</osm>
+`
+}
+
+export function toGeorss(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const entries = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <entry>
+    <title>Trang ${index + 1}</title>
+    <summary>${note}</summary>
+    <georss:point>0 0</georss:point>
+  </entry>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:georss="http://www.georss.org/georss">
+  <title>${heading}</title>
+${entries}
+</feed>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3451,6 +3492,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.google-earth.kml+xml;charset=utf-8'
     case 'gpx':
       return 'application/gpx+xml;charset=utf-8'
+    case 'osm':
+      return 'application/vnd.osm+xml;charset=utf-8'
+    case 'georss':
+      return 'application/georss+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
