@@ -119,6 +119,8 @@ export type ImportedTextKind =
   | 'gml'
   | 'topojson'
   | 'svg'
+  | 'dxf'
+  | 'mapml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -662,6 +664,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'svg') {
     return pagesFromSvg(text)
+  }
+  if (kind === 'dxf') {
+    return pagesFromDxf(text)
+  }
+  if (kind === 'mapml') {
+    return pagesFromMapml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -4408,6 +4416,83 @@ export function pagesFromSvg(text: string): string[] {
     return capPages(texts)
   }
   throw new Error('Tệp SVG cần các mục <g> / <desc>.')
+}
+
+function unescapeDxf(value: string): string {
+  return value.replace(/\|/g, '\n').trim()
+}
+
+export function pagesFromDxf(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const lines = trimmed.split(/\r?\n/)
+  const pages: string[] = []
+  let inText = false
+  for (let index = 0; index + 1 < lines.length; index += 2) {
+    const code = lines[index]!.trim()
+    const value = lines[index + 1]!
+    if (code === '0') {
+      inText = /^(TEXT|MTEXT|ATTDEF)$/i.test(value.trim())
+      continue
+    }
+    if (inText && (code === '1' || code === '3')) {
+      const note = unescapeDxf(value)
+      if (note && !/^Trang\s+\d+$/.test(note)) {
+        pages.push(note)
+      }
+      if (code === '1') {
+        inText = false
+      }
+    }
+  }
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp DXF cần các mục TEXT.')
+}
+
+function textFromMapmlFeature(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'text') ||
+    xmlTagText(record, 'content')
+  if (body) {
+    return body
+  }
+  const note = xmlTagText(record, 'summary')
+  if (note) {
+    return note
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'title')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function mapmlRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromMapmlFeature(match[1]!))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromMapml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = mapmlRecords(trimmed, 'feature')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const properties = mapmlRecords(trimmed, 'properties')
+  if (properties.length > 0) {
+    return capPages(properties)
+  }
+  throw new Error('Tệp MapML cần các mục <feature> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

@@ -2187,6 +2187,90 @@ export async function signPages(
   return new Uint8Array(await doc.save())
 }
 
+export const TEXT_FIELD_PREFIX = 'smartread.text'
+
+export const TEXT_FIELD_FILL = { r: 1, g: 1, b: 0.9 } as const
+
+/** AcroForm field name for a page: `smartread.text.p{n}` then `p{n}s2`, … (no nested terminal). */
+export function textFieldNameForPage(pageIndex: number, serial = 1): string {
+  const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
+  const n = Number.isInteger(serial) && serial >= 1 ? serial : 1
+  return n === 1 ? `${TEXT_FIELD_PREFIX}.p${page}` : `${TEXT_FIELD_PREFIX}.p${page}s${n}`
+}
+
+function nextTextFieldName(taken: Set<string>, pageIndex: number): string {
+  let serial = 1
+  let name = textFieldNameForPage(pageIndex, serial)
+  while (taken.has(name)) {
+    serial += 1
+    name = textFieldNameForPage(pageIndex, serial)
+  }
+  taken.add(name)
+  return name
+}
+
+/**
+ * Add a fillable AcroForm text field on selected pages at the overlay box.
+ * Empty `value` still creates a blank field. This is not XFA and not a comment annotation.
+ */
+export async function addTextFields(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  value = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn ô chữ.')
+  }
+  const form = doc.getForm()
+  const taken = new Set(form.getFields().map((field) => field.getName()))
+  const font = await embedOverlayFont(doc)
+  const trimmed = value.trim()
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const field = form.createTextField(nextTextFieldName(taken, index))
+    if (style !== 'line') {
+      field.enableMultiline()
+    }
+    const fontSize = Math.max(8, Math.min(16, box.height * 0.45))
+    field.addToPage(page, {
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      borderWidth: 1,
+      borderColor: rgb(0.22, 0.12, 0.08),
+      backgroundColor: rgb(TEXT_FIELD_FILL.r, TEXT_FIELD_FILL.g, TEXT_FIELD_FILL.b),
+      textColor: rgb(0.22, 0.12, 0.08),
+    })
+    try {
+      field.setFontSize(fontSize)
+    } catch {
+      /* /DA is filled by addToPage; skip if a foreign field lacks it */
+    }
+    if (trimmed) {
+      try {
+        field.setText(trimmed)
+      } catch {
+        field.setText(fitOverlayText(font, trimmed, fontSize).text)
+      }
+    }
+    try {
+      field.updateAppearances(font)
+    } catch {
+      /* Helvetica fallback already drawn by addToPage */
+    }
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

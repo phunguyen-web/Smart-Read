@@ -138,6 +138,8 @@ import {
   toGml,
   toTopojson,
   toSvg,
+  toDxf,
+  toMapml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -271,6 +273,8 @@ import {
   pagesFromGml,
   pagesFromTopojson,
   pagesFromSvg,
+  pagesFromDxf,
+  pagesFromMapml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -435,6 +439,10 @@ import {
   signPages,
   SIGNATURE_STROKE,
   signatureStrokesForBox,
+  addTextFields,
+  TEXT_FIELD_FILL,
+  TEXT_FIELD_PREFIX,
+  textFieldNameForPage,
   strikeoutPages,
   strikeoutStrokeForBox,
   underlinePages,
@@ -681,6 +689,32 @@ describe('pdf edits', () => {
     const pageSign = await signPages(bytes, [0], OVERLAY_PRESETS.center, 'page')
     expect(await pageCount(pageSign)).toBe(1)
     await expect(signPages(bytes, [])).rejects.toThrow(/ký tên/)
+  })
+
+  it('adds a fillable text field at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(textFieldNameForPage(0)).toBe(`${TEXT_FIELD_PREFIX}.p1`)
+    expect(textFieldNameForPage(0, 2)).toBe(`${TEXT_FIELD_PREFIX}.p1s2`)
+    expect(TEXT_FIELD_FILL.b).toBeLessThan(1)
+    const filled = await addTextFields(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const form = (await PDFDocument.load(filled)).getForm()
+    expect(form.getFields()).toHaveLength(1)
+    expect(form.getTextField(textFieldNameForPage(0)).getText()).toBe('Hello')
+    const lined = await addTextFields(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    expect((await PDFDocument.load(lined)).getForm().getFields()).toHaveLength(1)
+    const pageField = await addTextFields(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect((await PDFDocument.load(pageField)).getForm().getTextField(textFieldNameForPage(0)).getText()).toBe(
+      'Page',
+    )
+    const again = await addTextFields(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    const names = (await PDFDocument.load(again))
+      .getForm()
+      .getFields()
+      .map((field) => field.getName())
+      .sort()
+    expect(names).toEqual([textFieldNameForPage(0), textFieldNameForPage(0, 2)])
+    await expect(addTextFields(bytes, [])).rejects.toThrow(/ô chữ/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -4665,6 +4699,46 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromSvg('<svg xmlns="http://www.w3.org/2000/svg"></svg>')).toThrow(/<g>/)
     expect(swapExtension('notes.svg', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.svg.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toDxf('Demo', ['Một', 'Hai\ndòng'])).toContain('0\nTEXT')
+    expect(toDxf('Demo', ['Một'])).toContain('999\nDemo')
+    expect(toDxf('Demo', ['Một'])).toContain('1\nMột')
+    expect(pagesFromDxf(toDxf('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('dxf', toDxf('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromDxf('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromDxf('0\nTEXT\n8\n0\n1\nMột')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dxf', { type: '' }))).toBe('dxf')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.dxf.txt', { type: 'application/dxf' })),
+    ).toBe('dxf')
+    expect(() => pagesFromDxf('0\nSECTION\n2\nENTITIES\n0\nENDSEC\n0\nEOF\n')).toThrow(/TEXT/)
+    expect(swapExtension('notes.dxf', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.dxf.txt', 'pdf')).toBe('notes.pdf')
+
+    expect(toMapml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/1999/xhtml/mapml"')
+    expect(toMapml('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toMapml('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromMapml(toMapml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('mapml', toMapml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromMapml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromMapml(
+        '<mapml xmlns="http://www.w3.org/1999/xhtml/mapml"><feature><name>Một</name></feature></mapml>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mapml', { type: '' }))).toBe('mapml')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.mapml.xml', { type: 'text/mapml' }),
+      ),
+    ).toBe('mapml')
+    expect(() => pagesFromMapml('<mapml xmlns="http://www.w3.org/1999/xhtml/mapml"></mapml>')).toThrow(
+      /<feature>/,
+    )
+    expect(swapExtension('notes.mapml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.mapml.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

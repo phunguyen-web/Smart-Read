@@ -116,6 +116,8 @@ export type ExportFormat =
   | 'gml'
   | 'topojson'
   | 'svg'
+  | 'dxf'
+  | 'mapml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2559,6 +2561,83 @@ ${groups}
 `
 }
 
+export function escapeDxf(value: string): string {
+  return value.replace(/\r?\n/g, '|').replace(/^\s+|\s+$/g, '') || '(không có chữ)'
+}
+
+export function toDxf(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const entities = pages
+    .map((text, index) => {
+      const note = escapeDxf(text.trim() || '(không có chữ)')
+      return `0
+TEXT
+8
+0
+10
+0.0
+20
+${index}
+30
+0.0
+1
+${note}`
+    })
+    .join('\n')
+  return `999
+${heading}
+0
+SECTION
+2
+HEADER
+9
+$ACADVER
+1
+AC1009
+0
+ENDSEC
+0
+SECTION
+2
+ENTITIES
+${entities}
+0
+ENDSEC
+0
+EOF
+`
+}
+
+export function toMapml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const features = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `    <feature id="page-${index + 1}">
+      <properties>
+        <name>Trang ${index + 1}</name>
+        <description>${note}</description>
+      </properties>
+      <geometry>
+        <point>
+          <coordinates>0 0</coordinates>
+        </point>
+      </geometry>
+    </feature>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mapml xmlns="http://www.w3.org/1999/xhtml/mapml">
+  <head>
+    <title>${heading}</title>
+  </head>
+  <body>
+${features}
+  </body>
+</mapml>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3588,6 +3667,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/json;charset=utf-8'
     case 'svg':
       return 'image/svg+xml;charset=utf-8'
+    case 'dxf':
+      return 'application/dxf;charset=utf-8'
+    case 'mapml':
+      return 'text/mapml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
