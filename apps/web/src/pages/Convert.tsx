@@ -99,6 +99,8 @@ import {
   toEventsml,
   toNewsmlg2,
   toRnews,
+  toPrism,
+  toHnews,
   toJson,
   toJsonl,
   toLatex,
@@ -216,6 +218,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'eventsml', label: 'EventsML', hint: 'EventsML XML, description mỗi trang' },
   { id: 'newsmlg2', label: 'NewsML-G2', hint: 'NewsML-G2 XML, body mỗi trang' },
   { id: 'rnews', label: 'rNews', hint: 'rNews XML, articleBody mỗi trang' },
+  { id: 'prism', label: 'PRISM', hint: 'PRISM XML, body mỗi trang' },
+  { id: 'hnews', label: 'hNews', hint: 'hNews XML, content mỗi trang' },
   { id: 'srt', label: 'SRT', hint: 'Phụ đề .srt, một cue mỗi trang' },
   { id: 'vtt', label: 'VTT', hint: 'WebVTT, NOTE title + một cue mỗi trang' },
   { id: 'lrc', label: 'LRC', hint: 'Lời bài hát [mm:ss.xx], một dòng mỗi trang' },
@@ -901,6 +905,16 @@ export function Convert() {
       } else if (format === 'rnews') {
         downloadBlob(
           new Blob([toRnews(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'prism') {
+        downloadBlob(
+          new Blob([toPrism(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'hnews') {
+        downloadBlob(
+          new Blob([toHnews(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
       } else if (format === 'docx' || format === 'doc') {

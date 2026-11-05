@@ -100,6 +100,8 @@ export type ExportFormat =
   | 'eventsml'
   | 'newsmlg2'
   | 'rnews'
+  | 'prism'
+  | 'hnews'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2231,6 +2233,44 @@ ${records}
 `
 }
 
+export function toPrism(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <article>
+    <title>${heading}</title>
+    <identifier>Trang ${index + 1}</identifier>
+    <body>${note}</body>
+  </article>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<prism xmlns="http://prismstandard.org/namespaces/basic/2.0/">
+${records}
+</prism>
+`
+}
+
+export function toHnews(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <entry>
+    <headline>${heading}</headline>
+    <identifier>Trang ${index + 1}</identifier>
+    <content>${note}</content>
+  </entry>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<hnews>
+${records}
+</hnews>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3228,6 +3268,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.iptc.g2+xml;charset=utf-8'
     case 'rnews':
       return 'application/vnd.iptc.rnews+xml;charset=utf-8'
+    case 'prism':
+      return 'application/prism+xml;charset=utf-8'
+    case 'hnews':
+      return 'application/hnews+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

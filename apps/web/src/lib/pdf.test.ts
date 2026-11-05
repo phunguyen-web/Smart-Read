@@ -122,6 +122,8 @@ import {
   toEventsml,
   toNewsmlg2,
   toRnews,
+  toPrism,
+  toHnews,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -239,6 +241,8 @@ import {
   pagesFromEventsml,
   pagesFromNewsmlg2,
   pagesFromRnews,
+  pagesFromPrism,
+  pagesFromHnews,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1879,6 +1883,30 @@ describe('pdf edits', () => {
       top: LETTER_HEIGHT / 32,
       zoom: null,
     })
+    expect(
+      namedDestXyzFromAxisPreset('sixty-fourth-left', { left: 10, top: 20, zoom: 2 }, 200, 280),
+    ).toEqual({
+      left: 3.125,
+      top: 20,
+      zoom: 2,
+    })
+    expect(
+      namedDestXyzFromAxisPreset('sixty-fourth-top', { left: 10, top: 20, zoom: 2 }, 200, 280),
+    ).toEqual({
+      left: 10,
+      top: 4.375,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('sixty-fourth-left')).toEqual({
+      left: LETTER_WIDTH / 64,
+      top: null,
+      zoom: null,
+    })
+    expect(namedDestXyzFromAxisPreset('sixty-fourth-top')).toEqual({
+      left: null,
+      top: LETTER_HEIGHT / 64,
+      zoom: null,
+    })
     expect(namedDestXyzAxisNeedsPageSize('max-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('max-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('far')).toBe(true)
@@ -1897,6 +1925,8 @@ describe('pdf edits', () => {
     expect(namedDestXyzAxisNeedsPageSize('sixteenth-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('thirty-second-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('thirty-second-top')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('sixty-fourth-left')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('sixty-fourth-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('origin')).toBe(false)
     expect(namedDestXyzAxisNeedsPageSize('home')).toBe(false)
     expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
@@ -2223,6 +2253,34 @@ describe('pdf edits', () => {
         ),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 8.75, zoom: 2 } }])
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'sixty-fourth-left')).toEqual({
+      left: 3.125,
+      top: 20,
+      zoom: 2,
+    })
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'sixty-fourth-top')).toEqual({
+      left: 10,
+      top: 4.375,
+      zoom: 2,
+    })
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'sixty-fourth-left'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 3.125, top: 20, zoom: 2 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'sixty-fourth-top'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 4.375, zoom: 2 } }])
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
       top: 20,
@@ -4093,6 +4151,42 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromRnews('<rNews></rNews>')).toThrow(/<NewsArticle>/)
     expect(swapExtension('notes.rnews', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.rnews.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toPrism('Demo', ['Một', 'Hai\ndòng'])).toContain('<prism')
+    expect(toPrism('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toPrism('Demo', ['Một'])).toContain('<body>Một</body>')
+    expect(pagesFromPrism(toPrism('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('prism', toPrism('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromPrism('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromPrism('<prism><article><title>Một</title></article></prism>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.prism', { type: '' }))).toBe('prism')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.prism.xml', { type: 'application/prism+xml' })),
+    ).toBe('prism')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromPrism('<prism></prism>')).toThrow(/<article>/)
+    expect(swapExtension('notes.prism', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.prism.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toHnews('Demo', ['Một', 'Hai\ndòng'])).toContain('<hnews')
+    expect(toHnews('Demo', ['Một'])).toContain('<headline>Demo</headline>')
+    expect(toHnews('Demo', ['Một'])).toContain('<content>Một</content>')
+    expect(pagesFromHnews(toHnews('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('hnews', toHnews('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromHnews('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromHnews('<hnews><entry><headline>Một</headline></entry></hnews>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.hnews', { type: '' }))).toBe('hnews')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.hnews.xml', { type: 'application/hnews+xml' })),
+    ).toBe('hnews')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromHnews('<hnews></hnews>')).toThrow(/<entry>/)
+    expect(swapExtension('notes.hnews', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.hnews.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

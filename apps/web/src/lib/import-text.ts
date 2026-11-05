@@ -103,6 +103,8 @@ export type ImportedTextKind =
   | 'eventsml'
   | 'newsmlg2'
   | 'rnews'
+  | 'prism'
+  | 'hnews'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -598,6 +600,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'rnews') {
     return pagesFromRnews(text)
+  }
+  if (kind === 'prism') {
+    return pagesFromPrism(text)
+  }
+  if (kind === 'hnews') {
+    return pagesFromHnews(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -3541,6 +3549,68 @@ export function pagesFromRnews(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp rNews cần các mục <NewsArticle> / <articleBody>.')
+}
+
+export function pagesFromPrism(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<(?:prism:)?article\b[^>]*>([\s\S]*?)<\/(?:prism:)?article>/gi),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'prism:body') || xmlTagText(record, 'body')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'prism:description') || xmlTagText(record, 'description')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'prism:title') || xmlTagText(record, 'title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp PRISM cần các mục <article> / <body>.')
+}
+
+export function pagesFromHnews(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<(?:hnews:)?entry\b[^>]*>([\s\S]*?)<\/(?:hnews:)?entry>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'hnews:content') || xmlTagText(record, 'content')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'hnews:description') || xmlTagText(record, 'description')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'hnews:headline') || xmlTagText(record, 'headline')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp hNews cần các mục <entry> / <content>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
