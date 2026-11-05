@@ -4036,6 +4036,61 @@ export async function splitByOutline(
   return parts
 }
 
+/**
+ * Page range for one outline row: from its page through the next item at the
+ * same or shallower depth (nested children stay in the parent range).
+ */
+export function outlineItemRange(
+  outline: readonly OutlineBookmark[],
+  itemIndex: number,
+  pageCountValue: number,
+): OutlineSplitPart {
+  const count = Math.trunc(pageCountValue)
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error('Không có trang để giữ.')
+  }
+  if (outline.length === 0) {
+    throw new Error('Cần dấu trang mục lục để giữ mục này.')
+  }
+  const index = Math.trunc(itemIndex)
+  if (!Number.isInteger(index) || index < 0 || index >= outline.length) {
+    throw new Error('Chọn một mục lục để giữ.')
+  }
+  const item = outline[index]!
+  const start = Math.max(0, Math.min(count - 1, Math.trunc(item.pageIndex)))
+  let end = count
+  for (let next = index + 1; next < outline.length; next += 1) {
+    const sibling = outline[next]!
+    if (sibling.depth > item.depth) {
+      continue
+    }
+    const page = Math.max(0, Math.min(count - 1, Math.trunc(sibling.pageIndex)))
+    if (page > start) {
+      end = page
+      break
+    }
+  }
+  if (end <= start) {
+    throw new Error('Cần dấu trang mục lục để giữ mục này.')
+  }
+  return { title: item.title, start, end }
+}
+
+/** Keep only the pages covered by the selected outline item in the working PDF. */
+export async function keepOutlineItem(
+  bytes: Uint8Array,
+  itemIndex: number,
+): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes)
+  const count = src.getPageCount()
+  const range = outlineItemRange(await listOutlineBookmarks(bytes), itemIndex, count)
+  const indexes = Array.from(
+    { length: range.end - range.start },
+    (_, offset) => range.start + offset,
+  )
+  return keepPages(bytes, indexes)
+}
+
 /** Append outline bookmarks for selected pages. Empty indexes or an empty title are refused. */
 export async function addOutlineBookmarks(
   bytes: Uint8Array,

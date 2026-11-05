@@ -117,6 +117,8 @@ export type ImportedTextKind =
   | 'georss'
   | 'wkt'
   | 'gml'
+  | 'topojson'
+  | 'svg'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -654,6 +656,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'gml') {
     return pagesFromGml(text)
+  }
+  if (kind === 'topojson') {
+    return pagesFromTopojson(text)
+  }
+  if (kind === 'svg') {
+    return pagesFromSvg(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -4273,6 +4281,133 @@ export function pagesFromGml(text: string): string[] {
     return capPages(points)
   }
   throw new Error('Tệp GML cần các mục <featureMember> / <description>.')
+}
+
+function textFromTopojsonGeometry(item: unknown): string {
+  if (!item || typeof item !== 'object') {
+    return ''
+  }
+  const rec = item as { properties?: unknown; text?: unknown; description?: unknown; name?: unknown }
+  const props =
+    rec.properties && typeof rec.properties === 'object'
+      ? (rec.properties as { text?: unknown; description?: unknown; name?: unknown })
+      : null
+  const body = firstJsonString(props?.text) || firstJsonString(rec.text)
+  if (body) {
+    return body
+  }
+  const note = firstJsonString(props?.description) || firstJsonString(rec.description)
+  if (note) {
+    return note
+  }
+  const title = firstJsonString(props?.name) || firstJsonString(rec.name)
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function topojsonGeometries(data: unknown): unknown[] | null {
+  if (Array.isArray(data)) {
+    return data
+  }
+  if (!data || typeof data !== 'object') {
+    return null
+  }
+  const rec = data as { type?: unknown; objects?: unknown; geometries?: unknown }
+  if (firstJsonString(rec.type) !== 'Topology') {
+    return null
+  }
+  if (Array.isArray(rec.geometries)) {
+    return rec.geometries
+  }
+  const objects = rec.objects
+  if (!objects || typeof objects !== 'object') {
+    return []
+  }
+  const bags = Object.values(objects as Record<string, unknown>)
+  const collected: unknown[] = []
+  for (const bag of bags) {
+    if (!bag || typeof bag !== 'object') {
+      continue
+    }
+    const geom = bag as { type?: unknown; geometries?: unknown }
+    if (Array.isArray(geom.geometries)) {
+      collected.push(...geom.geometries)
+      continue
+    }
+    if (firstJsonString(geom.type) === 'Point' || firstJsonString(geom.type) === 'GeometryCollection') {
+      collected.push(bag)
+    }
+  }
+  return collected
+}
+
+export function pagesFromTopojson(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    let data: unknown
+    try {
+      data = JSON.parse(trimmed)
+    } catch {
+      throw new Error('Tệp TopoJSON không hợp lệ.')
+    }
+    const geometries = topojsonGeometries(data)
+    if (geometries) {
+      const pages = geometries.map(textFromTopojsonGeometry).filter((page) => page.length > 0)
+      if (pages.length > 0) {
+        return capPages(pages)
+      }
+      throw new Error('Tệp TopoJSON cần các mục geometries / text.')
+    }
+    if (/^\s*\{/.test(trimmed)) {
+      return pagesFromJson(trimmed)
+    }
+  }
+  throw new Error('Tệp TopoJSON cần các mục geometries / text.')
+}
+
+function textFromSvgGroup(record: string): string {
+  const body =
+    xmlTagText(record, 'svg:desc') ||
+    xmlTagText(record, 'desc') ||
+    xmlTagText(record, 'svg:text') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const note = xmlTagText(record, 'svg:description') || xmlTagText(record, 'description')
+  if (note) {
+    return note
+  }
+  const title = xmlTagText(record, 'svg:title') || xmlTagText(record, 'title')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function svgRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:svg:)?${tag}\\b[^>]*>([\\s\\S]*?)</(?:svg:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromSvgGroup(match[1]!))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromSvg(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = svgRecords(trimmed, 'g')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const texts = svgRecords(trimmed, 'text')
+  if (texts.length > 0) {
+    return capPages(texts)
+  }
+  throw new Error('Tệp SVG cần các mục <g> / <desc>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

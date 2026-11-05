@@ -114,6 +114,8 @@ export type ExportFormat =
   | 'georss'
   | 'wkt'
   | 'gml'
+  | 'topojson'
+  | 'svg'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2510,6 +2512,53 @@ ${members}
 `
 }
 
+export function toTopojson(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const geometries = pages.map((text, index) => ({
+    type: 'Point',
+    coordinates: [0, 0],
+    properties: {
+      name: `Trang ${index + 1}`,
+      text: text.trim() || '(không có chữ)',
+    },
+  }))
+  return `${JSON.stringify(
+    {
+      type: 'Topology',
+      name: heading,
+      arcs: [],
+      objects: {
+        pages: {
+          type: 'GeometryCollection',
+          geometries,
+        },
+      },
+    },
+    null,
+    2,
+  )}\n`
+}
+
+export function toSvg(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const groups = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <g id="page-${index + 1}">
+    <title>Trang ${index + 1}</title>
+    <desc>${note}</desc>
+    <text y="${index + 1}em">${note}</text>
+  </g>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg">
+  <title>${heading}</title>
+${groups}
+</svg>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3535,6 +3584,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/wkt;charset=utf-8'
     case 'gml':
       return 'application/gml+xml;charset=utf-8'
+    case 'topojson':
+      return 'application/json;charset=utf-8'
+    case 'svg':
+      return 'image/svg+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

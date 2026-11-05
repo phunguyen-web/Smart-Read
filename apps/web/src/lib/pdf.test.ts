@@ -136,6 +136,8 @@ import {
   toGeorss,
   toWkt,
   toGml,
+  toTopojson,
+  toSvg,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -267,6 +269,8 @@ import {
   pagesFromGeorss,
   pagesFromWkt,
   pagesFromGml,
+  pagesFromTopojson,
+  pagesFromSvg,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -459,6 +463,7 @@ import {
   interleaveHalves,
   interleaveHalvesOrder,
   isIdentityOrder,
+  keepOutlineItem,
   keepPages,
   bookletSheetCount,
   bookletSlotOrder,
@@ -498,6 +503,7 @@ import {
   scaleFactor,
   scalePages,
   setMetadata,
+  outlineItemRange,
   outlineSplitRanges,
   splitByOutline,
   splitEvery,
@@ -775,6 +781,38 @@ describe('pdf edits', () => {
       pageIndex: 0,
       depth: 0,
     })
+  })
+
+  it('keeps the selected outline item in the working document', async () => {
+    const bytes = await samplePdf(['A', 'B', 'C', 'D'])
+    await expect(keepOutlineItem(bytes, 0)).rejects.toThrow(/dấu trang/)
+    const marked = await addOutlineBookmarks(bytes, [0], 'Mở đầu')
+    const marked2 = await addOutlineBookmarks(marked, [2], 'Phần hai')
+    const outline = await listOutlineBookmarks(marked2)
+    expect(outlineItemRange(outline, 0, 4)).toEqual({ title: 'Mở đầu', start: 0, end: 2 })
+    expect(outlineItemRange(outline, 1, 4)).toEqual({ title: 'Phần hai', start: 2, end: 4 })
+    expect(() => outlineItemRange(outline, 9, 4)).toThrow(/mục lục/)
+    const first = await keepOutlineItem(marked2, 0)
+    expect(await pageCount(first)).toBe(2)
+    const second = await keepOutlineItem(marked2, 1)
+    expect(await pageCount(second)).toBe(2)
+    const nested = await addOutlineFolder(bytes, [0, 1], 'Phần A')
+    const withLater = await addOutlineBookmarks(nested, [2], 'Phần B')
+    const nestedOutline = await listOutlineBookmarks(withLater)
+    expect(outlineItemRange(nestedOutline, 0, 4)).toEqual({
+      title: 'Phần A',
+      start: 0,
+      end: 2,
+    })
+    expect(outlineItemRange(nestedOutline, 2, 4)).toEqual({
+      title: 'Phần A · 2',
+      start: 1,
+      end: 2,
+    })
+    const keptFolder = await keepOutlineItem(withLater, 0)
+    expect(await pageCount(keptFolder)).toBe(2)
+    const keptChild = await keepOutlineItem(withLater, 2)
+    expect(await pageCount(keptChild)).toBe(1)
   })
 
   it('builds a PDF from imported text pages and wraps long lines', async () => {
@@ -4585,6 +4623,48 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.gml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.gml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toTopojson('Demo', ['Một', 'Hai\ndòng'])).toContain('"type": "Topology"')
+    expect(toTopojson('Demo', ['Một'])).toContain('"name": "Demo"')
+    expect(toTopojson('Demo', ['Một'])).toContain('"text": "Một"')
+    expect(pagesFromTopojson(toTopojson('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('topojson', toTopojson('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromTopojson('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromTopojson(
+        '{"type":"Topology","objects":{"pages":{"type":"GeometryCollection","geometries":[{"type":"Point","properties":{"name":"Một"}}]}}}',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.json', { type: '' }))).toBe('json')
+    expect(sourceKindFromFile(new File(['x'], 'notes.topojson', { type: '' }))).toBe('topojson')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.topo.json', { type: 'application/topo+json' }),
+      ),
+    ).toBe('topojson')
+    expect(() => pagesFromTopojson('{"type":"Topology","objects":{}}')).toThrow(/geometries/)
+    expect(swapExtension('notes.topojson', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.topo.json', 'pdf')).toBe('notes.pdf')
+
+    expect(toSvg('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/2000/svg"')
+    expect(toSvg('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toSvg('Demo', ['Một'])).toContain('<desc>Một</desc>')
+    expect(pagesFromSvg(toSvg('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('svg', toSvg('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromSvg('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromSvg(
+        '<svg xmlns="http://www.w3.org/2000/svg"><g><title>Một</title></g></svg>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.svg', { type: '' }))).toBe('svg')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.svg.xml', { type: 'image/svg+xml' })),
+    ).toBe('svg')
+    expect(() => pagesFromSvg('<svg xmlns="http://www.w3.org/2000/svg"></svg>')).toThrow(/<g>/)
+    expect(swapExtension('notes.svg', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.svg.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
