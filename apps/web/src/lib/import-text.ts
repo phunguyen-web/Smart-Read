@@ -97,6 +97,8 @@ export type ImportedTextKind =
   | 'aes57'
   | 'lom'
   | 'imscp'
+  | 'newsml'
+  | 'nitf'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -574,6 +576,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'imscp') {
     return pagesFromImscp(text)
+  }
+  if (kind === 'newsml') {
+    return pagesFromNewsml(text)
+  }
+  if (kind === 'nitf') {
+    return pagesFromNitf(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -3325,6 +3333,70 @@ export function pagesFromImscp(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp IMS CP cần các mục <item> / <description>.')
+}
+
+export function pagesFromNewsml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<(?:newsml:)?newsItem\b[^>]*>([\s\S]*?)<\/(?:newsml:)?newsItem>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'newsml:DataContent') || xmlTagText(record, 'DataContent')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'newsml:slugline') || xmlTagText(record, 'slugline')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'newsml:HeadLine') || xmlTagText(record, 'HeadLine')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp NewsML cần các mục <newsItem> / <DataContent>.')
+}
+
+export function pagesFromNitf(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/<(?:nitf:)?nitf\b[^>]*>([\s\S]*?)<\/(?:nitf:)?nitf>/gi)]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'nitf:p') || xmlTagText(record, 'p')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'nitf:abstract') || xmlTagText(record, 'abstract')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'nitf:hl1') || xmlTagText(record, 'hl1')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      const heading = xmlTagText(record, 'nitf:title') || xmlTagText(record, 'title')
+      if (heading && !/^Trang\s+\d+$/.test(heading)) {
+        return heading
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp NITF cần các mục <nitf> / <p>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

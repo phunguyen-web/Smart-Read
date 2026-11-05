@@ -94,6 +94,8 @@ export type ExportFormat =
   | 'aes57'
   | 'lom'
   | 'imscp'
+  | 'newsml'
+  | 'nitf'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2083,6 +2085,64 @@ ${records}
 `
 }
 
+export function toNewsml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <newsItem>
+    <identification>
+      <newsIdentifier>
+        <NewsItemId>Trang ${index + 1}</NewsItemId>
+      </newsIdentifier>
+    </identification>
+    <newsComponent>
+      <newsLines>
+        <HeadLine>${heading}</HeadLine>
+      </newsLines>
+      <contentItem>
+        <DataContent>${note}</DataContent>
+      </contentItem>
+    </newsComponent>
+  </newsItem>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<newsML xmlns="http://iptc.org/std/NewsML/1.2/">
+${records}
+</newsML>
+`
+}
+
+export function toNitf(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <nitf>
+    <head>
+      <title>${heading}</title>
+    </head>
+    <body>
+      <body.head>
+        <hedline>
+          <hl1>Trang ${index + 1}</hl1>
+        </hedline>
+      </body.head>
+      <body.content>
+        <p>${note}</p>
+      </body.content>
+    </body>
+  </nitf>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<nitfCollection>
+${records}
+</nitfCollection>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3068,6 +3128,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/lom+xml;charset=utf-8'
     case 'imscp':
       return 'application/imscp+xml;charset=utf-8'
+    case 'newsml':
+      return 'application/newsml+xml;charset=utf-8'
+    case 'nitf':
+      return 'application/nitf+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

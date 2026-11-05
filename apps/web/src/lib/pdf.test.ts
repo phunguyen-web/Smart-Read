@@ -116,6 +116,8 @@ import {
   toAes57,
   toLom,
   toImscp,
+  toNewsml,
+  toNitf,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -227,6 +229,8 @@ import {
   pagesFromAes57,
   pagesFromLom,
   pagesFromImscp,
+  pagesFromNewsml,
+  pagesFromNitf,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1795,6 +1799,30 @@ describe('pdf edits', () => {
       top: (LETTER_HEIGHT * 3) / 4,
       zoom: null,
     })
+    expect(
+      namedDestXyzFromAxisPreset('eighth-left', { left: 10, top: 20, zoom: 2 }, 200, 280),
+    ).toEqual({
+      left: 25,
+      top: 20,
+      zoom: 2,
+    })
+    expect(
+      namedDestXyzFromAxisPreset('eighth-top', { left: 10, top: 20, zoom: 2 }, 200, 280),
+    ).toEqual({
+      left: 10,
+      top: 35,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('eighth-left')).toEqual({
+      left: LETTER_WIDTH / 8,
+      top: null,
+      zoom: null,
+    })
+    expect(namedDestXyzFromAxisPreset('eighth-top')).toEqual({
+      left: null,
+      top: LETTER_HEIGHT / 8,
+      zoom: null,
+    })
     expect(namedDestXyzAxisNeedsPageSize('max-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('max-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('far')).toBe(true)
@@ -1807,6 +1835,8 @@ describe('pdf edits', () => {
     expect(namedDestXyzAxisNeedsPageSize('quarter-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('three-quarter-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('three-quarter-top')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('eighth-left')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('eighth-top')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('origin')).toBe(false)
     expect(namedDestXyzAxisNeedsPageSize('home')).toBe(false)
     expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
@@ -2049,6 +2079,34 @@ describe('pdf edits', () => {
         ),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 210, zoom: 2 } }])
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'eighth-left')).toEqual({
+      left: 25,
+      top: 20,
+      zoom: 2,
+    })
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'eighth-top')).toEqual({
+      left: 10,
+      top: 35,
+      zoom: 2,
+    })
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'eighth-left'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 25, top: 20, zoom: 2 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(
+          zoomed,
+          'ChapTwo',
+          await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'eighth-top'),
+        ),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 35, zoom: 2 } }])
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
       top: 20,
@@ -3792,6 +3850,44 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(swapExtension('notes.imscp.xml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.ims', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('imsmanifest.xml', 'pdf')).toBe('imsmanifest.pdf')
+
+    expect(toNewsml('Demo', ['Một', 'Hai\ndòng'])).toContain('<newsML')
+    expect(toNewsml('Demo', ['Một'])).toContain('<HeadLine>Demo</HeadLine>')
+    expect(toNewsml('Demo', ['Một'])).toContain('<DataContent>Một</DataContent>')
+    expect(pagesFromNewsml(toNewsml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('newsml', toNewsml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromNewsml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromNewsml('<newsML><newsItem><newsLines><HeadLine>Một</HeadLine></newsLines></newsItem></newsML>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.newsml', { type: '' }))).toBe('newsml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.newsml.xml', { type: 'application/newsml+xml' })),
+    ).toBe('newsml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.nml', { type: '' }))).toBe('newsml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromNewsml('<newsML></newsML>')).toThrow(/<newsItem>/)
+    expect(swapExtension('notes.newsml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.newsml.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.nml', 'pdf')).toBe('notes.pdf')
+
+    expect(toNitf('Demo', ['Một', 'Hai\ndòng'])).toContain('<nitfCollection')
+    expect(toNitf('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toNitf('Demo', ['Một'])).toContain('<p>Một</p>')
+    expect(pagesFromNitf(toNitf('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('nitf', toNitf('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromNitf('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromNitf('<nitfCollection><nitf><head><title>Một</title></head></nitf></nitfCollection>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.nitf', { type: '' }))).toBe('nitf')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.nitf.xml', { type: 'application/nitf+xml' })),
+    ).toBe('nitf')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromNitf('<nitfCollection></nitfCollection>')).toThrow(/<nitf>/)
+    expect(swapExtension('notes.nitf', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.nitf.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

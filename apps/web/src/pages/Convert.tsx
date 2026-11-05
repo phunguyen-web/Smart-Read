@@ -93,6 +93,8 @@ import {
   toAes57,
   toLom,
   toImscp,
+  toNewsml,
+  toNitf,
   toJson,
   toJsonl,
   toLatex,
@@ -204,6 +206,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'aes57', label: 'AES57', hint: 'AES57 XML, description mỗi trang' },
   { id: 'lom', label: 'IEEE LOM', hint: 'IEEE LOM XML, description mỗi trang' },
   { id: 'imscp', label: 'IMS CP', hint: 'IMS Content Packaging XML, description mỗi trang' },
+  { id: 'newsml', label: 'NewsML', hint: 'NewsML XML, DataContent mỗi trang' },
+  { id: 'nitf', label: 'NITF', hint: 'NITF XML, p mỗi trang' },
   { id: 'srt', label: 'SRT', hint: 'Phụ đề .srt, một cue mỗi trang' },
   { id: 'vtt', label: 'VTT', hint: 'WebVTT, NOTE title + một cue mỗi trang' },
   { id: 'lrc', label: 'LRC', hint: 'Lời bài hát [mm:ss.xx], một dòng mỗi trang' },
@@ -859,6 +863,16 @@ export function Convert() {
       } else if (format === 'imscp') {
         downloadBlob(
           new Blob([toImscp(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'newsml') {
+        downloadBlob(
+          new Blob([toNewsml(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'nitf') {
+        downloadBlob(
+          new Blob([toNitf(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
       } else if (format === 'docx' || format === 'doc') {

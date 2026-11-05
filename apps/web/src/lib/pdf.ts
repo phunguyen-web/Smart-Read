@@ -2264,6 +2264,8 @@ export const NAMED_DEST_XYZ_AXIS_PRESETS = [
   'quarter-top',
   'three-quarter-left',
   'three-quarter-top',
+  'eighth-left',
+  'eighth-top',
 ] as const
 export type NamedDestXyzAxisPreset = (typeof NAMED_DEST_XYZ_AXIS_PRESETS)[number]
 
@@ -2272,7 +2274,7 @@ export function assertNamedDestXyzAxisPreset(value: string): NamedDestXyzAxisPre
     return value as NamedDestXyzAxisPreset
   }
   throw new Error(
-    'Trục XYZ chỉ là keep-left, keep-top, zero-left, zero-top, origin, home, max-left, max-top, far, end, mid, focus, mid-left, mid-top, quarter-left, quarter-top, three-quarter-left hoặc three-quarter-top.',
+    'Trục XYZ chỉ là keep-left, keep-top, zero-left, zero-top, origin, home, max-left, max-top, far, end, mid, focus, mid-left, mid-top, quarter-left, quarter-top, three-quarter-left, three-quarter-top, eighth-left hoặc eighth-top.',
   )
 }
 
@@ -2295,6 +2297,8 @@ export const NAMED_DEST_XYZ_AXIS_LABELS: Record<NamedDestXyzAxisPreset, string> 
   'quarter-top': 'Một phần tư trên',
   'three-quarter-left': 'Ba phần tư trái',
   'three-quarter-top': 'Ba phần tư trên',
+  'eighth-left': 'Một phần tám trái',
+  'eighth-top': 'Một phần tám trên',
 }
 
 export function namedDestXyzAxisNeedsPageSize(preset: NamedDestXyzAxisPreset): boolean {
@@ -2311,11 +2315,13 @@ export function namedDestXyzAxisNeedsPageSize(preset: NamedDestXyzAxisPreset): b
     style === 'quarter-left' ||
     style === 'quarter-top' ||
     style === 'three-quarter-left' ||
-    style === 'three-quarter-top'
+    style === 'three-quarter-top' ||
+    style === 'eighth-left' ||
+    style === 'eighth-top'
   )
 }
 
-/** Keep-left leaves left null and keeps top/zoom. Keep-top leaves top null and keeps left/zoom. Zero-left sets left 0 and keeps top/zoom. Zero-top sets top 0 and keeps left/zoom. Origin sets left 0 and top 0 and keeps zoom. Home sets left 0, top 0, and zoom 1. Max-left sets left to dest page width and keeps top/zoom. Max-top sets top to dest page height and keeps left/zoom. Far sets left to dest page width and top to dest page height and keeps zoom. End sets left to dest page width, top to dest page height, and zoom 1. Mid sets left to dest page width / 2 and top to dest page height / 2 and keeps zoom. Focus sets left to dest page width / 2, top to dest page height / 2, and zoom 1. Mid-left sets left to dest page width / 2 and keeps top/zoom. Mid-top sets top to dest page height / 2 and keeps left/zoom. Quarter-left sets left to dest page width / 4 and keeps top/zoom. Quarter-top sets top to dest page height / 4 and keeps left/zoom. Three-quarter-left sets left to dest page width * 3 / 4 and keeps top/zoom. Three-quarter-top sets top to dest page height * 3 / 4 and keeps left/zoom. Max-left, max-top, far, end, mid, focus, mid-left, mid-top, quarter-left, quarter-top, three-quarter-left, and three-quarter-top need dest page size (Letter fallback). */
+/** Keep-left leaves left null and keeps top/zoom. Keep-top leaves top null and keeps left/zoom. Zero-left sets left 0 and keeps top/zoom. Zero-top sets top 0 and keeps left/zoom. Origin sets left 0 and top 0 and keeps zoom. Home sets left 0, top 0, and zoom 1. Max-left sets left to dest page width and keeps top/zoom. Max-top sets top to dest page height and keeps left/zoom. Far sets left to dest page width and top to dest page height and keeps zoom. End sets left to dest page width, top to dest page height, and zoom 1. Mid sets left to dest page width / 2 and top to dest page height / 2 and keeps zoom. Focus sets left to dest page width / 2, top to dest page height / 2, and zoom 1. Mid-left sets left to dest page width / 2 and keeps top/zoom. Mid-top sets top to dest page height / 2 and keeps left/zoom. Quarter-left sets left to dest page width / 4 and keeps top/zoom. Quarter-top sets top to dest page height / 4 and keeps left/zoom. Three-quarter-left sets left to dest page width * 3 / 4 and keeps top/zoom. Three-quarter-top sets top to dest page height * 3 / 4 and keeps left/zoom. Eighth-left sets left to dest page width / 8 and keeps top/zoom. Eighth-top sets top to dest page height / 8 and keeps left/zoom. Max-left, max-top, far, end, mid, focus, mid-left, mid-top, quarter-left, quarter-top, three-quarter-left, three-quarter-top, eighth-left, and eighth-top need dest page size (Letter fallback). */
 export function namedDestXyzFromAxisPreset(
   preset: NamedDestXyzAxisPreset,
   base: NamedDestXyz = { left: null, top: null, zoom: null },
@@ -2378,7 +2384,13 @@ export function namedDestXyzFromAxisPreset(
   if (style === 'three-quarter-left') {
     return { left: (width * 3) / 4, top: base.top ?? null, zoom: base.zoom ?? null }
   }
-  return { left: base.left ?? null, top: (height * 3) / 4, zoom: base.zoom ?? null }
+  if (style === 'three-quarter-top') {
+    return { left: base.left ?? null, top: (height * 3) / 4, zoom: base.zoom ?? null }
+  }
+  if (style === 'eighth-left') {
+    return { left: width / 8, top: base.top ?? null, zoom: base.zoom ?? null }
+  }
+  return { left: base.left ?? null, top: height / 8, zoom: base.zoom ?? null }
 }
 
 const NAMED_DEST_XYZ_ZOOM_SCALE: Record<
