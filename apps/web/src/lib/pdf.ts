@@ -2254,6 +2254,8 @@ export const NAMED_DEST_XYZ_AXIS_PRESETS = [
   'home',
   'max-left',
   'max-top',
+  'far',
+  'end',
 ] as const
 export type NamedDestXyzAxisPreset = (typeof NAMED_DEST_XYZ_AXIS_PRESETS)[number]
 
@@ -2262,7 +2264,7 @@ export function assertNamedDestXyzAxisPreset(value: string): NamedDestXyzAxisPre
     return value as NamedDestXyzAxisPreset
   }
   throw new Error(
-    'Trục XYZ chỉ là keep-left, keep-top, zero-left, zero-top, origin, home, max-left hoặc max-top.',
+    'Trục XYZ chỉ là keep-left, keep-top, zero-left, zero-top, origin, home, max-left, max-top, far hoặc end.',
   )
 }
 
@@ -2275,14 +2277,16 @@ export const NAMED_DEST_XYZ_AXIS_LABELS: Record<NamedDestXyzAxisPreset, string> 
   home: 'Về gốc',
   'max-left': 'Trái hết',
   'max-top': 'Trên hết',
+  far: 'Xa hết',
+  end: 'Về xa',
 }
 
 export function namedDestXyzAxisNeedsPageSize(preset: NamedDestXyzAxisPreset): boolean {
   const style = assertNamedDestXyzAxisPreset(preset)
-  return style === 'max-left' || style === 'max-top'
+  return style === 'max-left' || style === 'max-top' || style === 'far' || style === 'end'
 }
 
-/** Keep-left leaves left null and keeps top/zoom. Keep-top leaves top null and keeps left/zoom. Zero-left sets left 0 and keeps top/zoom. Zero-top sets top 0 and keeps left/zoom. Origin sets left 0 and top 0 and keeps zoom. Home sets left 0, top 0, and zoom 1. Max-left sets left to dest page width and keeps top/zoom. Max-top sets top to dest page height and keeps left/zoom. Max-left and max-top need dest page size (Letter fallback). */
+/** Keep-left leaves left null and keeps top/zoom. Keep-top leaves top null and keeps left/zoom. Zero-left sets left 0 and keeps top/zoom. Zero-top sets top 0 and keeps left/zoom. Origin sets left 0 and top 0 and keeps zoom. Home sets left 0, top 0, and zoom 1. Max-left sets left to dest page width and keeps top/zoom. Max-top sets top to dest page height and keeps left/zoom. Far sets left to dest page width and top to dest page height and keeps zoom. End sets left to dest page width, top to dest page height, and zoom 1. Max-left, max-top, far, and end need dest page size (Letter fallback). */
 export function namedDestXyzFromAxisPreset(
   preset: NamedDestXyzAxisPreset,
   base: NamedDestXyz = { left: null, top: null, zoom: null },
@@ -2308,14 +2312,20 @@ export function namedDestXyzFromAxisPreset(
   if (style === 'home') {
     return { left: 0, top: 0, zoom: 1 }
   }
-  if (style === 'max-left') {
-    const width =
-      pageWidth != null && Number.isFinite(pageWidth) && pageWidth > 0 ? pageWidth : LETTER_WIDTH
-    return { left: width, top: base.top ?? null, zoom: base.zoom ?? null }
-  }
+  const width =
+    pageWidth != null && Number.isFinite(pageWidth) && pageWidth > 0 ? pageWidth : LETTER_WIDTH
   const height =
     pageHeight != null && Number.isFinite(pageHeight) && pageHeight > 0 ? pageHeight : LETTER_HEIGHT
-  return { left: base.left ?? null, top: height, zoom: base.zoom ?? null }
+  if (style === 'max-left') {
+    return { left: width, top: base.top ?? null, zoom: base.zoom ?? null }
+  }
+  if (style === 'max-top') {
+    return { left: base.left ?? null, top: height, zoom: base.zoom ?? null }
+  }
+  if (style === 'far') {
+    return { left: width, top: height, zoom: base.zoom ?? null }
+  }
+  return { left: width, top: height, zoom: 1 }
 }
 
 const NAMED_DEST_XYZ_ZOOM_SCALE: Record<

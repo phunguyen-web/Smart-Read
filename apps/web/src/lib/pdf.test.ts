@@ -106,6 +106,8 @@ import {
   toSpectrum,
   toDwc,
   toObjectid,
+  toEac,
+  toCrm,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -207,6 +209,8 @@ import {
   pagesFromSpectrum,
   pagesFromDwc,
   pagesFromObjectid,
+  pagesFromEac,
+  pagesFromCrm,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -1671,8 +1675,30 @@ describe('pdf edits', () => {
       top: LETTER_HEIGHT,
       zoom: null,
     })
+    expect(namedDestXyzFromAxisPreset('far', { left: 10, top: 20, zoom: 2 }, 200, 280)).toEqual({
+      left: 200,
+      top: 280,
+      zoom: 2,
+    })
+    expect(namedDestXyzFromAxisPreset('end', { left: 10, top: 20, zoom: 2 }, 200, 280)).toEqual({
+      left: 200,
+      top: 280,
+      zoom: 1,
+    })
+    expect(namedDestXyzFromAxisPreset('far')).toEqual({
+      left: LETTER_WIDTH,
+      top: LETTER_HEIGHT,
+      zoom: null,
+    })
+    expect(namedDestXyzFromAxisPreset('end')).toEqual({
+      left: LETTER_WIDTH,
+      top: LETTER_HEIGHT,
+      zoom: 1,
+    })
     expect(namedDestXyzAxisNeedsPageSize('max-left')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('max-top')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('far')).toBe(true)
+    expect(namedDestXyzAxisNeedsPageSize('end')).toBe(true)
     expect(namedDestXyzAxisNeedsPageSize('origin')).toBe(false)
     expect(namedDestXyzAxisNeedsPageSize('home')).toBe(false)
     expect(namedDestXyzZoomFromPreset('50')).toBe(0.5)
@@ -1807,6 +1833,26 @@ describe('pdf edits', () => {
         await setNamedDestXyz(zoomed, 'ChapTwo', await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'max-top')),
       ),
     ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 10, top: 280, zoom: 2 } }])
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'far')).toEqual({
+      left: 200,
+      top: 280,
+      zoom: 2,
+    })
+    expect(await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'end')).toEqual({
+      left: 200,
+      top: 280,
+      zoom: 1,
+    })
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(zoomed, 'ChapTwo', await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'far')),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 200, top: 280, zoom: 2 } }])
+    expect(
+      await listNamedDests(
+        await setNamedDestXyz(zoomed, 'ChapTwo', await namedDestXyzFromAxisDestPage(zoomed, 'ChapTwo', 'end')),
+      ),
+    ).toEqual([{ name: 'ChapTwo', pageIndex: 1, xyz: { left: 200, top: 280, zoom: 1 } }])
     expect(await namedDestXyzZoomFromDestPage(zoomed, 'ChapTwo', 'fit-width')).toEqual({
       left: 0,
       top: 20,
@@ -3320,6 +3366,54 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(swapExtension('notes.objectid', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.objectid.xml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.oid', 'pdf')).toBe('notes.pdf')
+
+    expect(toEac('Demo', ['Một', 'Hai\ndòng'])).toContain('<eac-cpf')
+    expect(toEac('Demo', ['Một'])).toContain('<date>Demo</date>')
+    expect(toEac('Demo', ['Một'])).toContain('<p>Một</p>')
+    expect(pagesFromEac(toEac('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('eac', toEac('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromEac('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromEac('<eac-cpf><cpfDescription><identity><nameEntry><part>Một</part></nameEntry></identity></cpfDescription></eac-cpf>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.eac', { type: '' }))).toBe('eac')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.eac.xml', { type: 'application/eac-cpf+xml' })),
+    ).toBe('eac')
+    expect(sourceKindFromFile(new File(['x'], 'notes.eac-cpf', { type: '' }))).toBe('eac')
+    expect(sourceKindFromFile(new File(['x'], 'notes.cpf', { type: '' }))).toBe('eac')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromEac('<eac-cpf></eac-cpf>')).toThrow(/<cpfDescription>/)
+    expect(swapExtension('notes.eac', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.eac.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.eac-cpf', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.eac-cpf.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.cpf', 'pdf')).toBe('notes.pdf')
+
+    expect(toCrm('Demo', ['Một', 'Hai\ndòng'])).toContain('<rdf:RDF')
+    expect(toCrm('Demo', ['Một'])).toContain('<crm:P102_has_title>Demo</crm:P102_has_title>')
+    expect(toCrm('Demo', ['Một'])).toContain('<crm:P3_has_note>Một</crm:P3_has_note>')
+    expect(pagesFromCrm(toCrm('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('crm', toCrm('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromCrm('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromCrm(
+        '<rdf:RDF><crm:E31_Document><crm:P102_has_title>Một</crm:P102_has_title></crm:E31_Document></rdf:RDF>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.crm', { type: '' }))).toBe('crm')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.crm.xml', { type: 'application/cidoc-crm+xml' })),
+    ).toBe('crm')
+    expect(sourceKindFromFile(new File(['x'], 'notes.cidoc', { type: '' }))).toBe('crm')
+    expect(sourceKindFromFile(new File(['x'], 'notes.cidoc-crm', { type: '' }))).toBe('crm')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromCrm('<rdf:RDF></rdf:RDF>')).toThrow(/<E31_Document>/)
+    expect(swapExtension('notes.crm', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.crm.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.cidoc', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.cidoc.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.cidoc-crm', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

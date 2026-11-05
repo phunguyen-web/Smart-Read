@@ -84,6 +84,8 @@ export type ExportFormat =
   | 'spectrum'
   | 'dwc'
   | 'objectid'
+  | 'eac'
+  | 'crm'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -1839,6 +1841,55 @@ ${records}
 `
 }
 
+export function toEac(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <cpfDescription>
+    <identity>
+      <entityType>person</entityType>
+      <nameEntry>
+        <part>Trang ${index + 1}</part>
+      </nameEntry>
+    </identity>
+    <description>
+      <existDates>
+        <date>${heading}</date>
+      </existDates>
+      <biogHist>
+        <p>${note}</p>
+      </biogHist>
+    </description>
+  </cpfDescription>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<eac-cpf xmlns="urn:isbn:1-931666-33-4">
+${records}
+</eac-cpf>
+`
+}
+
+export function toCrm(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <crm:E31_Document rdf:about="#page-${index + 1}">
+    <crm:P102_has_title>${heading}</crm:P102_has_title>
+    <crm:P1_is_identified_by>Trang ${index + 1}</crm:P1_is_identified_by>
+    <crm:P3_has_note>${note}</crm:P3_has_note>
+  </crm:E31_Document>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:crm="http://www.cidoc-crm.org/cidoc-crm/" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#">
+${records}
+</rdf:RDF>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -2804,6 +2855,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.tdwg.dwc+xml;charset=utf-8'
     case 'objectid':
       return 'application/objectid+xml;charset=utf-8'
+    case 'eac':
+      return 'application/eac-cpf+xml;charset=utf-8'
+    case 'crm':
+      return 'application/cidoc-crm+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

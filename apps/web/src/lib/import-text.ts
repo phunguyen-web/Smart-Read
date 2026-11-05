@@ -87,6 +87,8 @@ export type ImportedTextKind =
   | 'spectrum'
   | 'dwc'
   | 'objectid'
+  | 'eac'
+  | 'crm'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -534,6 +536,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'objectid') {
     return pagesFromObjectid(text)
+  }
+  if (kind === 'eac') {
+    return pagesFromEac(text)
+  }
+  if (kind === 'crm') {
+    return pagesFromCrm(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -2951,6 +2959,73 @@ export function pagesFromObjectid(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp Object ID cần các mục <object> / <distinguishingFeatures>.')
+}
+
+export function pagesFromEac(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<(?:eac:)?cpfDescription\b[^>]*>([\s\S]*?)<\/(?:eac:)?cpfDescription>/gi),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value =
+        xmlTagText(record, 'eac:biogHist') ||
+        xmlTagText(record, 'biogHist') ||
+        xmlTagText(record, 'p')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'eac:abstract') || xmlTagText(record, 'abstract')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'eac:part') || xmlTagText(record, 'part')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp EAC-CPF cần các mục <cpfDescription> / <biogHist>.')
+}
+
+export function pagesFromCrm(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<(?:crm:)?E31_Document\b[^>]*>([\s\S]*?)<\/(?:crm:)?E31_Document>/gi),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'crm:P3_has_note') || xmlTagText(record, 'P3_has_note')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'rdfs:comment') || xmlTagText(record, 'comment')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'crm:P102_has_title') || xmlTagText(record, 'P102_has_title')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp CIDOC CRM cần các mục <E31_Document> / <P3_has_note>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
