@@ -140,6 +140,8 @@ import {
   toSvg,
   toDxf,
   toMapml,
+  toCityjson,
+  toIndoorgml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -275,6 +277,8 @@ import {
   pagesFromSvg,
   pagesFromDxf,
   pagesFromMapml,
+  pagesFromCityjson,
+  pagesFromIndoorgml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -443,6 +447,8 @@ import {
   TEXT_FIELD_FILL,
   TEXT_FIELD_PREFIX,
   textFieldNameForPage,
+  addStickyNotes,
+  STICKY_NOTE_COLOR,
   strikeoutPages,
   strikeoutStrokeForBox,
   underlinePages,
@@ -715,6 +721,26 @@ describe('pdf edits', () => {
       .sort()
     expect(names).toEqual([textFieldNameForPage(0), textFieldNameForPage(0, 2)])
     await expect(addTextFields(bytes, [])).rejects.toThrow(/ô chữ/)
+  })
+
+  it('adds a sticky-note annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(STICKY_NOTE_COLOR.g).toBeGreaterThan(STICKY_NOTE_COLOR.b)
+    const noted = await addStickyNotes(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(noted)).toBe(1)
+    const doc = await PDFDocument.load(noted)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Text'))
+    expect(annot.lookup(PDFName.of('Name'), PDFName)).toBe(PDFName.of('Comment'))
+    const blank = await addStickyNotes(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    expect((await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(1)
+    const pageNote = await addStickyNotes(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageNote)).toBe(1)
+    const again = await addStickyNotes(noted, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addStickyNotes(bytes, [])).rejects.toThrow(/ghi chú/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -4739,6 +4765,50 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.mapml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.mapml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toCityjson('Demo', ['Một', 'Hai\ndòng'])).toContain('"type": "CityJSON"')
+    expect(toCityjson('Demo', ['Một'])).toContain('"title": "Demo"')
+    expect(toCityjson('Demo', ['Một'])).toContain('"description": "Một"')
+    expect(pagesFromCityjson(toCityjson('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('cityjson', toCityjson('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromCityjson('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromCityjson(
+        '{"type":"CityJSON","CityObjects":{"page-1":{"attributes":{"name":"Một"}}}}',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.json', { type: '' }))).toBe('json')
+    expect(sourceKindFromFile(new File(['x'], 'notes.cityjson', { type: '' }))).toBe('cityjson')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.city.json', { type: 'application/city+json' })),
+    ).toBe('cityjson')
+    expect(() => pagesFromCityjson('{"type":"CityJSON","CityObjects":{}}')).toThrow(/CityObjects/)
+    expect(swapExtension('notes.cityjson', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.city.json', 'pdf')).toBe('notes.pdf')
+
+    expect(toIndoorgml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.opengis.net/indoorgml/1.0/core"')
+    expect(toIndoorgml('Demo', ['Một'])).toContain('<gml:name>Demo</gml:name>')
+    expect(toIndoorgml('Demo', ['Một'])).toContain('<gml:description>Một</gml:description>')
+    expect(pagesFromIndoorgml(toIndoorgml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('indoorgml', toIndoorgml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromIndoorgml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromIndoorgml(
+        '<IndoorFeatures xmlns="http://www.opengis.net/indoorgml/1.0/core"><CellSpace><name>Một</name></CellSpace></IndoorFeatures>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.indoorgml', { type: '' }))).toBe('indoorgml')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.indoorgml.xml', { type: 'application/indoorgml+xml' }),
+      ),
+    ).toBe('indoorgml')
+    expect(() =>
+      pagesFromIndoorgml('<IndoorFeatures xmlns="http://www.opengis.net/indoorgml/1.0/core"></IndoorFeatures>'),
+    ).toThrow(/cellSpaceMember/)
+    expect(swapExtension('notes.indoorgml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.indoorgml.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

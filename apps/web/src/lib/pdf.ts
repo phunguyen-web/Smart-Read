@@ -2271,6 +2271,57 @@ export async function addTextFields(
   return new Uint8Array(await doc.save())
 }
 
+export const STICKY_NOTE_COLOR = { r: 1, g: 0.85, b: 0.2 } as const
+
+function pageAnnotsArray(doc: PDFDocument, page: ReturnType<PDFDocument['getPage']>): PDFArray {
+  const existing = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray)
+  if (existing) {
+    return existing
+  }
+  const created = doc.context.obj([]) as PDFArray
+  page.node.set(PDFName.of('Annots'), created)
+  return created
+}
+
+/**
+ * Add a PDF `/Text` sticky-note annotation on selected pages at the overlay box.
+ * Empty `contents` still creates a blank note. This is not AcroForm, not XFA, and not flattening.
+ */
+export async function addStickyNotes(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  contents = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn ghi chú.')
+  }
+  const note = contents.trim()
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const annot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Text',
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      Contents: PDFHexString.fromText(note),
+      Name: 'Comment',
+      Open: false,
+      C: [STICKY_NOTE_COLOR.r, STICKY_NOTE_COLOR.g, STICKY_NOTE_COLOR.b],
+      T: PDFHexString.fromText('Smart-Read'),
+      F: 4,
+    })
+    pageAnnotsArray(doc, page).push(doc.context.register(annot))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

@@ -118,6 +118,8 @@ export type ExportFormat =
   | 'svg'
   | 'dxf'
   | 'mapml'
+  | 'cityjson'
+  | 'indoorgml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2638,6 +2640,56 @@ ${features}
 `
 }
 
+export function toCityjson(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const cityObjects: Record<string, unknown> = {}
+  pages.forEach((text, index) => {
+    cityObjects[`page-${index + 1}`] = {
+      type: 'Building',
+      attributes: {
+        name: `Trang ${index + 1}`,
+        description: text.trim() || '(không có chữ)',
+      },
+    }
+  })
+  return `${JSON.stringify(
+    {
+      type: 'CityJSON',
+      version: '2.0',
+      metadata: { title: heading },
+      CityObjects: cityObjects,
+      vertices: [[0, 0, 0]],
+    },
+    null,
+    2,
+  )}\n`
+}
+
+export function toIndoorgml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const members = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `      <cellSpaceMember>
+        <CellSpace gml:id="page-${index + 1}">
+          <gml:name>Trang ${index + 1}</gml:name>
+          <gml:description>${note}</gml:description>
+        </CellSpace>
+      </cellSpaceMember>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<IndoorFeatures xmlns="http://www.opengis.net/indoorgml/1.0/core" xmlns:gml="http://www.opengis.net/gml/3.2">
+  <gml:name>${heading}</gml:name>
+  <primalSpaceFeatures>
+    <PrimalSpaceFeatures>
+${members}
+    </PrimalSpaceFeatures>
+  </primalSpaceFeatures>
+</IndoorFeatures>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3671,6 +3723,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/dxf;charset=utf-8'
     case 'mapml':
       return 'text/mapml;charset=utf-8'
+    case 'cityjson':
+      return 'application/city+json;charset=utf-8'
+    case 'indoorgml':
+      return 'application/indoorgml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

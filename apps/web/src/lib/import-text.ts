@@ -121,6 +121,8 @@ export type ImportedTextKind =
   | 'svg'
   | 'dxf'
   | 'mapml'
+  | 'cityjson'
+  | 'indoorgml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -670,6 +672,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'mapml') {
     return pagesFromMapml(text)
+  }
+  if (kind === 'cityjson') {
+    return pagesFromCityjson(text)
+  }
+  if (kind === 'indoorgml') {
+    return pagesFromIndoorgml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -4493,6 +4501,100 @@ export function pagesFromMapml(text: string): string[] {
     return capPages(properties)
   }
   throw new Error('Tệp MapML cần các mục <feature> / <description>.')
+}
+
+function textFromCityjsonObject(record: unknown): string {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    return ''
+  }
+  const bag = record as { attributes?: unknown; name?: unknown; description?: unknown; text?: unknown }
+  const attributes =
+    bag.attributes && typeof bag.attributes === 'object' && !Array.isArray(bag.attributes)
+      ? (bag.attributes as { description?: unknown; text?: unknown; name?: unknown })
+      : undefined
+  const description =
+    (typeof attributes?.description === 'string' && attributes.description.trim()) ||
+    (typeof bag.description === 'string' && bag.description.trim()) ||
+    (typeof attributes?.text === 'string' && attributes.text.trim()) ||
+    (typeof bag.text === 'string' && bag.text.trim())
+  if (description) {
+    return description
+  }
+  const name =
+    (typeof attributes?.name === 'string' && attributes.name.trim()) ||
+    (typeof bag.name === 'string' && bag.name.trim())
+  if (name && !/^Trang\s+\d+$/.test(name)) {
+    return name
+  }
+  return ''
+}
+
+export function pagesFromCityjson(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    let data: unknown
+    try {
+      data = JSON.parse(trimmed)
+    } catch {
+      throw new Error('Tệp CityJSON không hợp lệ.')
+    }
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const type = (data as { type?: unknown }).type
+      const objects = (data as { CityObjects?: unknown }).CityObjects
+      if (type === 'CityJSON' || (objects && typeof objects === 'object' && !Array.isArray(objects))) {
+        const pages = Object.values((objects && typeof objects === 'object' ? objects : {}) as Record<string, unknown>)
+          .map(textFromCityjsonObject)
+          .filter((page) => page.length > 0)
+        if (pages.length > 0) {
+          return capPages(pages)
+        }
+        throw new Error('Tệp CityJSON cần các mục CityObjects / description.')
+      }
+    }
+    if (/^\s*\{/.test(trimmed)) {
+      return pagesFromJson(trimmed)
+    }
+  }
+  throw new Error('Tệp CityJSON cần các mục CityObjects / description.')
+}
+
+function textFromIndoorRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'gml:description') ||
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title =
+    xmlTagText(record, 'gml:name') || xmlTagText(record, 'name') || xmlTagText(record, 'title')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function indoorRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:core:)?${tag}\\b[^>]*>([\\s\\S]*?)</(?:core:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromIndoorRecord(match[1]!))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromIndoorgml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = indoorRecords(trimmed, 'cellSpaceMember')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const cells = indoorRecords(trimmed, 'CellSpace')
+  if (cells.length > 0) {
+    return capPages(cells)
+  }
+  throw new Error('Tệp IndoorGML cần các mục <cellSpaceMember> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
