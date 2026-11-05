@@ -104,6 +104,8 @@ export type ExportFormat =
   | 'hnews'
   | 'iptc'
   | 'anpa'
+  | 'ninjs'
+  | 'jsonfeed'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2311,6 +2313,37 @@ ${records}
 `
 }
 
+export function toNinjs(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const items = pages.map((text, index) => ({
+    uri: `page-${index + 1}`,
+    type: 'text',
+    headline: heading,
+    profile: `Trang ${index + 1}`,
+    body_text: text.trim() || '(không có chữ)',
+  }))
+  return `${JSON.stringify({ ninjs: '1.4', headline: heading, items }, null, 2)}\n`
+}
+
+export function toJsonfeed(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const items = pages.map((text, index) => ({
+    id: `page-${index + 1}`,
+    title: heading,
+    url: `page-${index + 1}`,
+    content_text: text.trim() || '(không có chữ)',
+  }))
+  return `${JSON.stringify(
+    {
+      version: 'https://jsonfeed.org/version/1.1',
+      title: heading,
+      items,
+    },
+    null,
+    2,
+  )}\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3316,6 +3349,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/iptc+xml;charset=utf-8'
     case 'anpa':
       return 'application/anpa+xml;charset=utf-8'
+    case 'ninjs':
+      return 'application/vnd.iptc.ninjs+json;charset=utf-8'
+    case 'jsonfeed':
+      return 'application/feed+json;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

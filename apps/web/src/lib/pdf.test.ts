@@ -126,6 +126,8 @@ import {
   toHnews,
   toIptc,
   toAnpa,
+  toNinjs,
+  toJsonfeed,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -247,6 +249,8 @@ import {
   pagesFromHnews,
   pagesFromIptc,
   pagesFromAnpa,
+  pagesFromNinjs,
+  pagesFromJsonfeed,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -587,10 +591,15 @@ describe('pdf edits', () => {
       width: 200,
       height: 100,
     })
+    expect(OVERLAY_PRESETS['top-right']).toEqual({ xRatio: 0.92, yRatio: 0.08 })
+    expect(OVERLAY_PRESETS['bottom-center']).toEqual({ xRatio: 0.5, yRatio: 0.88 })
+    expect(OVERLAY_PRESETS['bottom-right']).toEqual({ xRatio: 0.92, yRatio: 0.88 })
     const blocked = await redactPages(bytes, [0], { xRatio: 0.5, yRatio: 0.5 }, 'block')
     expect(await pageCount(blocked)).toBe(1)
     const lined = await redactPages(bytes, [0], OVERLAY_PRESETS['top-left'], 'line')
     expect(await pageCount(lined)).toBe(1)
+    const corner = await redactPages(bytes, [0], OVERLAY_PRESETS['top-right'], 'line')
+    expect(await pageCount(corner)).toBe(1)
     const covered = await redactPages(bytes, [0], OVERLAY_PRESETS.center, 'page')
     expect(await pageCount(covered)).toBe(1)
     await expect(redactPages(bytes, [])).rejects.toThrow(/che chữ/)
@@ -4261,6 +4270,50 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromAnpa('<anpa></anpa>')).toThrow(/<anpaStory>/)
     expect(swapExtension('notes.anpa', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.anpa.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toNinjs('Demo', ['Một', 'Hai\ndòng'])).toContain('"ninjs": "1.4"')
+    expect(toNinjs('Demo', ['Một'])).toContain('"headline": "Demo"')
+    expect(toNinjs('Demo', ['Một'])).toContain('"body_text": "Một"')
+    expect(pagesFromNinjs(toNinjs('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('ninjs', toNinjs('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromNinjs('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromNinjs('{"ninjs":"1.4","items":[{"headline":"Một"}]}'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.json', { type: '' }))).toBe('json')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ninjs', { type: '' }))).toBe('ninjs')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.ninjs.json', { type: 'application/vnd.iptc.ninjs+json' }),
+      ),
+    ).toBe('ninjs')
+    expect(() => pagesFromNinjs('{"ninjs":"1.4","items":[]}')).toThrow(/body_text/)
+    expect(swapExtension('notes.ninjs', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.ninjs.json', 'pdf')).toBe('notes.pdf')
+
+    expect(toJsonfeed('Demo', ['Một', 'Hai\ndòng'])).toContain('jsonfeed.org/version/1.1')
+    expect(toJsonfeed('Demo', ['Một'])).toContain('"title": "Demo"')
+    expect(toJsonfeed('Demo', ['Một'])).toContain('"content_text": "Một"')
+    expect(pagesFromJsonfeed(toJsonfeed('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('jsonfeed', toJsonfeed('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromJsonfeed('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromJsonfeed(
+        '{"version":"https://jsonfeed.org/version/1.1","items":[{"title":"Một"}]}',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.json', { type: '' }))).toBe('json')
+    expect(sourceKindFromFile(new File(['x'], 'notes.jsonfeed', { type: '' }))).toBe('jsonfeed')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.jsonfeed.json', { type: 'application/feed+json' }),
+      ),
+    ).toBe('jsonfeed')
+    expect(() =>
+      pagesFromJsonfeed('{"version":"https://jsonfeed.org/version/1.1","items":[]}'),
+    ).toThrow(/content_text/)
+    expect(swapExtension('notes.jsonfeed', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.jsonfeed.json', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

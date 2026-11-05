@@ -107,6 +107,8 @@ export type ImportedTextKind =
   | 'hnews'
   | 'iptc'
   | 'anpa'
+  | 'ninjs'
+  | 'jsonfeed'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -614,6 +616,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'anpa') {
     return pagesFromAnpa(text)
+  }
+  if (kind === 'ninjs') {
+    return pagesFromNinjs(text)
+  }
+  if (kind === 'jsonfeed') {
+    return pagesFromJsonfeed(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -3683,6 +3691,138 @@ export function pagesFromAnpa(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp ANPA cần các mục <anpaStory> / <text>.')
+}
+
+function firstJsonString(value: unknown): string {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim()
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item === 'string' && item.trim()) {
+        return item.trim()
+      }
+    }
+  }
+  return ''
+}
+
+function textFromNinjsItem(item: unknown): string {
+  if (!item || typeof item !== 'object') {
+    return ''
+  }
+  const rec = item as { body_text?: unknown; description?: unknown; headline?: unknown }
+  const body = firstJsonString(rec.body_text)
+  if (body) {
+    return body
+  }
+  const note = firstJsonString(rec.description)
+  if (note) {
+    return note
+  }
+  const title = firstJsonString(rec.headline)
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function ninjsItems(data: unknown): unknown[] | null {
+  if (Array.isArray(data)) {
+    return data
+  }
+  if (!data || typeof data !== 'object') {
+    return null
+  }
+  const rec = data as { ninjs?: unknown; items?: unknown }
+  if (Array.isArray(rec.items) && (rec.ninjs != null || rec.items.length > 0)) {
+    return rec.items
+  }
+  return rec.ninjs != null ? [] : null
+}
+
+export function pagesFromNinjs(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    let data: unknown
+    try {
+      data = JSON.parse(trimmed)
+    } catch {
+      throw new Error('Tệp NINJS không hợp lệ.')
+    }
+    const items = ninjsItems(data)
+    if (items) {
+      const pages = items.map(textFromNinjsItem).filter((page) => page.length > 0)
+      if (pages.length > 0) {
+        return capPages(pages)
+      }
+      throw new Error('Tệp NINJS cần các mục items / body_text.')
+    }
+    if (/^\s*\{/.test(trimmed)) {
+      return pagesFromJson(trimmed)
+    }
+  }
+  throw new Error('Tệp NINJS cần các mục items / body_text.')
+}
+
+function textFromJsonfeedItem(item: unknown): string {
+  if (!item || typeof item !== 'object') {
+    return ''
+  }
+  const rec = item as { content_text?: unknown; summary?: unknown; title?: unknown }
+  const body = firstJsonString(rec.content_text)
+  if (body) {
+    return body
+  }
+  const note = firstJsonString(rec.summary)
+  if (note) {
+    return note
+  }
+  const title = firstJsonString(rec.title)
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function jsonfeedItems(data: unknown): unknown[] | null {
+  if (Array.isArray(data)) {
+    return data
+  }
+  if (!data || typeof data !== 'object') {
+    return null
+  }
+  const rec = data as { version?: unknown; items?: unknown }
+  const version = firstJsonString(rec.version)
+  const isFeed = /jsonfeed\.org/i.test(version)
+  if (Array.isArray(rec.items) && (isFeed || rec.items.length > 0)) {
+    return rec.items
+  }
+  return isFeed ? [] : null
+}
+
+export function pagesFromJsonfeed(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed) || /^\s*\[/.test(trimmed)) {
+    let data: unknown
+    try {
+      data = JSON.parse(trimmed)
+    } catch {
+      throw new Error('Tệp JSON Feed không hợp lệ.')
+    }
+    const items = jsonfeedItems(data)
+    if (items) {
+      const pages = items.map(textFromJsonfeedItem).filter((page) => page.length > 0)
+      if (pages.length > 0) {
+        return capPages(pages)
+      }
+      throw new Error('Tệp JSON Feed cần các mục items / content_text.')
+    }
+    if (/^\s*\{/.test(trimmed)) {
+      return pagesFromJson(trimmed)
+    }
+  }
+  throw new Error('Tệp JSON Feed cần các mục items / content_text.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

@@ -25,8 +25,11 @@ export type OverlayPosition = {
 export const OVERLAY_PRESETS = {
   'top-left': { xRatio: 0.08, yRatio: 0.08 },
   'top-center': { xRatio: 0.5, yRatio: 0.08 },
+  'top-right': { xRatio: 0.92, yRatio: 0.08 },
   center: { xRatio: 0.5, yRatio: 0.5 },
   'bottom-left': { xRatio: 0.08, yRatio: 0.88 },
+  'bottom-center': { xRatio: 0.5, yRatio: 0.88 },
+  'bottom-right': { xRatio: 0.92, yRatio: 0.88 },
 } as const
 
 export type OverlayPresetId = keyof typeof OVERLAY_PRESETS
