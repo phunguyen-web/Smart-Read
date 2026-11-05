@@ -102,6 +102,8 @@ export type ExportFormat =
   | 'rnews'
   | 'prism'
   | 'hnews'
+  | 'iptc'
+  | 'anpa'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2271,6 +2273,44 @@ ${records}
 `
 }
 
+export function toIptc(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <iptcItem>
+    <headline>${heading}</headline>
+    <identifier>Trang ${index + 1}</identifier>
+    <body>${note}</body>
+  </iptcItem>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<iptc>
+${records}
+</iptc>
+`
+}
+
+export function toAnpa(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <anpaStory>
+    <headline>${heading}</headline>
+    <identifier>Trang ${index + 1}</identifier>
+    <text>${note}</text>
+  </anpaStory>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<anpa>
+${records}
+</anpa>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3272,6 +3312,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/prism+xml;charset=utf-8'
     case 'hnews':
       return 'application/hnews+xml;charset=utf-8'
+    case 'iptc':
+      return 'application/iptc+xml;charset=utf-8'
+    case 'anpa':
+      return 'application/anpa+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

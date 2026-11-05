@@ -101,6 +101,8 @@ import {
   toRnews,
   toPrism,
   toHnews,
+  toIptc,
+  toAnpa,
   toJson,
   toJsonl,
   toLatex,
@@ -220,6 +222,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'rnews', label: 'rNews', hint: 'rNews XML, articleBody mỗi trang' },
   { id: 'prism', label: 'PRISM', hint: 'PRISM XML, body mỗi trang' },
   { id: 'hnews', label: 'hNews', hint: 'hNews XML, content mỗi trang' },
+  { id: 'iptc', label: 'IPTC', hint: 'IPTC 7901 XML, body mỗi trang' },
+  { id: 'anpa', label: 'ANPA', hint: 'ANPA XML, text mỗi trang' },
   { id: 'srt', label: 'SRT', hint: 'Phụ đề .srt, một cue mỗi trang' },
   { id: 'vtt', label: 'VTT', hint: 'WebVTT, NOTE title + một cue mỗi trang' },
   { id: 'lrc', label: 'LRC', hint: 'Lời bài hát [mm:ss.xx], một dòng mỗi trang' },
@@ -915,6 +919,16 @@ export function Convert() {
       } else if (format === 'hnews') {
         downloadBlob(
           new Blob([toHnews(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'iptc') {
+        downloadBlob(
+          new Blob([toIptc(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'anpa') {
+        downloadBlob(
+          new Blob([toAnpa(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
       } else if (format === 'docx' || format === 'doc') {

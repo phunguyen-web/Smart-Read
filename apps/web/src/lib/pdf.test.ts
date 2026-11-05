@@ -124,6 +124,8 @@ import {
   toRnews,
   toPrism,
   toHnews,
+  toIptc,
+  toAnpa,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -243,6 +245,8 @@ import {
   pagesFromRnews,
   pagesFromPrism,
   pagesFromHnews,
+  pagesFromIptc,
+  pagesFromAnpa,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -395,6 +399,11 @@ import {
   borderStrokeWidth,
   addTextOverlay,
   addWatermark,
+  assertRedactSize,
+  redactBoxForPage,
+  redactPages,
+  REDACT_SIZES,
+  OVERLAY_PRESETS,
   CROP_MARGINS,
   a4SizeForPage,
   cropBoxAfterMargin,
@@ -556,6 +565,35 @@ describe('pdf edits', () => {
     const next = await addTextOverlay(bytes, 0, 'Hi', { xRatio: 0.2, yRatio: 0.3 })
     expect(await pageCount(next)).toBe(1)
     await expect(addTextOverlay(bytes, 0, '   ')).rejects.toThrow(/Nhập nội dung/)
+  })
+
+  it('redacts a line, block, or full page at a ratio', async () => {
+    const bytes = await samplePdf(['Secret'])
+    expect(assertRedactSize('line')).toBe('line')
+    expect(assertRedactSize('page')).toBe('page')
+    expect(() => assertRedactSize('dot')).toThrow(/dòng/)
+    expect(redactBoxForPage(200, 100, { xRatio: 0.5, yRatio: 0.5 }, 'block')).toEqual({
+      x: 200 * 0.5 - (200 * REDACT_SIZES.block.widthRatio) / 2,
+      y: 100 * 0.5 - (100 * REDACT_SIZES.block.heightRatio) / 2,
+      width: 200 * REDACT_SIZES.block.widthRatio,
+      height: 100 * REDACT_SIZES.block.heightRatio,
+    })
+    expect(redactBoxForPage(200, 100, { xRatio: 0.08, yRatio: 0.08 }, 'line').width).toBe(
+      200 * REDACT_SIZES.line.widthRatio,
+    )
+    expect(redactBoxForPage(200, 100, OVERLAY_PRESETS['top-left'], 'page')).toEqual({
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 100,
+    })
+    const blocked = await redactPages(bytes, [0], { xRatio: 0.5, yRatio: 0.5 }, 'block')
+    expect(await pageCount(blocked)).toBe(1)
+    const lined = await redactPages(bytes, [0], OVERLAY_PRESETS['top-left'], 'line')
+    expect(await pageCount(lined)).toBe(1)
+    const covered = await redactPages(bytes, [0], OVERLAY_PRESETS.center, 'page')
+    expect(await pageCount(covered)).toBe(1)
+    await expect(redactPages(bytes, [])).rejects.toThrow(/che chữ/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -4187,6 +4225,42 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromHnews('<hnews></hnews>')).toThrow(/<entry>/)
     expect(swapExtension('notes.hnews', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.hnews.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toIptc('Demo', ['Một', 'Hai\ndòng'])).toContain('<iptc')
+    expect(toIptc('Demo', ['Một'])).toContain('<headline>Demo</headline>')
+    expect(toIptc('Demo', ['Một'])).toContain('<body>Một</body>')
+    expect(pagesFromIptc(toIptc('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('iptc', toIptc('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromIptc('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromIptc('<iptc><iptcItem><headline>Một</headline></iptcItem></iptc>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.iptc', { type: '' }))).toBe('iptc')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.iptc.xml', { type: 'application/iptc+xml' })),
+    ).toBe('iptc')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromIptc('<iptc></iptc>')).toThrow(/<iptcItem>/)
+    expect(swapExtension('notes.iptc', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.iptc.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toAnpa('Demo', ['Một', 'Hai\ndòng'])).toContain('<anpa')
+    expect(toAnpa('Demo', ['Một'])).toContain('<headline>Demo</headline>')
+    expect(toAnpa('Demo', ['Một'])).toContain('<text>Một</text>')
+    expect(pagesFromAnpa(toAnpa('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('anpa', toAnpa('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromAnpa('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromAnpa('<anpa><anpaStory><headline>Một</headline></anpaStory></anpa>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.anpa', { type: '' }))).toBe('anpa')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.anpa.xml', { type: 'application/anpa+xml' })),
+    ).toBe('anpa')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromAnpa('<anpa></anpa>')).toThrow(/<anpaStory>/)
+    expect(swapExtension('notes.anpa', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.anpa.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

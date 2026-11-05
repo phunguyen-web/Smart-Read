@@ -1906,6 +1906,79 @@ export async function addTextOverlay(
   return new Uint8Array(await doc.save())
 }
 
+export const REDACT_SIZE_IDS = ['line', 'block', 'page'] as const
+export type RedactSizeId = (typeof REDACT_SIZE_IDS)[number]
+
+export const REDACT_SIZES: Record<RedactSizeId, { widthRatio: number; heightRatio: number }> = {
+  line: { widthRatio: 0.55, heightRatio: 0.04 },
+  block: { widthRatio: 0.28, heightRatio: 0.14 },
+  page: { widthRatio: 1, heightRatio: 1 },
+}
+
+export const REDACT_SIZE_LABELS: Record<RedactSizeId, string> = {
+  line: 'Dòng',
+  block: 'Khối',
+  page: 'Trang',
+}
+
+export function assertRedactSize(value: string): RedactSizeId {
+  if ((REDACT_SIZE_IDS as readonly string[]).includes(value)) {
+    return value as RedactSizeId
+  }
+  throw new Error('Che chữ chỉ là dòng, khối hoặc trang.')
+}
+
+/** Line/block boxes are centered on the overlay point (ratios from the top-left). Page covers the whole leaf. */
+export function redactBoxForPage(
+  pageWidth: number,
+  pageHeight: number,
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+): { x: number; y: number; width: number; height: number } {
+  const style = assertRedactSize(size)
+  if (style === 'page') {
+    return { x: 0, y: 0, width: pageWidth, height: pageHeight }
+  }
+  const dims = REDACT_SIZES[style]
+  const width = Math.min(pageWidth, Math.max(1, pageWidth * dims.widthRatio))
+  const height = Math.min(pageHeight, Math.max(1, pageHeight * dims.heightRatio))
+  const cx = clamp(position.xRatio, 0, 1) * pageWidth
+  const cyFromTop = clamp(position.yRatio, 0, 1) * pageHeight
+  const x = clamp(cx - width / 2, 0, Math.max(0, pageWidth - width))
+  const top = clamp(cyFromTop - height / 2, 0, Math.max(0, pageHeight - height))
+  const y = clamp(pageHeight - top - height, 0, Math.max(0, pageHeight - height))
+  return { x, y, width, height }
+}
+
+/** Paint an opaque black band over selected pages. Uses the overlay point except for full-page. */
+export async function redactPages(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để che chữ.')
+  }
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    page.drawRectangle({
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      color: rgb(0, 0, 0),
+    })
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

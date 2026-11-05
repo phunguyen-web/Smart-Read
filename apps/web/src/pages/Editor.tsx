@@ -76,6 +76,9 @@ import {
   addPageNumbers,
   addTextOverlay,
   addWatermark,
+  redactPages,
+  REDACT_SIZE_IDS,
+  REDACT_SIZE_LABELS,
   applyPageOrder,
   autoCropPages,
   cropPages,
@@ -137,6 +140,7 @@ import {
   type PageLabelStyle,
   type PageNumberPosition,
   type PageNumberStyle,
+  type RedactSizeId,
   type TintId,
   type WatermarkStyle,
 } from '../lib/pdf.ts'
@@ -252,6 +256,7 @@ export function Editor() {
   const [anchor, setAnchor] = useState(started.anchor)
   const [overlay, setOverlay] = useState('')
   const [overlayPos, setOverlayPos] = useState<OverlayPosition>(OVERLAY_PRESETS['top-left'])
+  const [redactSize, setRedactSize] = useState<RedactSizeId>('block')
   const [numberPos, setNumberPos] = useState<PageNumberPosition>('bottom-center')
   const [numberStyle, setNumberStyle] = useState<PageNumberStyle>('n-of-total')
   const [watermark, setWatermark] = useState('')
@@ -1043,7 +1048,7 @@ export function Editor() {
           2/4 trang mỗi tờ, xếp sách gấp (xem tờ in), lật ngang/dọc, cắt đôi trên/dưới hoặc trái/phải, xoay khổ
           đứng/ngang, đổi tỷ lệ trang, đảo chọn, xóa, nhân bản, tách hoặc giữ trang đã chọn, tách
           thành nhiều PDF, chèn trang trắng hoặc ảnh PNG/JPEG/WEBP, kéo thumbnail để đổi thứ tự,
-          hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, đánh dấu mục lục
+          hoàn tác (giữ khi tải lại trang), gộp tệp, sửa thông tin tài liệu, chèn chữ, che chữ (dòng/khối/trang), đánh dấu mục lục
           (thư mục lồng 3 cấp không Dest hoặc đích tên, thu từng mục, đổi tên / xóa / lên / xuống / thụt vào / thụt ra / gắn trang / đích tên / gắn trang đích từ ô trang / đổi tên đích / xóa đích / kiểu xem XYZ Fit FitH FitV FitR FitB FitBH FitBV / gắn XYZ trái đỉnh zoom / khổ A4 Letter A5 trái trên / mé trái trên / trên / phải trên / trái giữa / giữa / phải giữa / trái dưới / dưới / phải dưới theo khổ trang đích / zoom 50% / 75% / 100% / 125% / 150% / 200% / vừa rộng / vừa cao / vừa trang / giữ zoom / giữ trái / giữ trên / trái 0 / trên 0 / gốc / về gốc / đích trên thumbnail, bấm tên đích để chọn),
           nhãn trang (1 / i / Trang), tải ảnh nhúng, mở PDF khóa bằng mật khẩu, rồi tải PDF
           mới (có thể khóa mật khẩu). Có thể mở TXT, Markdown, HTML, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom/RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, FOXML, EDM, LIDO, VRA, CDWA Lite, SPECTRUM, Darwin Core, Object ID, EAC-CPF, CIDOC CRM, METS Rights, TextMD, PBCore, EBUCore, RTF, DOCX, ODT, ODS, XLSX,
@@ -3063,6 +3068,30 @@ export function Editor() {
             >
               Chèn vào vị trí đã chọn
             </button>
+            <fieldset className="watermark-pack">
+              <legend>Che chữ</legend>
+              <div className="preset-row" role="group" aria-label="Cỡ vùng che chữ">
+                {REDACT_SIZE_IDS.map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={redactSize === id ? 'picked' : undefined}
+                    onClick={() => setRedactSize(id)}
+                  >
+                    {REDACT_SIZE_LABELS[id]}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void run((bytes) => redactPages(bytes, targets, overlayPos, redactSize))
+                }
+              >
+                Che chữ {targets.length === doc.pageCount ? 'mọi trang' : `${targets.length} trang`}
+              </button>
+            </fieldset>
             <fieldset className="meta-pack">
               <legend>Khóa PDF khi tải</legend>
               <label className="overlay-field">

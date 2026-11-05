@@ -105,6 +105,8 @@ export type ImportedTextKind =
   | 'rnews'
   | 'prism'
   | 'hnews'
+  | 'iptc'
+  | 'anpa'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -606,6 +608,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'hnews') {
     return pagesFromHnews(text)
+  }
+  if (kind === 'iptc') {
+    return pagesFromIptc(text)
+  }
+  if (kind === 'anpa') {
+    return pagesFromAnpa(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -3611,6 +3619,70 @@ export function pagesFromHnews(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp hNews cần các mục <entry> / <content>.')
+}
+
+export function pagesFromIptc(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<(?:iptc:)?iptcItem\b[^>]*>([\s\S]*?)<\/(?:iptc:)?iptcItem>/gi),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'iptc:body') || xmlTagText(record, 'body')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'iptc:description') || xmlTagText(record, 'description')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'iptc:headline') || xmlTagText(record, 'headline')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp IPTC cần các mục <iptcItem> / <body>.')
+}
+
+export function pagesFromAnpa(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<(?:anpa:)?anpaStory\b[^>]*>([\s\S]*?)<\/(?:anpa:)?anpaStory>/gi),
+  ]
+  const pages = records
+    .map((match) => {
+      const record = match[1]!
+      const value = xmlTagText(record, 'anpa:text') || xmlTagText(record, 'text')
+      if (value) {
+        return value
+      }
+      const note = xmlTagText(record, 'anpa:description') || xmlTagText(record, 'description')
+      if (note) {
+        return note
+      }
+      const title = xmlTagText(record, 'anpa:headline') || xmlTagText(record, 'headline')
+      if (title && !/^Trang\s+\d+$/.test(title)) {
+        return title
+      }
+      return ''
+    })
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp ANPA cần các mục <anpaStory> / <text>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
