@@ -172,6 +172,8 @@ import {
   toVdv423,
   toVdv431,
   toVdv300,
+  toVdv451,
+  toVdv432,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -339,6 +341,8 @@ import {
   pagesFromVdv423,
   pagesFromVdv431,
   pagesFromVdv300,
+  pagesFromVdv451,
+  pagesFromVdv432,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -566,6 +570,10 @@ import {
   POLYLINE_COLOR,
   polylinePathOps,
   polylineVerticesForBox,
+  addLineAnnotations,
+  LINE_COLOR,
+  linePathOps,
+  lineEndpointsForBox,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -1305,6 +1313,43 @@ describe('pdf edits', () => {
     const again = await addPolylineAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addPolylineAnnotations(bytes, [])).rejects.toThrow(/đường gấp/)
+  })
+
+  it('adds a line annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(LINE_COLOR.b).toBeGreaterThan(LINE_COLOR.r)
+    expect(LINE_COLOR.g).toBeGreaterThan(LINE_COLOR.r)
+    const ops = linePathOps(100, 50, 2)
+    expect(ops).toContain(' m')
+    expect(ops).toContain(' l')
+    expect(ops.endsWith(' h')).toBe(false)
+    const ends = lineEndpointsForBox({ x: 10, y: 20, width: 40, height: 30 })
+    expect(ends).toHaveLength(4)
+    expect(ends).toEqual([10, 20, 50, 50])
+    const filled = await addLineAnnotations(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Line'))
+    expect(annot.lookup(PDFName.of('L'), PDFArray).size()).toBe(4)
+    expect(annot.lookupMaybe(PDFName.of('Vertices'), PDFArray)).toBeUndefined()
+    const contents = annot.lookup(PDFName.of('Contents'))
+    expect(contents instanceof PDFHexString || contents instanceof PDFString).toBe(true)
+    expect((contents as PDFHexString | PDFString).decodeText()).toBe('Hello')
+    const blank = await addLineAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(1)
+    const blankContents = (await PDFDocument.load(blank)).context
+      .lookup(blankAnnot.get(0), PDFDict)
+      .lookup(PDFName.of('Contents'))
+    expect((blankContents as PDFHexString | PDFString).decodeText()).toBe('')
+    const pageBox = await addLineAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addLineAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addLineAnnotations(bytes, [])).rejects.toThrow(/đường thẳng/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -6027,6 +6072,50 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.vdv300', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.vdv300.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toVdv451('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.vdv.de/vdv451"')
+    expect(toVdv451('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toVdv451('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromVdv451(toVdv451('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vdv451', toVdv451('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVdv451('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromVdv451(
+        '<VDV451 xmlns="http://www.vdv.de/vdv451"><Trip><name>Một</name></Trip></VDV451>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vdv451', { type: '' }))).toBe('vdv451')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.vdv451.xml', { type: 'application/vdv451+xml' })),
+    ).toBe('vdv451')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.vdv', { type: '' }))).toThrow()
+    expect(() => pagesFromVdv451('<VDV451 xmlns="http://www.vdv.de/vdv451"></VDV451>')).toThrow(
+      /Nachricht/,
+    )
+    expect(swapExtension('notes.vdv451', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.vdv451.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toVdv432('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.vdv.de/vdv432"')
+    expect(toVdv432('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toVdv432('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromVdv432(toVdv432('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vdv432', toVdv432('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVdv432('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromVdv432(
+        '<VDV432 xmlns="http://www.vdv.de/vdv432"><Trip><name>Một</name></Trip></VDV432>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vdv432', { type: '' }))).toBe('vdv432')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.vdv432.xml', { type: 'application/vdv432+xml' })),
+    ).toBe('vdv432')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.vdv', { type: '' }))).toThrow()
+    expect(() => pagesFromVdv432('<VDV432 xmlns="http://www.vdv.de/vdv432"></VDV432>')).toThrow(
+      /SAM/,
+    )
+    expect(swapExtension('notes.vdv432', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.vdv432.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

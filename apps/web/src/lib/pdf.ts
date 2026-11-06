@@ -3478,6 +3478,89 @@ export async function addPolylineAnnotations(
   return new Uint8Array(await doc.save())
 }
 
+export const LINE_COLOR = { r: 0.1, g: 0.42, b: 0.68 } as const
+
+/** Two endpoints for a Line annotation, in page user space. */
+export function lineEndpointsForBox(box: {
+  x: number
+  y: number
+  width: number
+  height: number
+}): number[] {
+  const w = Math.max(1, box.width)
+  const h = Math.max(1, box.height)
+  return [box.x, box.y, box.x + w, box.y + h]
+}
+
+/** Open diagonal path operators for a Line annotation appearance, in form space. */
+export function linePathOps(w: number, h: number, inset: number): string {
+  const innerW = Math.max(0.5, w - inset * 2)
+  const innerH = Math.max(0.5, h - inset * 2)
+  const left = inset
+  const bottom = inset
+  const f = (n: number) => n.toFixed(2)
+  return `${f(left)} ${f(bottom)} m ${f(left + innerW)} ${f(bottom + innerH)} l`
+}
+
+/**
+ * Add a PDF `/Line` annotation on selected pages at the overlay box.
+ * Empty `contents` still creates a blank line. This is not AcroForm, not XFA,
+ * not a sticky note, not a stamp, not a free-text note, not a caret, not ink,
+ * not a square, not a circle, not a polygon, not a polyline, not a link, and
+ * not a file attachment. Uses the full overlay box (not forced to a geometric
+ * line) plus a stroked `/AP` diagonal and a four-number `L` array.
+ */
+export async function addLineAnnotations(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  contents = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn đường thẳng.')
+  }
+  const note = contents.trim()
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const w = Math.max(1, box.width)
+    const h = Math.max(1, box.height)
+    const inset = Math.max(0.5, Math.min(w, h) * 0.04)
+    const path = linePathOps(w, h, inset)
+    const endpoints = lineEndpointsForBox(box)
+    const apRef = doc.context.register(
+      doc.context.flateStream(
+        `q ${LINE_COLOR.r} ${LINE_COLOR.g} ${LINE_COLOR.b} RG 1.5 w ${path} S Q`,
+        {
+          Type: 'XObject',
+          Subtype: 'Form',
+          BBox: [0, 0, w, h],
+          Resources: {},
+        },
+      ),
+    )
+    const annot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Line',
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      Contents: PDFHexString.fromText(note),
+      L: endpoints,
+      C: [LINE_COLOR.r, LINE_COLOR.g, LINE_COLOR.b],
+      T: PDFHexString.fromText('Smart-Read'),
+      F: 4,
+      AP: { N: apRef },
+    })
+    pageAnnotsArray(doc, page).push(doc.context.register(annot))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default
