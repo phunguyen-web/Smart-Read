@@ -166,6 +166,8 @@ import {
   toVdv454,
   toVdv452,
   toVdv462,
+  toVdv455,
+  toVdv731,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -327,6 +329,8 @@ import {
   pagesFromVdv454,
   pagesFromVdv452,
   pagesFromVdv462,
+  pagesFromVdv455,
+  pagesFromVdv731,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -541,6 +545,10 @@ import {
   addSquareAnnotations,
   SQUARE_COLOR,
   SQUARE_FILL,
+  addCircleAnnotations,
+  CIRCLE_COLOR,
+  CIRCLE_FILL,
+  circleEllipseOps,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -1177,6 +1185,38 @@ describe('pdf edits', () => {
     const again = await addSquareAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addSquareAnnotations(bytes, [])).rejects.toThrow(/hình vuông/)
+  })
+
+  it('adds a circle annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(CIRCLE_COLOR.g).toBeGreaterThan(CIRCLE_COLOR.r)
+    expect(CIRCLE_FILL.g).toBeGreaterThan(CIRCLE_COLOR.g)
+    const ops = circleEllipseOps(100, 50, 2)
+    expect(ops).toContain(' c')
+    expect(ops).toContain(' m')
+    const filled = await addCircleAnnotations(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Circle'))
+    expect(annot.lookup(PDFName.of('IC'), PDFArray).size()).toBe(3)
+    const contents = annot.lookup(PDFName.of('Contents'))
+    expect(contents instanceof PDFHexString || contents instanceof PDFString).toBe(true)
+    expect((contents as PDFHexString | PDFString).decodeText()).toBe('Hello')
+    const blank = await addCircleAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(1)
+    const blankContents = (await PDFDocument.load(blank)).context
+      .lookup(blankAnnot.get(0), PDFDict)
+      .lookup(PDFName.of('Contents'))
+    expect((blankContents as PDFHexString | PDFString).decodeText()).toBe('')
+    const pageBox = await addCircleAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addCircleAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addCircleAnnotations(bytes, [])).rejects.toThrow(/hình tròn/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -5767,6 +5807,50 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.vdv462', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.vdv462.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toVdv455('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.vdv.de/vdv455"')
+    expect(toVdv455('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toVdv455('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromVdv455(toVdv455('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vdv455', toVdv455('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVdv455('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromVdv455(
+        '<VDV455 xmlns="http://www.vdv.de/vdv455"><Trip><name>Một</name></Trip></VDV455>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vdv455', { type: '' }))).toBe('vdv455')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.vdv455.xml', { type: 'application/vdv455+xml' })),
+    ).toBe('vdv455')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.vdv', { type: '' }))).toThrow()
+    expect(() => pagesFromVdv455('<VDV455 xmlns="http://www.vdv.de/vdv455"></VDV455>')).toThrow(
+      /Fahrt/,
+    )
+    expect(swapExtension('notes.vdv455', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.vdv455.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toVdv731('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.vdv.de/vdv731"')
+    expect(toVdv731('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toVdv731('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromVdv731(toVdv731('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vdv731', toVdv731('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVdv731('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromVdv731(
+        '<VDV731 xmlns="http://www.vdv.de/vdv731"><Trip><name>Một</name></Trip></VDV731>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vdv731', { type: '' }))).toBe('vdv731')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.vdv731.xml', { type: 'application/vdv731+xml' })),
+    ).toBe('vdv731')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.vdv', { type: '' }))).toThrow()
+    expect(() => pagesFromVdv731('<VDV731 xmlns="http://www.vdv.de/vdv731"></VDV731>')).toThrow(
+      /Anzeige/,
+    )
+    expect(swapExtension('notes.vdv731', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.vdv731.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

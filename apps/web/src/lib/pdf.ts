@@ -3217,6 +3217,89 @@ export async function addSquareAnnotations(
   return new Uint8Array(await doc.save())
 }
 
+export const CIRCLE_COLOR = { r: 0.08, g: 0.45, b: 0.38 } as const
+
+export const CIRCLE_FILL = { r: 0.86, g: 0.96, b: 0.93 } as const
+
+const CIRCLE_KAPPA = 0.5522847498
+
+/** Bézier ellipse operators for a Circle annotation appearance, in form space. */
+export function circleEllipseOps(w: number, h: number, inset: number): string {
+  const innerW = Math.max(0.5, w - inset * 2)
+  const innerH = Math.max(0.5, h - inset * 2)
+  const cx = inset + innerW / 2
+  const cy = inset + innerH / 2
+  const rx = innerW / 2
+  const ry = innerH / 2
+  const kx = rx * CIRCLE_KAPPA
+  const ky = ry * CIRCLE_KAPPA
+  const f = (n: number) => n.toFixed(2)
+  return [
+    `${f(cx + rx)} ${f(cy)} m`,
+    `${f(cx + rx)} ${f(cy + ky)} ${f(cx + kx)} ${f(cy + ry)} ${f(cx)} ${f(cy + ry)} c`,
+    `${f(cx - kx)} ${f(cy + ry)} ${f(cx - rx)} ${f(cy + ky)} ${f(cx - rx)} ${f(cy)} c`,
+    `${f(cx - rx)} ${f(cy - ky)} ${f(cx - kx)} ${f(cy - ry)} ${f(cx)} ${f(cy - ry)} c`,
+    `${f(cx + kx)} ${f(cy - ry)} ${f(cx + rx)} ${f(cy - ky)} ${f(cx + rx)} ${f(cy)} c`,
+  ].join(' ')
+}
+
+/**
+ * Add a PDF `/Circle` annotation on selected pages at the overlay box.
+ * Empty `contents` still creates a blank circle. This is not AcroForm, not XFA,
+ * not a sticky note, not a stamp, not a free-text note, not a caret, not ink,
+ * not a square, not a link, and not a file attachment. Uses the full overlay
+ * box (not forced to a geometric circle).
+ */
+export async function addCircleAnnotations(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  contents = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn hình tròn.')
+  }
+  const note = contents.trim()
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const w = Math.max(1, box.width)
+    const h = Math.max(1, box.height)
+    const inset = Math.max(0.5, Math.min(w, h) * 0.04)
+    const ellipse = circleEllipseOps(w, h, inset)
+    const apRef = doc.context.register(
+      doc.context.flateStream(
+        `q ${CIRCLE_COLOR.r} ${CIRCLE_COLOR.g} ${CIRCLE_COLOR.b} RG ${CIRCLE_FILL.r} ${CIRCLE_FILL.g} ${CIRCLE_FILL.b} rg 1.5 w ${ellipse} B Q`,
+        {
+          Type: 'XObject',
+          Subtype: 'Form',
+          BBox: [0, 0, w, h],
+          Resources: {},
+        },
+      ),
+    )
+    const annot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Circle',
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      Contents: PDFHexString.fromText(note),
+      C: [CIRCLE_COLOR.r, CIRCLE_COLOR.g, CIRCLE_COLOR.b],
+      IC: [CIRCLE_FILL.r, CIRCLE_FILL.g, CIRCLE_FILL.b],
+      T: PDFHexString.fromText('Smart-Read'),
+      F: 4,
+      AP: { N: apRef },
+    })
+    pageAnnotsArray(doc, page).push(doc.context.register(annot))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default
