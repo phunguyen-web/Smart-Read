@@ -3906,6 +3906,91 @@ export async function addStrikeoutAnnotations(
   return new Uint8Array(await doc.save())
 }
 
+export const REDACT_ANNOT_COLOR = { r: 0.08, g: 0.08, b: 0.08 } as const
+
+/** Eight QuadPoints for a Redact annotation, in page user space (BL, BR, TR, TL). */
+export function redactAnnotQuadPointsForBox(box: {
+  x: number
+  y: number
+  width: number
+  height: number
+}): number[] {
+  const w = Math.max(1, box.width)
+  const h = Math.max(1, box.height)
+  return [box.x, box.y, box.x + w, box.y, box.x + w, box.y + h, box.x, box.y + h]
+}
+
+/** Closed rectangle operators for a Redact annotation appearance, in form space. */
+export function redactAnnotPathOps(w: number, h: number, inset: number): string {
+  const innerW = Math.max(0.5, w - inset * 2)
+  const innerH = Math.max(0.5, h - inset * 2)
+  const left = inset
+  const bottom = inset
+  const f = (n: number) => n.toFixed(2)
+  return `${f(left)} ${f(bottom)} ${f(innerW)} ${f(innerH)} re`
+}
+
+/**
+ * Add a PDF `/Redact` annotation on selected pages at the overlay box.
+ * Empty `contents` still creates a blank redact mark. This is not AcroForm, not XFA,
+ * not a sticky note, not a stamp, not a free-text note, not a caret, not ink,
+ * not a square, not a circle, not a polygon, not a polyline, not a line, not a
+ * squiggly underline, not a highlight, not an underline, not a strikeout, not a
+ * visual blackout, not a link, and not a file attachment. Uses the full overlay
+ * box (not forced to a geometric line) plus a filled `/AP` rectangle and
+ * eight-number `QuadPoints`.
+ */
+export async function addRedactAnnotations(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  contents = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn che hẳn.')
+  }
+  const note = contents.trim()
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const w = Math.max(1, box.width)
+    const h = Math.max(1, box.height)
+    const inset = Math.max(0.5, Math.min(w, h) * 0.04)
+    const path = redactAnnotPathOps(w, h, inset)
+    const quads = redactAnnotQuadPointsForBox(box)
+    const apRef = doc.context.register(
+      doc.context.flateStream(
+        `q ${REDACT_ANNOT_COLOR.r} ${REDACT_ANNOT_COLOR.g} ${REDACT_ANNOT_COLOR.b} rg ${path} f Q`,
+        {
+          Type: 'XObject',
+          Subtype: 'Form',
+          BBox: [0, 0, w, h],
+          Resources: {},
+        },
+      ),
+    )
+    const annot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Redact',
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      Contents: PDFHexString.fromText(note),
+      QuadPoints: quads,
+      C: [REDACT_ANNOT_COLOR.r, REDACT_ANNOT_COLOR.g, REDACT_ANNOT_COLOR.b],
+      T: PDFHexString.fromText('Smart-Read'),
+      F: 4,
+      AP: { N: apRef },
+    })
+    pageAnnotsArray(doc, page).push(doc.context.register(annot))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default
