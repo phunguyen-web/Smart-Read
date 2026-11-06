@@ -142,6 +142,8 @@ import {
   toMapml,
   toCityjson,
   toIndoorgml,
+  toCitygml,
+  toLandxml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -279,6 +281,8 @@ import {
   pagesFromMapml,
   pagesFromCityjson,
   pagesFromIndoorgml,
+  pagesFromCitygml,
+  pagesFromLandxml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -447,6 +451,10 @@ import {
   TEXT_FIELD_FILL,
   TEXT_FIELD_PREFIX,
   textFieldNameForPage,
+  addCheckboxes,
+  CHECKBOX_FILL,
+  CHECKBOX_PREFIX,
+  checkboxNameForPage,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -741,6 +749,34 @@ describe('pdf edits', () => {
     const again = await addStickyNotes(noted, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addStickyNotes(bytes, [])).rejects.toThrow(/ghi chú/)
+  })
+
+  it('adds a fillable checkbox at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(checkboxNameForPage(0)).toBe(`${CHECKBOX_PREFIX}.p1`)
+    expect(checkboxNameForPage(0, 2)).toBe(`${CHECKBOX_PREFIX}.p1s2`)
+    expect(CHECKBOX_FILL.b).toBeGreaterThan(CHECKBOX_FILL.r)
+    const filled = await addCheckboxes(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'x')
+    expect(await pageCount(filled)).toBe(1)
+    const form = (await PDFDocument.load(filled)).getForm()
+    expect(form.getFields()).toHaveLength(1)
+    expect(form.getCheckBox(checkboxNameForPage(0)).isChecked()).toBe(true)
+    const blank = await addCheckboxes(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    expect((await PDFDocument.load(blank)).getForm().getCheckBox(checkboxNameForPage(0)).isChecked()).toBe(
+      false,
+    )
+    const pageBox = await addCheckboxes(bytes, [0], OVERLAY_PRESETS.center, 'page', 'on')
+    expect((await PDFDocument.load(pageBox)).getForm().getCheckBox(checkboxNameForPage(0)).isChecked()).toBe(
+      true,
+    )
+    const again = await addCheckboxes(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    const names = (await PDFDocument.load(again))
+      .getForm()
+      .getFields()
+      .map((field) => field.getName())
+      .sort()
+    expect(names).toEqual([checkboxNameForPage(0), checkboxNameForPage(0, 2)])
+    await expect(addCheckboxes(bytes, [])).rejects.toThrow(/hộp chọn/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -4809,6 +4845,54 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toThrow(/cellSpaceMember/)
     expect(swapExtension('notes.indoorgml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.indoorgml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toCitygml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.opengis.net/citygml/2.0"')
+    expect(toCitygml('Demo', ['Một'])).toContain('<gml:name>Demo</gml:name>')
+    expect(toCitygml('Demo', ['Một'])).toContain('<gml:description>Một</gml:description>')
+    expect(pagesFromCitygml(toCitygml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('citygml', toCitygml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromCitygml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromCitygml(
+        '<CityModel xmlns="http://www.opengis.net/citygml/2.0"><Building><name>Một</name></Building></CityModel>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.citygml', { type: '' }))).toBe('citygml')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.citygml.xml', { type: 'application/citygml+xml' }),
+      ),
+    ).toBe('citygml')
+    expect(() =>
+      pagesFromCitygml('<CityModel xmlns="http://www.opengis.net/citygml/2.0"></CityModel>'),
+    ).toThrow(/cityObjectMember/)
+    expect(swapExtension('notes.citygml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.citygml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toLandxml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.landxml.org/schema/LandXML-1.2"')
+    expect(toLandxml('Demo', ['Một'])).toContain('name="Demo"')
+    expect(toLandxml('Demo', ['Một'])).toContain('<Desc>Một</Desc>')
+    expect(pagesFromLandxml(toLandxml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('landxml', toLandxml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromLandxml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromLandxml(
+        '<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2"><CgPoint name="Một">0 0</CgPoint></LandXML>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.landxml', { type: '' }))).toBe('landxml')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.landxml.xml', { type: 'application/landxml+xml' }),
+      ),
+    ).toBe('landxml')
+    expect(() =>
+      pagesFromLandxml('<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2"></LandXML>'),
+    ).toThrow(/Parcel/)
+    expect(swapExtension('notes.landxml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.landxml.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

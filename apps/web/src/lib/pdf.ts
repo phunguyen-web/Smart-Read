@@ -2322,6 +2322,72 @@ export async function addStickyNotes(
   return new Uint8Array(await doc.save())
 }
 
+export const CHECKBOX_PREFIX = 'smartread.check'
+
+export const CHECKBOX_FILL = { r: 0.9, g: 0.95, b: 1 } as const
+
+/** AcroForm field name for a page: `smartread.check.p{n}` then `p{n}s2`, … (no nested terminal). */
+export function checkboxNameForPage(pageIndex: number, serial = 1): string {
+  const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
+  const n = Number.isInteger(serial) && serial >= 1 ? serial : 1
+  return n === 1 ? `${CHECKBOX_PREFIX}.p${page}` : `${CHECKBOX_PREFIX}.p${page}s${n}`
+}
+
+function nextCheckboxName(taken: Set<string>, pageIndex: number): string {
+  let serial = 1
+  let name = checkboxNameForPage(pageIndex, serial)
+  while (taken.has(name)) {
+    serial += 1
+    name = checkboxNameForPage(pageIndex, serial)
+  }
+  taken.add(name)
+  return name
+}
+
+/**
+ * Add a fillable AcroForm checkbox on selected pages at the overlay box.
+ * Empty `value` still creates an unchecked box. Non-empty overlay text checks it.
+ * This is not XFA, not a text field, and not a comment annotation.
+ */
+export async function addCheckboxes(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  value = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn hộp chọn.')
+  }
+  const form = doc.getForm()
+  const taken = new Set(form.getFields().map((field) => field.getName()))
+  const checked = value.trim().length > 0
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const side = Math.min(box.width, box.height)
+    const field = form.createCheckBox(nextCheckboxName(taken, index))
+    field.addToPage(page, {
+      x: box.x,
+      y: box.y + box.height - side,
+      width: side,
+      height: side,
+      borderWidth: 1,
+      borderColor: rgb(0.12, 0.22, 0.38),
+      backgroundColor: rgb(CHECKBOX_FILL.r, CHECKBOX_FILL.g, CHECKBOX_FILL.b),
+    })
+    if (checked) {
+      field.check()
+    }
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

@@ -123,6 +123,8 @@ export type ImportedTextKind =
   | 'mapml'
   | 'cityjson'
   | 'indoorgml'
+  | 'citygml'
+  | 'landxml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -678,6 +680,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'indoorgml') {
     return pagesFromIndoorgml(text)
+  }
+  if (kind === 'citygml') {
+    return pagesFromCitygml(text)
+  }
+  if (kind === 'landxml') {
+    return pagesFromLandxml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -4595,6 +4603,90 @@ export function pagesFromIndoorgml(text: string): string[] {
     return capPages(cells)
   }
   throw new Error('Tệp IndoorGML cần các mục <cellSpaceMember> / <description>.')
+}
+
+function textFromCitygmlRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'gml:description') ||
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title =
+    xmlTagText(record, 'gml:name') || xmlTagText(record, 'name') || xmlTagText(record, 'title')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function citygmlRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:core:|bldg:)?${tag}\\b[^>]*>([\\s\\S]*?)</(?:core:|bldg:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromCitygmlRecord(match[1]!))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromCitygml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = citygmlRecords(trimmed, 'cityObjectMember')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const buildings = citygmlRecords(trimmed, 'Building')
+  if (buildings.length > 0) {
+    return capPages(buildings)
+  }
+  throw new Error('Tệp CityGML cần các mục <cityObjectMember> / <description>.')
+}
+
+function xmlAttr(record: string, name: string): string {
+  const match = record.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, 'i'))
+  return match ? unescapeXml(match[1]!).trim() : ''
+}
+
+function textFromLandxmlRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'Desc') ||
+    xmlTagText(record, 'desc') ||
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'text') ||
+    xmlAttr(record, 'desc')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlAttr(record, 'name') || xmlTagText(record, 'title')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function landxmlRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:lxml:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:lxml:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromLandxmlRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromLandxml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = landxmlRecords(trimmed, 'Parcel')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const points = landxmlRecords(trimmed, 'CgPoint')
+  if (points.length > 0) {
+    return capPages(points)
+  }
+  throw new Error('Tệp LandXML cần các mục <Parcel> / <Desc>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

@@ -120,6 +120,8 @@ export type ExportFormat =
   | 'mapml'
   | 'cityjson'
   | 'indoorgml'
+  | 'citygml'
+  | 'landxml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2690,6 +2692,47 @@ ${members}
 `
 }
 
+export function toCitygml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const members = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <cityObjectMember>
+    <bldg:Building gml:id="page-${index + 1}">
+      <gml:name>Trang ${index + 1}</gml:name>
+      <gml:description>${note}</gml:description>
+    </bldg:Building>
+  </cityObjectMember>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<CityModel xmlns="http://www.opengis.net/citygml/2.0" xmlns:bldg="http://www.opengis.net/citygml/building/2.0" xmlns:gml="http://www.opengis.net/gml">
+  <gml:name>${heading}</gml:name>
+${members}
+</CityModel>
+`
+}
+
+export function toLandxml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const parcels = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `    <Parcel name="Trang ${index + 1}">
+      <Desc>${note}</Desc>
+    </Parcel>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2">
+  <Project name="${heading}"/>
+  <Parcels>
+${parcels}
+  </Parcels>
+</LandXML>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3727,6 +3770,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/city+json;charset=utf-8'
     case 'indoorgml':
       return 'application/indoorgml+xml;charset=utf-8'
+    case 'citygml':
+      return 'application/citygml+xml;charset=utf-8'
+    case 'landxml':
+      return 'application/landxml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
