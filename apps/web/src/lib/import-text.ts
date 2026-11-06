@@ -139,6 +139,8 @@ export type ImportedTextKind =
   | 'siri'
   | 'transxchange'
   | 'naptan'
+  | 'gtfs'
+  | 'ifopt'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -742,6 +744,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'naptan') {
     return pagesFromNaptan(text)
+  }
+  if (kind === 'gtfs') {
+    return pagesFromGtfs(text)
+  }
+  if (kind === 'ifopt') {
+    return pagesFromIfopt(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -5277,6 +5285,82 @@ export function pagesFromNaptan(text: string): string[] {
     return capPages(areas)
   }
   throw new Error('Tệp NaPTAN cần các mục <StopPoint> / <description>.')
+}
+
+function textFromGtfsRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function gtfsRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:gtfs:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:gtfs:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromGtfsRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromGtfs(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = gtfsRecords(trimmed, 'Stop')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const routes = gtfsRecords(trimmed, 'Route')
+  if (routes.length > 0) {
+    return capPages(routes)
+  }
+  throw new Error('Tệp GTFS cần các mục <Stop> / <description>.')
+}
+
+function textFromIfoptRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function ifoptRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:ifopt:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:ifopt:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromIfoptRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromIfopt(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = ifoptRecords(trimmed, 'StopPlace')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const points = ifoptRecords(trimmed, 'StopPoint')
+  if (points.length > 0) {
+    return capPages(points)
+  }
+  throw new Error('Tệp IFOPT cần các mục <StopPlace> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

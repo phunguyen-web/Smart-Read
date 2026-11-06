@@ -158,6 +158,8 @@ import {
   toSiri,
   toTransxchange,
   toNaptan,
+  toGtfs,
+  toIfopt,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -311,6 +313,8 @@ import {
   pagesFromSiri,
   pagesFromTransxchange,
   pagesFromNaptan,
+  pagesFromGtfs,
+  pagesFromIfopt,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -513,6 +517,9 @@ import {
   addStampAnnotations,
   STAMP_COLOR,
   STAMP_NAME,
+  addFreeTextAnnotations,
+  FREETEXT_COLOR,
+  FREETEXT_DA,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -1027,6 +1034,37 @@ describe('pdf edits', () => {
     const again = await addStampAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addStampAnnotations(bytes, [])).rejects.toThrow(/đóng dấu/)
+  })
+
+  it('adds a free-text annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(FREETEXT_DA).toContain('/Helv')
+    expect(FREETEXT_COLOR.b).toBeGreaterThan(FREETEXT_COLOR.g)
+    const filled = await addFreeTextAnnotations(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('FreeText'))
+    const contents = annot.lookup(PDFName.of('Contents'))
+    expect(contents instanceof PDFHexString || contents instanceof PDFString).toBe(true)
+    expect((contents as PDFHexString | PDFString).decodeText()).toBe('Hello')
+    const da = annot.lookup(PDFName.of('DA'))
+    expect(da instanceof PDFHexString || da instanceof PDFString).toBe(true)
+    expect((da as PDFHexString | PDFString).decodeText()).toBe(FREETEXT_DA)
+    const blank = await addFreeTextAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(1)
+    const blankContents = (await PDFDocument.load(blank)).context
+      .lookup(blankAnnot.get(0), PDFDict)
+      .lookup(PDFName.of('Contents'))
+    expect((blankContents as PDFHexString | PDFString).decodeText()).toBe('')
+    const pageBox = await addFreeTextAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addFreeTextAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addFreeTextAnnotations(bytes, [])).rejects.toThrow(/chữ tự do/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -5455,6 +5493,44 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromNaptan('<NaPTAN xmlns="http://www.naptan.org.uk/"></NaPTAN>')).toThrow(/StopPoint/)
     expect(swapExtension('notes.naptan', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.naptan.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toGtfs('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://gtfs.org/"')
+    expect(toGtfs('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toGtfs('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromGtfs(toGtfs('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('gtfs', toGtfs('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromGtfs('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromGtfs('<GTFS xmlns="http://gtfs.org/"><Route><name>Một</name></Route></GTFS>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.gtfs', { type: '' }))).toBe('gtfs')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.gtfs.xml', { type: 'application/gtfs+xml' })),
+    ).toBe('gtfs')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.gt', { type: '' }))).toThrow()
+    expect(() => pagesFromGtfs('<GTFS xmlns="http://gtfs.org/"></GTFS>')).toThrow(/Stop/)
+    expect(swapExtension('notes.gtfs', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.gtfs.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toIfopt('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.ifopt.org.uk/"')
+    expect(toIfopt('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toIfopt('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromIfopt(toIfopt('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('ifopt', toIfopt('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromIfopt('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromIfopt(
+        '<IFOPT xmlns="http://www.ifopt.org.uk/"><StopPoint><name>Một</name></StopPoint></IFOPT>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.ifopt', { type: '' }))).toBe('ifopt')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.ifopt.xml', { type: 'application/ifopt+xml' })),
+    ).toBe('ifopt')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.ifo', { type: '' }))).toThrow()
+    expect(() => pagesFromIfopt('<IFOPT xmlns="http://www.ifopt.org.uk/"></IFOPT>')).toThrow(/StopPlace/)
+    expect(swapExtension('notes.ifopt', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.ifopt.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

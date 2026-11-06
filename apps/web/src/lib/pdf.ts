@@ -2957,6 +2957,65 @@ export async function addStampAnnotations(
   return new Uint8Array(await doc.save())
 }
 
+export const FREETEXT_DA = '/Helv 12 Tf 0 g' as const
+
+export const FREETEXT_COLOR = { r: 0.28, g: 0.14, b: 0.58 } as const
+
+/**
+ * Add a PDF `/FreeText` annotation on selected pages at the overlay box.
+ * Empty `contents` still creates a blank free-text note. This is not AcroForm, not XFA,
+ * not a sticky note, not a stamp, not a link, and not a file attachment.
+ */
+export async function addFreeTextAnnotations(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  contents = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn chữ tự do.')
+  }
+  const note = contents.trim()
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const w = Math.max(1, box.width)
+    const h = Math.max(1, box.height)
+    const inset = Math.max(0.5, Math.min(w, h) * 0.04)
+    const apRef = doc.context.register(
+      doc.context.flateStream(
+        `q ${FREETEXT_COLOR.r} ${FREETEXT_COLOR.g} ${FREETEXT_COLOR.b} RG 0.94 0.9 0.98 rg 1 w ${inset} ${inset} ${Math.max(0.5, w - inset * 2)} ${Math.max(0.5, h - inset * 2)} re B Q`,
+        {
+          Type: 'XObject',
+          Subtype: 'Form',
+          BBox: [0, 0, w, h],
+          Resources: {},
+        },
+      ),
+    )
+    const annot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'FreeText',
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      Contents: PDFHexString.fromText(note),
+      DA: PDFString.of(FREETEXT_DA),
+      IT: 'FreeText',
+      C: [FREETEXT_COLOR.r, FREETEXT_COLOR.g, FREETEXT_COLOR.b],
+      T: PDFHexString.fromText('Smart-Read'),
+      F: 4,
+      AP: { N: apRef },
+    })
+    pageAnnotsArray(doc, page).push(doc.context.register(annot))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

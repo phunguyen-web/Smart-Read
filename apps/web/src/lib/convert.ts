@@ -136,6 +136,8 @@ export type ExportFormat =
   | 'siri'
   | 'transxchange'
   | 'naptan'
+  | 'gtfs'
+  | 'ifopt'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3023,6 +3025,44 @@ ${points}
 `
 }
 
+export function toGtfs(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const stops = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <Stop id="stop-${index + 1}">
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </Stop>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<GTFS xmlns="http://gtfs.org/" version="2.0">
+  <name>${heading}</name>
+${stops}
+</GTFS>
+`
+}
+
+export function toIfopt(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const places = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <StopPlace id="stop-${index + 1}">
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </StopPlace>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<IFOPT xmlns="http://www.ifopt.org.uk/" version="1.0">
+  <name>${heading}</name>
+${places}
+</IFOPT>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -4092,6 +4132,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/transxchange+xml;charset=utf-8'
     case 'naptan':
       return 'application/naptan+xml;charset=utf-8'
+    case 'gtfs':
+      return 'application/gtfs+xml;charset=utf-8'
+    case 'ifopt':
+      return 'application/ifopt+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
