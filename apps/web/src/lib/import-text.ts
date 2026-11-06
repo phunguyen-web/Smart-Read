@@ -137,6 +137,8 @@ export type ImportedTextKind =
   | 'datex2'
   | 'netex'
   | 'siri'
+  | 'transxchange'
+  | 'naptan'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -734,6 +736,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'siri') {
     return pagesFromSiri(text)
+  }
+  if (kind === 'transxchange') {
+    return pagesFromTransxchange(text)
+  }
+  if (kind === 'naptan') {
+    return pagesFromNaptan(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -5193,6 +5201,82 @@ export function pagesFromSiri(text: string): string[] {
     return capPages(journeys)
   }
   throw new Error('Tệp SIRI cần các mục <StopPoint> / <description>.')
+}
+
+function textFromTransxchangeRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function transxchangeRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:txc:|transxchange:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:txc:|transxchange:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromTransxchangeRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromTransxchange(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = transxchangeRecords(trimmed, 'StopPoint')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const journeys = transxchangeRecords(trimmed, 'JourneyPattern')
+  if (journeys.length > 0) {
+    return capPages(journeys)
+  }
+  throw new Error('Tệp TransXChange cần các mục <StopPoint> / <description>.')
+}
+
+function textFromNaptanRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function naptanRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:naptan:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:naptan:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromNaptanRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromNaptan(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = naptanRecords(trimmed, 'StopPoint')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const areas = naptanRecords(trimmed, 'StopArea')
+  if (areas.length > 0) {
+    return capPages(areas)
+  }
+  throw new Error('Tệp NaPTAN cần các mục <StopPoint> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

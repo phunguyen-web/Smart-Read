@@ -134,6 +134,8 @@ export type ExportFormat =
   | 'datex2'
   | 'netex'
   | 'siri'
+  | 'transxchange'
+  | 'naptan'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2983,6 +2985,44 @@ ${points}
 `
 }
 
+export function toTransxchange(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const points = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <StopPoint id="stop-${index + 1}">
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </StopPoint>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<TransXChange xmlns="http://www.transxchange.org.uk/" version="2.4">
+  <name>${heading}</name>
+${points}
+</TransXChange>
+`
+}
+
+export function toNaptan(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const points = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <StopPoint id="stop-${index + 1}">
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </StopPoint>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<NaPTAN xmlns="http://www.naptan.org.uk/" version="2.5">
+  <name>${heading}</name>
+${points}
+</NaPTAN>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -4048,6 +4088,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/netex+xml;charset=utf-8'
     case 'siri':
       return 'application/siri+xml;charset=utf-8'
+    case 'transxchange':
+      return 'application/transxchange+xml;charset=utf-8'
+    case 'naptan':
+      return 'application/naptan+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

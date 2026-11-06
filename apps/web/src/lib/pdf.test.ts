@@ -156,6 +156,8 @@ import {
   toDatex2,
   toNetex,
   toSiri,
+  toTransxchange,
+  toNaptan,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -307,6 +309,8 @@ import {
   pagesFromDatex2,
   pagesFromNetex,
   pagesFromSiri,
+  pagesFromTransxchange,
+  pagesFromNaptan,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -506,6 +510,9 @@ import {
   LINK_BORDER,
   LINK_DEFAULT_URI,
   linkUriFromOverlay,
+  addStampAnnotations,
+  STAMP_COLOR,
+  STAMP_NAME,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -991,6 +998,35 @@ describe('pdf edits', () => {
     const again = await addLinkAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'https://more.example')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addLinkAnnotations(bytes, [])).rejects.toThrow(/liên kết/)
+  })
+
+  it('adds a stamp annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(STAMP_NAME).toBe('Draft')
+    expect(STAMP_COLOR.r).toBeGreaterThan(STAMP_COLOR.g)
+    const filled = await addStampAnnotations(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Stamp'))
+    expect(annot.lookup(PDFName.of('Name'), PDFName)).toBe(PDFName.of(STAMP_NAME))
+    const contents = annot.lookup(PDFName.of('Contents'))
+    expect(contents instanceof PDFHexString || contents instanceof PDFString).toBe(true)
+    expect((contents as PDFHexString | PDFString).decodeText()).toBe('Hello')
+    const blank = await addStampAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(1)
+    const blankContents = (await PDFDocument.load(blank)).context
+      .lookup(blankAnnot.get(0), PDFDict)
+      .lookup(PDFName.of('Contents'))
+    expect((blankContents as PDFHexString | PDFString).decodeText()).toBe('')
+    const pageBox = await addStampAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addStampAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addStampAnnotations(bytes, [])).rejects.toThrow(/đóng dấu/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -5377,6 +5413,48 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromSiri('<Siri xmlns="http://www.siri.org.uk/siri"></Siri>')).toThrow(/StopPoint/)
     expect(swapExtension('notes.siri', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.siri.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toTransxchange('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.transxchange.org.uk/"')
+    expect(toTransxchange('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toTransxchange('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromTransxchange(toTransxchange('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('transxchange', toTransxchange('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromTransxchange('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromTransxchange(
+        '<TransXChange xmlns="http://www.transxchange.org.uk/"><JourneyPattern><name>Một</name></JourneyPattern></TransXChange>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.transxchange', { type: '' }))).toBe('transxchange')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.transxchange.xml', { type: 'application/transxchange+xml' })),
+    ).toBe('transxchange')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.txc', { type: '' }))).toThrow()
+    expect(() =>
+      pagesFromTransxchange('<TransXChange xmlns="http://www.transxchange.org.uk/"></TransXChange>'),
+    ).toThrow(/StopPoint/)
+    expect(swapExtension('notes.transxchange', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.transxchange.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toNaptan('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.naptan.org.uk/"')
+    expect(toNaptan('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toNaptan('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromNaptan(toNaptan('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('naptan', toNaptan('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromNaptan('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromNaptan(
+        '<NaPTAN xmlns="http://www.naptan.org.uk/"><StopArea><name>Một</name></StopArea></NaPTAN>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.naptan', { type: '' }))).toBe('naptan')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.naptan.xml', { type: 'application/naptan+xml' })),
+    ).toBe('naptan')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.npt', { type: '' }))).toThrow()
+    expect(() => pagesFromNaptan('<NaPTAN xmlns="http://www.naptan.org.uk/"></NaPTAN>')).toThrow(/StopPoint/)
+    expect(swapExtension('notes.naptan', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.naptan.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

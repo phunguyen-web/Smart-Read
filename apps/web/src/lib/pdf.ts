@@ -2899,6 +2899,64 @@ export async function addLinkAnnotations(
   return new Uint8Array(await doc.save())
 }
 
+export const STAMP_NAME = 'Draft' as const
+
+export const STAMP_COLOR = { r: 0.85, g: 0.18, b: 0.12 } as const
+
+/**
+ * Add a PDF `/Stamp` annotation on selected pages at the overlay box.
+ * Empty `contents` still creates a Draft stamp. This is not AcroForm, not XFA,
+ * not a sticky note, not a link, and not a file attachment.
+ */
+export async function addStampAnnotations(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  contents = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đóng dấu.')
+  }
+  const note = contents.trim()
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const w = Math.max(1, box.width)
+    const h = Math.max(1, box.height)
+    const inset = Math.max(0.5, Math.min(w, h) * 0.04)
+    const apRef = doc.context.register(
+      doc.context.flateStream(
+        `q ${STAMP_COLOR.r} ${STAMP_COLOR.g} ${STAMP_COLOR.b} RG 1.5 w ${inset} ${inset} ${Math.max(0.5, w - inset * 2)} ${Math.max(0.5, h - inset * 2)} re S Q`,
+        {
+          Type: 'XObject',
+          Subtype: 'Form',
+          BBox: [0, 0, w, h],
+          Resources: {},
+        },
+      ),
+    )
+    const annot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Stamp',
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      Contents: PDFHexString.fromText(note),
+      Name: STAMP_NAME,
+      C: [STAMP_COLOR.r, STAMP_COLOR.g, STAMP_COLOR.b],
+      T: PDFHexString.fromText('Smart-Read'),
+      F: 4,
+      AP: { N: apRef },
+    })
+    pageAnnotsArray(doc, page).push(doc.context.register(annot))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default
