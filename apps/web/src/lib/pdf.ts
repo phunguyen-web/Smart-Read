@@ -3991,6 +3991,100 @@ export async function addRedactAnnotations(
   return new Uint8Array(await doc.save())
 }
 
+export const POPUP_COLOR = { r: 1, g: 0.92, b: 0.55 } as const
+
+function stickyNoteRefsWithoutPopup(
+  doc: PDFDocument,
+  page: ReturnType<PDFDocument['getPage']>,
+): PDFRef[] {
+  const annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray)
+  if (!annots) {
+    return []
+  }
+  const refs: PDFRef[] = []
+  for (let i = 0; i < annots.size(); i++) {
+    const ref = annots.get(i)
+    if (!(ref instanceof PDFRef)) {
+      continue
+    }
+    const dict = doc.context.lookup(ref)
+    if (!(dict instanceof PDFDict)) {
+      continue
+    }
+    if (dict.lookup(PDFName.of('Subtype')) !== PDFName.of('Text')) {
+      continue
+    }
+    if (dict.has(PDFName.of('Popup'))) {
+      continue
+    }
+    refs.push(ref)
+  }
+  return refs
+}
+
+/**
+ * Attach a PDF `/Popup` annotation to existing `/Text` sticky notes on selected pages.
+ * The popup window sits at the overlay box. Empty `contents` still creates a closed popup.
+ * This is not AcroForm, not XFA, not a new sticky note, not a stamp, not a free-text note,
+ * not a caret, not ink, not a square, not a circle, not a polygon, not a polyline, not a line,
+ * not a squiggly underline, not a highlight, not an underline, not a strikeout, not a redact,
+ * not a visual blackout, not a link, and not a file attachment. Uses the full overlay box
+ * (not forced to a geometric line) with no `/AP`, no `QuadPoints`, no `Vertices`, no `L`,
+ * and no `IC` fill. Parent note `/Popup` and popup `/Parent` point at each other.
+ */
+export async function addPopupAnnotations(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  contents = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn cửa sổ.')
+  }
+  const note = contents.trim()
+  let attached = 0
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const notes = stickyNoteRefsWithoutPopup(doc, page)
+    if (notes.length === 0) {
+      continue
+    }
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const annots = pageAnnotsArray(doc, page)
+    for (const noteRef of notes) {
+      const noteDict = doc.context.lookup(noteRef, PDFDict)
+      const popupDict = doc.context.obj({
+        Type: 'Annot',
+        Subtype: 'Popup',
+        Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+        Contents: PDFHexString.fromText(note),
+        Parent: noteRef,
+        Open: note.length > 0,
+        C: [POPUP_COLOR.r, POPUP_COLOR.g, POPUP_COLOR.b],
+        T: PDFHexString.fromText('Smart-Read'),
+        F: 4,
+      })
+      const popupRef = doc.context.register(popupDict)
+      noteDict.set(PDFName.of('Popup'), popupRef)
+      if (note.length > 0) {
+        noteDict.set(PDFName.of('Contents'), PDFHexString.fromText(note))
+      }
+      annots.push(popupRef)
+      attached += 1
+    }
+  }
+  if (attached === 0) {
+    throw new Error('Chọn ít nhất một trang có ghi chú để gắn cửa sổ.')
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

@@ -1,4 +1,4 @@
-import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFString, degrees } from 'pdf-lib'
+import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRef, PDFString, degrees } from 'pdf-lib'
 import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import {
@@ -184,6 +184,8 @@ import {
   toVdv461,
   toVdv458,
   toVdv460,
+  toXliff,
+  toTmx,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -363,6 +365,8 @@ import {
   pagesFromVdv461,
   pagesFromVdv458,
   pagesFromVdv460,
+  pagesFromXliff,
+  pagesFromTmx,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -614,6 +618,8 @@ import {
   REDACT_ANNOT_COLOR,
   redactAnnotPathOps,
   redactAnnotQuadPointsForBox,
+  addPopupAnnotations,
+  POPUP_COLOR,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -1587,6 +1593,50 @@ describe('pdf edits', () => {
     const again = await addRedactAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addRedactAnnotations(bytes, [])).rejects.toThrow(/che hẳn/)
+  })
+
+  it('attaches a popup annotation to an existing sticky note at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(POPUP_COLOR.g).toBeGreaterThan(POPUP_COLOR.b)
+    await expect(addPopupAnnotations(bytes, [0])).rejects.toThrow(/ghi chú/)
+    const noted = await addStickyNotes(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    const filled = await addPopupAnnotations(noted, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(2)
+    const noteRef = annots.get(0)
+    const popupRef = annots.get(1)
+    expect(noteRef).toBeInstanceOf(PDFRef)
+    expect(popupRef).toBeInstanceOf(PDFRef)
+    const note = doc.context.lookup(noteRef as PDFRef, PDFDict)
+    const popup = doc.context.lookup(popupRef as PDFRef, PDFDict)
+    expect(note.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Text'))
+    expect(popup.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Popup'))
+    expect(note.get(PDFName.of('Popup'))).toBe(popupRef)
+    expect(popup.get(PDFName.of('Parent'))).toBe(noteRef)
+    expect(popup.lookupMaybe(PDFName.of('QuadPoints'), PDFArray)).toBeUndefined()
+    expect(popup.lookupMaybe(PDFName.of('Vertices'), PDFArray)).toBeUndefined()
+    expect(popup.lookupMaybe(PDFName.of('L'), PDFArray)).toBeUndefined()
+    expect(popup.lookupMaybe(PDFName.of('IC'), PDFArray)).toBeUndefined()
+    expect(popup.lookupMaybe(PDFName.of('AP'), PDFDict)).toBeUndefined()
+    const contents = popup.lookup(PDFName.of('Contents'))
+    expect(contents instanceof PDFHexString || contents instanceof PDFString).toBe(true)
+    expect((contents as PDFHexString | PDFString).decodeText()).toBe('Hello')
+    const blankNoted = await addStickyNotes(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blank = await addPopupAnnotations(blankNoted, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(2)
+    const blankPopup = (await PDFDocument.load(blank)).context.lookup(blankAnnot.get(1), PDFDict)
+    expect(blankPopup.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Popup'))
+    expect((blankPopup.lookup(PDFName.of('Contents')) as PDFHexString | PDFString).decodeText()).toBe('')
+    const pageNoted = await addStickyNotes(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    const pageBox = await addPopupAnnotations(pageNoted, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    await expect(addPopupAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')).rejects.toThrow(
+      /cửa sổ/,
+    )
+    await expect(addPopupAnnotations(bytes, [])).rejects.toThrow(/cửa sổ/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -6573,6 +6623,46 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.vdv460', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.vdv460.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toXliff('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="urn:oasis:names:tc:xliff:document:1.2"')
+    expect(toXliff('Demo', ['Một'])).toContain('original="Demo"')
+    expect(toXliff('Demo', ['Một'])).toContain('<source>Một</source>')
+    expect(pagesFromXliff(toXliff('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('xliff', toXliff('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromXliff('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromXliff(
+        '<xliff xmlns="urn:oasis:names:tc:xliff:document:1.2"><file original="Một"></file></xliff>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xliff', { type: '' }))).toBe('xliff')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.xliff.xml', { type: 'application/xliff+xml' })),
+    ).toBe('xliff')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xlf', { type: '' }))).toBe('xliff')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromXliff('<xliff xmlns="urn:oasis:names:tc:xliff:document:1.2"></xliff>')).toThrow(
+      /trans-unit/,
+    )
+    expect(swapExtension('notes.xliff', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.xliff.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.xlf', 'pdf')).toBe('notes.pdf')
+
+    expect(toTmx('Demo', ['Một', 'Hai\ndòng'])).toContain('<tmx version="1.4">')
+    expect(toTmx('Demo', ['Một'])).toContain('<prop type="title">Demo</prop>')
+    expect(toTmx('Demo', ['Một'])).toContain('<seg>Một</seg>')
+    expect(pagesFromTmx(toTmx('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('tmx', toTmx('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromTmx('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromTmx('<tmx version="1.4"><body><seg>Một</seg></body></tmx>')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.tmx', { type: '' }))).toBe('tmx')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.tmx.xml', { type: 'application/tmx+xml' })),
+    ).toBe('tmx')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromTmx('<tmx version="1.4"></tmx>')).toThrow(/tu/)
+    expect(swapExtension('notes.tmx', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.tmx.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

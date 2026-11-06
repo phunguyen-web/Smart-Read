@@ -162,6 +162,8 @@ export type ExportFormat =
   | 'vdv461'
   | 'vdv458'
   | 'vdv460'
+  | 'xliff'
+  | 'tmx'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3543,6 +3545,53 @@ ${items}
 `
 }
 
+export function toXliff(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const items = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `      <trans-unit id="stop-${index + 1}">
+        <source>${note}</source>
+        <note>Trang ${index + 1}</note>
+      </trans-unit>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
+  <file original="${heading}" source-language="vi" datatype="plaintext">
+    <body>
+${items}
+    </body>
+  </file>
+</xliff>
+`
+}
+
+export function toTmx(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const items = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `    <tu tuid="stop-${index + 1}">
+      <note>Trang ${index + 1}</note>
+      <tuv xml:lang="vi">
+        <seg>${note}</seg>
+      </tuv>
+    </tu>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<tmx version="1.4">
+  <header creationtool="Smart-Read" creationtoolversion="1.0" datatype="PlainText" segtype="block" adminlang="vi" srclang="vi" o-tmf="Smart-Read">
+    <prop type="title">${heading}</prop>
+  </header>
+  <body>
+${items}
+  </body>
+</tmx>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -4664,6 +4713,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vdv458+xml;charset=utf-8'
     case 'vdv460':
       return 'application/vdv460+xml;charset=utf-8'
+    case 'xliff':
+      return 'application/xliff+xml;charset=utf-8'
+    case 'tmx':
+      return 'application/tmx+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

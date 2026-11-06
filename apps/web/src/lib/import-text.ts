@@ -165,6 +165,8 @@ export type ImportedTextKind =
   | 'vdv461'
   | 'vdv458'
   | 'vdv460'
+  | 'xliff'
+  | 'tmx'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -846,6 +848,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'vdv460') {
     return pagesFromVdv460(text)
+  }
+  if (kind === 'xliff') {
+    return pagesFromXliff(text)
+  }
+  if (kind === 'tmx') {
+    return pagesFromTmx(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -6369,6 +6377,96 @@ export function pagesFromVdv460(text: string): string[] {
     return capPages(trips)
   }
   throw new Error('Tệp VDV460 cần các mục <Anschluss> / <description>.')
+}
+
+function textFromXliffRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'source') ||
+    xmlTagText(record, 'xliff:source') ||
+    xmlTagText(record, 'target') ||
+    xmlTagText(record, 'xliff:target') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title =
+    xmlTagText(record, 'name') ||
+    xmlTagText(record, 'Name') ||
+    xmlAttr(record, 'name') ||
+    xmlAttr(record, 'original')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function xliffRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:xliff:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:xliff:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromXliffRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromXliff(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = xliffRecords(trimmed, 'trans-unit')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const files = xliffRecords(trimmed, 'file')
+  if (files.length > 0) {
+    return capPages(files)
+  }
+  throw new Error('Tệp XLIFF cần các mục <trans-unit> / <source>.')
+}
+
+function textFromTmxRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'seg') ||
+    xmlTagText(record, 'tmx:seg') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title =
+    xmlTagText(record, 'note') ||
+    xmlTagText(record, 'tmx:note') ||
+    xmlTagText(record, 'name') ||
+    xmlAttr(record, 'tuid')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  const plain = unescapeXml(record.replace(/<[^>]+>/g, '')).trim()
+  if (plain && !/^Trang\s+\d+$/.test(plain)) {
+    return plain
+  }
+  return ''
+}
+
+function tmxRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:tmx:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:tmx:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromTmxRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromTmx(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = tmxRecords(trimmed, 'tu')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const segs = tmxRecords(trimmed, 'seg')
+  if (segs.length > 0) {
+    return capPages(segs)
+  }
+  throw new Error('Tệp TMX cần các mục <tu> / <seg>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
