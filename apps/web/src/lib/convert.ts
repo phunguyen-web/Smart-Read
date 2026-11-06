@@ -132,6 +132,8 @@ export type ExportFormat =
   | 'railml'
   | 'transxml'
   | 'datex2'
+  | 'netex'
+  | 'siri'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2943,6 +2945,44 @@ ${records}
 `
 }
 
+export function toNetex(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const stops = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <StopPlace id="stop-${index + 1}">
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </StopPlace>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<PublicationDelivery xmlns="http://www.netex.org.uk/netex" version="1.1">
+  <name>${heading}</name>
+${stops}
+</PublicationDelivery>
+`
+}
+
+export function toSiri(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const points = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <StopPoint id="stop-${index + 1}">
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </StopPoint>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Siri xmlns="http://www.siri.org.uk/siri" version="2.1">
+  <name>${heading}</name>
+${points}
+</Siri>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -4004,6 +4044,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/transxml+xml;charset=utf-8'
     case 'datex2':
       return 'application/datex2+xml;charset=utf-8'
+    case 'netex':
+      return 'application/netex+xml;charset=utf-8'
+    case 'siri':
+      return 'application/siri+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

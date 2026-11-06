@@ -135,6 +135,8 @@ export type ImportedTextKind =
   | 'railml'
   | 'transxml'
   | 'datex2'
+  | 'netex'
+  | 'siri'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -726,6 +728,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'datex2') {
     return pagesFromDatex2(text)
+  }
+  if (kind === 'netex') {
+    return pagesFromNetex(text)
+  }
+  if (kind === 'siri') {
+    return pagesFromSiri(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -5109,6 +5117,82 @@ export function pagesFromDatex2(text: string): string[] {
     return capPages(situations)
   }
   throw new Error('Tệp DATEX II cần các mục <situationRecord> / <description>.')
+}
+
+function textFromNetexRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function netexRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:netex:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:netex:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromNetexRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromNetex(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = netexRecords(trimmed, 'StopPlace')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const scheduled = netexRecords(trimmed, 'ScheduledStopPoint')
+  if (scheduled.length > 0) {
+    return capPages(scheduled)
+  }
+  throw new Error('Tệp NeTEx cần các mục <StopPlace> / <description>.')
+}
+
+function textFromSiriRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function siriRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:siri:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:siri:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromSiriRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromSiri(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = siriRecords(trimmed, 'StopPoint')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const journeys = siriRecords(trimmed, 'VehicleJourney')
+  if (journeys.length > 0) {
+    return capPages(journeys)
+  }
+  throw new Error('Tệp SIRI cần các mục <StopPoint> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

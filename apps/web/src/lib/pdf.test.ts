@@ -154,6 +154,8 @@ import {
   toRailml,
   toTransxml,
   toDatex2,
+  toNetex,
+  toSiri,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -303,6 +305,8 @@ import {
   pagesFromRailml,
   pagesFromTransxml,
   pagesFromDatex2,
+  pagesFromNetex,
+  pagesFromSiri,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -493,6 +497,11 @@ import {
   DROPDOWN_OPTION,
   DROPDOWN_PREFIX,
   dropdownNameForPage,
+  addOptionLists,
+  OPTION_LIST_FILL,
+  OPTION_LIST_OPTION,
+  OPTION_LIST_PREFIX,
+  optionListNameForPage,
   addLinkAnnotations,
   LINK_BORDER,
   LINK_DEFAULT_URI,
@@ -925,6 +934,34 @@ describe('pdf edits', () => {
       .sort()
     expect(names).toEqual([dropdownNameForPage(0), dropdownNameForPage(0, 2)])
     await expect(addDropdowns(bytes, [])).rejects.toThrow(/danh sách/)
+  })
+
+  it('adds a fillable option list at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(optionListNameForPage(0)).toBe(`${OPTION_LIST_PREFIX}.p1`)
+    expect(optionListNameForPage(0, 2)).toBe(`${OPTION_LIST_PREFIX}.p1s2`)
+    expect(OPTION_LIST_FILL.g).toBeGreaterThan(OPTION_LIST_FILL.r)
+    const filled = await addOptionLists(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'x')
+    expect(await pageCount(filled)).toBe(1)
+    const form = (await PDFDocument.load(filled)).getForm()
+    expect(form.getFields()).toHaveLength(1)
+    expect(form.getOptionList(optionListNameForPage(0)).getSelected()).toEqual([OPTION_LIST_OPTION])
+    const blank = await addOptionLists(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    expect((await PDFDocument.load(blank)).getForm().getOptionList(optionListNameForPage(0)).getSelected()).toEqual(
+      [],
+    )
+    const pageBox = await addOptionLists(bytes, [0], OVERLAY_PRESETS.center, 'page', 'on')
+    expect((await PDFDocument.load(pageBox)).getForm().getOptionList(optionListNameForPage(0)).getSelected()).toEqual(
+      [OPTION_LIST_OPTION],
+    )
+    const again = await addOptionLists(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    const names = (await PDFDocument.load(again))
+      .getForm()
+      .getFields()
+      .map((field) => field.getName())
+      .sort()
+    expect(names).toEqual([optionListNameForPage(0), optionListNameForPage(0, 2)])
+    await expect(addOptionLists(bytes, [])).rejects.toThrow(/hộp liệt kê/)
   })
 
   it('adds a URI link annotation at the overlay box', async () => {
@@ -5298,6 +5335,48 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toThrow(/situationRecord/)
     expect(swapExtension('notes.datex2', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.datex2.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toNetex('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.netex.org.uk/netex"')
+    expect(toNetex('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toNetex('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromNetex(toNetex('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('netex', toNetex('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromNetex('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromNetex(
+        '<PublicationDelivery xmlns="http://www.netex.org.uk/netex"><ScheduledStopPoint><name>Một</name></ScheduledStopPoint></PublicationDelivery>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.netex', { type: '' }))).toBe('netex')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.netex.xml', { type: 'application/netex+xml' })),
+    ).toBe('netex')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.nx', { type: '' }))).toThrow()
+    expect(() =>
+      pagesFromNetex('<PublicationDelivery xmlns="http://www.netex.org.uk/netex"></PublicationDelivery>'),
+    ).toThrow(/StopPlace/)
+    expect(swapExtension('notes.netex', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.netex.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toSiri('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.siri.org.uk/siri"')
+    expect(toSiri('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toSiri('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromSiri(toSiri('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('siri', toSiri('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromSiri('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromSiri(
+        '<Siri xmlns="http://www.siri.org.uk/siri"><VehicleJourney><name>Một</name></VehicleJourney></Siri>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.siri', { type: '' }))).toBe('siri')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.siri.xml', { type: 'application/siri+xml' })),
+    ).toBe('siri')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.sr', { type: '' }))).toThrow()
+    expect(() => pagesFromSiri('<Siri xmlns="http://www.siri.org.uk/siri"></Siri>')).toThrow(/StopPoint/)
+    expect(swapExtension('notes.siri', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.siri.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
