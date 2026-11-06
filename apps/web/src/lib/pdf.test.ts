@@ -174,6 +174,8 @@ import {
   toVdv300,
   toVdv451,
   toVdv432,
+  toVdv433,
+  toVdv434,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -343,6 +345,8 @@ import {
   pagesFromVdv300,
   pagesFromVdv451,
   pagesFromVdv432,
+  pagesFromVdv433,
+  pagesFromVdv434,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -574,6 +578,10 @@ import {
   LINE_COLOR,
   linePathOps,
   lineEndpointsForBox,
+  addSquigglyAnnotations,
+  SQUIGGLY_COLOR,
+  squigglyPathOps,
+  squigglyQuadPointsForBox,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -1350,6 +1358,45 @@ describe('pdf edits', () => {
     const again = await addLineAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addLineAnnotations(bytes, [])).rejects.toThrow(/đường thẳng/)
+  })
+
+  it('adds a squiggly underline annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(SQUIGGLY_COLOR.g).toBeGreaterThan(SQUIGGLY_COLOR.r)
+    expect(SQUIGGLY_COLOR.g).toBeGreaterThan(SQUIGGLY_COLOR.b)
+    const ops = squigglyPathOps(100, 50, 2)
+    expect(ops).toContain(' m')
+    expect(ops).toContain(' l')
+    expect(ops.endsWith(' h')).toBe(false)
+    const quads = squigglyQuadPointsForBox({ x: 10, y: 20, width: 40, height: 30 })
+    expect(quads).toHaveLength(8)
+    expect(quads).toEqual([10, 20, 50, 20, 50, 50, 10, 50])
+    const filled = await addSquigglyAnnotations(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Squiggly'))
+    expect(annot.lookup(PDFName.of('QuadPoints'), PDFArray).size()).toBe(8)
+    expect(annot.lookupMaybe(PDFName.of('Vertices'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('L'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('IC'), PDFArray)).toBeUndefined()
+    const contents = annot.lookup(PDFName.of('Contents'))
+    expect(contents instanceof PDFHexString || contents instanceof PDFString).toBe(true)
+    expect((contents as PDFHexString | PDFString).decodeText()).toBe('Hello')
+    const blank = await addSquigglyAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(1)
+    const blankContents = (await PDFDocument.load(blank)).context
+      .lookup(blankAnnot.get(0), PDFDict)
+      .lookup(PDFName.of('Contents'))
+    expect((blankContents as PDFHexString | PDFString).decodeText()).toBe('')
+    const pageBox = await addSquigglyAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addSquigglyAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addSquigglyAnnotations(bytes, [])).rejects.toThrow(/gạch sóng/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -6116,6 +6163,50 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.vdv432', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.vdv432.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toVdv433('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.vdv.de/vdv433"')
+    expect(toVdv433('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toVdv433('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromVdv433(toVdv433('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vdv433', toVdv433('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVdv433('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromVdv433(
+        '<VDV433 xmlns="http://www.vdv.de/vdv433"><Trip><name>Một</name></Trip></VDV433>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vdv433', { type: '' }))).toBe('vdv433')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.vdv433.xml', { type: 'application/vdv433+xml' })),
+    ).toBe('vdv433')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.vdv', { type: '' }))).toThrow()
+    expect(() => pagesFromVdv433('<VDV433 xmlns="http://www.vdv.de/vdv433"></VDV433>')).toThrow(
+      /Kontrolle/,
+    )
+    expect(swapExtension('notes.vdv433', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.vdv433.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toVdv434('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.vdv.de/vdv434"')
+    expect(toVdv434('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toVdv434('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromVdv434(toVdv434('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vdv434', toVdv434('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVdv434('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromVdv434(
+        '<VDV434 xmlns="http://www.vdv.de/vdv434"><Trip><name>Một</name></Trip></VDV434>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vdv434', { type: '' }))).toBe('vdv434')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.vdv434.xml', { type: 'application/vdv434+xml' })),
+    ).toBe('vdv434')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.vdv', { type: '' }))).toThrow()
+    expect(() => pagesFromVdv434('<VDV434 xmlns="http://www.vdv.de/vdv434"></VDV434>')).toThrow(
+      /Sperre/,
+    )
+    expect(swapExtension('notes.vdv434', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.vdv434.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

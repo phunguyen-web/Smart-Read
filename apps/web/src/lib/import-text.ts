@@ -155,6 +155,8 @@ export type ImportedTextKind =
   | 'vdv300'
   | 'vdv451'
   | 'vdv432'
+  | 'vdv433'
+  | 'vdv434'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -806,6 +808,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'vdv432') {
     return pagesFromVdv432(text)
+  }
+  if (kind === 'vdv433') {
+    return pagesFromVdv433(text)
+  }
+  if (kind === 'vdv434') {
+    return pagesFromVdv434(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -5949,6 +5957,82 @@ export function pagesFromVdv432(text: string): string[] {
     return capPages(trips)
   }
   throw new Error('Tệp VDV432 cần các mục <SAM> / <description>.')
+}
+
+function textFromVdv433Record(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function vdv433Records(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:vdv433:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:vdv433:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromVdv433Record(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromVdv433(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = vdv433Records(trimmed, 'Kontrolle')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const trips = vdv433Records(trimmed, 'Trip')
+  if (trips.length > 0) {
+    return capPages(trips)
+  }
+  throw new Error('Tệp VDV433 cần các mục <Kontrolle> / <description>.')
+}
+
+function textFromVdv434Record(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function vdv434Records(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:vdv434:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:vdv434:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromVdv434Record(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromVdv434(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = vdv434Records(trimmed, 'Sperre')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const trips = vdv434Records(trimmed, 'Trip')
+  if (trips.length > 0) {
+    return capPages(trips)
+  }
+  throw new Error('Tệp VDV434 cần các mục <Sperre> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
