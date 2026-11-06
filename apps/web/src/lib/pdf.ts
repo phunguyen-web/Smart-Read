@@ -2710,6 +2710,74 @@ export async function addRadioButtons(
   return new Uint8Array(await doc.save())
 }
 
+export const DROPDOWN_PREFIX = 'smartread.choice'
+
+export const DROPDOWN_OPTION = 'Yes' as const
+
+export const DROPDOWN_FILL = { r: 0.9, g: 0.96, b: 1 } as const
+
+/** AcroForm dropdown name for a page: `smartread.choice.p{n}` then `p{n}s2`, … (no nested terminal). */
+export function dropdownNameForPage(pageIndex: number, serial = 1): string {
+  const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
+  const n = Number.isInteger(serial) && serial >= 1 ? serial : 1
+  return n === 1 ? `${DROPDOWN_PREFIX}.p${page}` : `${DROPDOWN_PREFIX}.p${page}s${n}`
+}
+
+function nextDropdownName(taken: Set<string>, pageIndex: number): string {
+  let serial = 1
+  let name = dropdownNameForPage(pageIndex, serial)
+  while (taken.has(name)) {
+    serial += 1
+    name = dropdownNameForPage(pageIndex, serial)
+  }
+  taken.add(name)
+  return name
+}
+
+/**
+ * Add a fillable AcroForm dropdown (combo/choice) on selected pages at the overlay box.
+ * Empty `value` still creates an unselected option. Non-empty overlay text selects it.
+ * This is not XFA, not a radio group, not a checkbox, not a text field, and not a comment annotation.
+ */
+export async function addDropdowns(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  value = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn danh sách.')
+  }
+  const form = doc.getForm()
+  const taken = new Set(form.getFields().map((field) => field.getName()))
+  const selected = value.trim().length > 0
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const field = form.createDropdown(nextDropdownName(taken, index))
+    field.addOptions([DROPDOWN_OPTION])
+    field.addToPage(page, {
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      borderWidth: 1,
+      borderColor: rgb(0.12, 0.28, 0.42),
+      backgroundColor: rgb(DROPDOWN_FILL.r, DROPDOWN_FILL.g, DROPDOWN_FILL.b),
+    })
+    if (selected) {
+      field.select(DROPDOWN_OPTION)
+    }
+  }
+  return new Uint8Array(await doc.save())
+}
+
 export const LINK_DEFAULT_URI = 'https://'
 
 export const LINK_BORDER = { r: 0.12, g: 0.35, b: 0.72 } as const

@@ -130,6 +130,8 @@ export type ExportFormat =
   | 'infragml'
   | 'opendrive'
   | 'railml'
+  | 'transxml'
+  | 'datex2'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2903,6 +2905,44 @@ ${lines}
 `
 }
 
+export function toTransxml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const projects = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <Project>
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </Project>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<TransXML xmlns="http://www.transxml.org/schema/1.0">
+  <name>${heading}</name>
+${projects}
+</TransXML>
+`
+}
+
+export function toDatex2(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const records = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <situationRecord id="record-${index + 1}">
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </situationRecord>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<d2LogicalModel xmlns="http://datex2.eu/schema/2/2_0" modelBaseVersion="2">
+  <name>${heading}</name>
+${records}
+</d2LogicalModel>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3960,6 +4000,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.opendrive+xml;charset=utf-8'
     case 'railml':
       return 'application/railml+xml;charset=utf-8'
+    case 'transxml':
+      return 'application/transxml+xml;charset=utf-8'
+    case 'datex2':
+      return 'application/datex2+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

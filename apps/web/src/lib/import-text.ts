@@ -133,6 +133,8 @@ export type ImportedTextKind =
   | 'infragml'
   | 'opendrive'
   | 'railml'
+  | 'transxml'
+  | 'datex2'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -718,6 +720,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'railml') {
     return pagesFromRailml(text)
+  }
+  if (kind === 'transxml') {
+    return pagesFromTransxml(text)
+  }
+  if (kind === 'datex2') {
+    return pagesFromDatex2(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -5025,6 +5033,82 @@ export function pagesFromRailml(text: string): string[] {
     return capPages(tracks)
   }
   throw new Error('Tệp RailML cần các mục <line> / <description>.')
+}
+
+function textFromTransxmlRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function transxmlRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:txml:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:txml:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromTransxmlRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromTransxml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = transxmlRecords(trimmed, 'Project')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const facilities = transxmlRecords(trimmed, 'Facility')
+  if (facilities.length > 0) {
+    return capPages(facilities)
+  }
+  throw new Error('Tệp TransXML cần các mục <Project> / <description>.')
+}
+
+function textFromDatex2Record(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function datex2Records(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:d2:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:d2:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromDatex2Record(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromDatex2(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = datex2Records(trimmed, 'situationRecord')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const situations = datex2Records(trimmed, 'situation')
+  if (situations.length > 0) {
+    return capPages(situations)
+  }
+  throw new Error('Tệp DATEX II cần các mục <situationRecord> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

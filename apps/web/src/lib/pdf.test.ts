@@ -152,6 +152,8 @@ import {
   toInfragml,
   toOpendrive,
   toRailml,
+  toTransxml,
+  toDatex2,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -299,6 +301,8 @@ import {
   pagesFromInfragml,
   pagesFromOpendrive,
   pagesFromRailml,
+  pagesFromTransxml,
+  pagesFromDatex2,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -484,6 +488,11 @@ import {
   RADIO_OPTION,
   RADIO_PREFIX,
   radioNameForPage,
+  addDropdowns,
+  DROPDOWN_FILL,
+  DROPDOWN_OPTION,
+  DROPDOWN_PREFIX,
+  dropdownNameForPage,
   addLinkAnnotations,
   LINK_BORDER,
   LINK_DEFAULT_URI,
@@ -888,6 +897,34 @@ describe('pdf edits', () => {
       .sort()
     expect(names).toEqual([radioNameForPage(0), radioNameForPage(0, 2)])
     await expect(addRadioButtons(bytes, [])).rejects.toThrow(/nút chọn/)
+  })
+
+  it('adds a fillable dropdown at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(dropdownNameForPage(0)).toBe(`${DROPDOWN_PREFIX}.p1`)
+    expect(dropdownNameForPage(0, 2)).toBe(`${DROPDOWN_PREFIX}.p1s2`)
+    expect(DROPDOWN_FILL.b).toBeGreaterThan(DROPDOWN_FILL.r)
+    const filled = await addDropdowns(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'x')
+    expect(await pageCount(filled)).toBe(1)
+    const form = (await PDFDocument.load(filled)).getForm()
+    expect(form.getFields()).toHaveLength(1)
+    expect(form.getDropdown(dropdownNameForPage(0)).getSelected()).toEqual([DROPDOWN_OPTION])
+    const blank = await addDropdowns(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    expect((await PDFDocument.load(blank)).getForm().getDropdown(dropdownNameForPage(0)).getSelected()).toEqual(
+      [],
+    )
+    const pageBox = await addDropdowns(bytes, [0], OVERLAY_PRESETS.center, 'page', 'on')
+    expect((await PDFDocument.load(pageBox)).getForm().getDropdown(dropdownNameForPage(0)).getSelected()).toEqual(
+      [DROPDOWN_OPTION],
+    )
+    const again = await addDropdowns(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    const names = (await PDFDocument.load(again))
+      .getForm()
+      .getFields()
+      .map((field) => field.getName())
+      .sort()
+    expect(names).toEqual([dropdownNameForPage(0), dropdownNameForPage(0, 2)])
+    await expect(addDropdowns(bytes, [])).rejects.toThrow(/danh sách/)
   })
 
   it('adds a URI link annotation at the overlay box', async () => {
@@ -5217,6 +5254,50 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.railml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.railml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toTransxml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.transxml.org/schema/1.0"')
+    expect(toTransxml('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toTransxml('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromTransxml(toTransxml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('transxml', toTransxml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromTransxml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromTransxml(
+        '<TransXML xmlns="http://www.transxml.org/schema/1.0"><Facility><name>Một</name></Facility></TransXML>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.transxml', { type: '' }))).toBe('transxml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.transxml.xml', { type: 'application/transxml+xml' })),
+    ).toBe('transxml')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.trans', { type: '' }))).toThrow()
+    expect(() =>
+      pagesFromTransxml('<TransXML xmlns="http://www.transxml.org/schema/1.0"></TransXML>'),
+    ).toThrow(/Project/)
+    expect(swapExtension('notes.transxml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.transxml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toDatex2('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://datex2.eu/schema/2/2_0"')
+    expect(toDatex2('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toDatex2('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromDatex2(toDatex2('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('datex2', toDatex2('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromDatex2('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromDatex2(
+        '<d2LogicalModel xmlns="http://datex2.eu/schema/2/2_0"><situation><name>Một</name></situation></d2LogicalModel>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.datex2', { type: '' }))).toBe('datex2')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.datex2.xml', { type: 'application/datex2+xml' })),
+    ).toBe('datex2')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.d2', { type: '' }))).toThrow()
+    expect(() =>
+      pagesFromDatex2('<d2LogicalModel xmlns="http://datex2.eu/schema/2/2_0"></d2LogicalModel>'),
+    ).toThrow(/situationRecord/)
+    expect(swapExtension('notes.datex2', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.datex2.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
