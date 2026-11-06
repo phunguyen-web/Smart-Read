@@ -2521,6 +2521,74 @@ export async function addFileAttachments(
   return new Uint8Array(await doc.save())
 }
 
+export const RADIO_PREFIX = 'smartread.radio'
+
+export const RADIO_OPTION = 'Yes' as const
+
+export const RADIO_FILL = { r: 1, g: 0.94, b: 0.88 } as const
+
+/** AcroForm radio group name for a page: `smartread.radio.p{n}` then `p{n}s2`, … (no nested terminal). */
+export function radioNameForPage(pageIndex: number, serial = 1): string {
+  const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
+  const n = Number.isInteger(serial) && serial >= 1 ? serial : 1
+  return n === 1 ? `${RADIO_PREFIX}.p${page}` : `${RADIO_PREFIX}.p${page}s${n}`
+}
+
+function nextRadioName(taken: Set<string>, pageIndex: number): string {
+  let serial = 1
+  let name = radioNameForPage(pageIndex, serial)
+  while (taken.has(name)) {
+    serial += 1
+    name = radioNameForPage(pageIndex, serial)
+  }
+  taken.add(name)
+  return name
+}
+
+/**
+ * Add a fillable AcroForm radio group on selected pages at the overlay box.
+ * Empty `value` still creates an unselected option. Non-empty overlay text selects it.
+ * This is not XFA, not a checkbox, not a text field, and not a comment annotation.
+ */
+export async function addRadioButtons(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  value = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn nút chọn.')
+  }
+  const form = doc.getForm()
+  const taken = new Set(form.getFields().map((field) => field.getName()))
+  const selected = value.trim().length > 0
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const side = Math.min(box.width, box.height)
+    const field = form.createRadioGroup(nextRadioName(taken, index))
+    field.addOptionToPage(RADIO_OPTION, page, {
+      x: box.x,
+      y: box.y + box.height - side,
+      width: side,
+      height: side,
+      borderWidth: 1,
+      borderColor: rgb(0.38, 0.22, 0.12),
+      backgroundColor: rgb(RADIO_FILL.r, RADIO_FILL.g, RADIO_FILL.b),
+    })
+    if (selected) {
+      field.select(RADIO_OPTION)
+    }
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

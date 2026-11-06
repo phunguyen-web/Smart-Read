@@ -124,6 +124,8 @@ export type ExportFormat =
   | 'landxml'
   | 'ifcxml'
   | 'gbxml'
+  | 'bcfxml'
+  | 'cobiexml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2778,6 +2780,48 @@ ${storeys}
 `
 }
 
+export function toBcfxml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const topics = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <Topic Guid="page-${index + 1}" TopicType="Issue" TopicStatus="Open">
+    <Title>Trang ${index + 1}</Title>
+    <Description>${note}</Description>
+  </Topic>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Header>
+    <File isExternal="false">
+      <Filename>${heading}</Filename>
+    </File>
+  </Header>
+${topics}
+</Markup>
+`
+}
+
+export function toCobiexml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const components = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <Component>
+    <Name>Trang ${index + 1}</Name>
+    <Description>${note}</Description>
+  </Component>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<COBie xmlns="http://docs.buildingsmartalliance.org/nbims03/cobie">
+  <Name>${heading}</Name>
+${components}
+</COBie>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3823,6 +3867,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/ifcxml+xml;charset=utf-8'
     case 'gbxml':
       return 'application/gbxml+xml;charset=utf-8'
+    case 'bcfxml':
+      return 'application/bcfxml+xml;charset=utf-8'
+    case 'cobiexml':
+      return 'application/cobiexml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

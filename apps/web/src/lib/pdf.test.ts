@@ -146,6 +146,8 @@ import {
   toLandxml,
   toIfcxml,
   toGbxml,
+  toBcfxml,
+  toCobiexml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -287,6 +289,8 @@ import {
   pagesFromLandxml,
   pagesFromIfcxml,
   pagesFromGbxml,
+  pagesFromBcfxml,
+  pagesFromCobiexml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -463,6 +467,11 @@ import {
   ATTACHMENT_ICON,
   ATTACHMENT_PREFIX,
   attachmentNameForPage,
+  addRadioButtons,
+  RADIO_FILL,
+  RADIO_OPTION,
+  RADIO_PREFIX,
+  radioNameForPage,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -809,6 +818,34 @@ describe('pdf edits', () => {
     const again = await addFileAttachments(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addFileAttachments(bytes, [])).rejects.toThrow(/đính kèm/)
+  })
+
+  it('adds a fillable radio button at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(radioNameForPage(0)).toBe(`${RADIO_PREFIX}.p1`)
+    expect(radioNameForPage(0, 2)).toBe(`${RADIO_PREFIX}.p1s2`)
+    expect(RADIO_FILL.r).toBeGreaterThan(RADIO_FILL.b)
+    const filled = await addRadioButtons(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'x')
+    expect(await pageCount(filled)).toBe(1)
+    const form = (await PDFDocument.load(filled)).getForm()
+    expect(form.getFields()).toHaveLength(1)
+    expect(form.getRadioGroup(radioNameForPage(0)).getSelected()).toBe(RADIO_OPTION)
+    const blank = await addRadioButtons(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    expect((await PDFDocument.load(blank)).getForm().getRadioGroup(radioNameForPage(0)).getSelected()).toBe(
+      undefined,
+    )
+    const pageBox = await addRadioButtons(bytes, [0], OVERLAY_PRESETS.center, 'page', 'on')
+    expect((await PDFDocument.load(pageBox)).getForm().getRadioGroup(radioNameForPage(0)).getSelected()).toBe(
+      RADIO_OPTION,
+    )
+    const again = await addRadioButtons(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    const names = (await PDFDocument.load(again))
+      .getForm()
+      .getFields()
+      .map((field) => field.getName())
+      .sort()
+    expect(names).toEqual([radioNameForPage(0), radioNameForPage(0, 2)])
+    await expect(addRadioButtons(bytes, [])).rejects.toThrow(/nút chọn/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -4973,6 +5010,52 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.gbxml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.gbxml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toBcfxml('Demo', ['Một', 'Hai\ndòng'])).toContain('<Markup')
+    expect(toBcfxml('Demo', ['Một'])).toContain('<Filename>Demo</Filename>')
+    expect(toBcfxml('Demo', ['Một'])).toContain('<Description>Một</Description>')
+    expect(pagesFromBcfxml(toBcfxml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('bcfxml', toBcfxml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromBcfxml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromBcfxml(
+        '<Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Comment><Title>Một</Title></Comment></Markup>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.bcfxml', { type: '' }))).toBe('bcfxml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.bcf.xml', { type: 'application/bcfxml+xml' })),
+    ).toBe('bcfxml')
+    expect(() =>
+      pagesFromBcfxml('<Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"></Markup>'),
+    ).toThrow(/Topic/)
+    expect(swapExtension('notes.bcfxml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.bcf.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toCobiexml('Demo', ['Một', 'Hai\ndòng'])).toContain(
+      'xmlns="http://docs.buildingsmartalliance.org/nbims03/cobie"',
+    )
+    expect(toCobiexml('Demo', ['Một'])).toContain('<Name>Demo</Name>')
+    expect(toCobiexml('Demo', ['Một'])).toContain('<Description>Một</Description>')
+    expect(pagesFromCobiexml(toCobiexml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('cobiexml', toCobiexml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromCobiexml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromCobiexml(
+        '<COBie xmlns="http://docs.buildingsmartalliance.org/nbims03/cobie"><Facility><Name>Một</Name></Facility></COBie>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.cobiexml', { type: '' }))).toBe('cobiexml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.cobie.xml', { type: 'application/cobiexml+xml' })),
+    ).toBe('cobiexml')
+    expect(() =>
+      pagesFromCobiexml('<COBie xmlns="http://docs.buildingsmartalliance.org/nbims03/cobie"></COBie>'),
+    ).toThrow(/Component/)
+    expect(swapExtension('notes.cobiexml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.cobie.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

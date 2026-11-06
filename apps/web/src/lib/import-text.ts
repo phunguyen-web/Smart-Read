@@ -127,6 +127,8 @@ export type ImportedTextKind =
   | 'landxml'
   | 'ifcxml'
   | 'gbxml'
+  | 'bcfxml'
+  | 'cobiexml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -694,6 +696,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'gbxml') {
     return pagesFromGbxml(text)
+  }
+  if (kind === 'bcfxml') {
+    return pagesFromBcfxml(text)
+  }
+  if (kind === 'cobiexml') {
+    return pagesFromCobiexml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -4772,6 +4780,83 @@ export function pagesFromGbxml(text: string): string[] {
     return capPages(spaces)
   }
   throw new Error('Tệp gbXML cần các mục <BuildingStorey> / <Description>.')
+}
+
+function textFromBcfxmlRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Comment') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'Title') || xmlTagText(record, 'title') || xmlAttr(record, 'Title')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function bcfxmlRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:bcf:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:bcf:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromBcfxmlRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromBcfxml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = bcfxmlRecords(trimmed, 'Topic')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const comments = bcfxmlRecords(trimmed, 'Comment')
+  if (comments.length > 0) {
+    return capPages(comments)
+  }
+  throw new Error('Tệp BCF XML cần các mục <Topic> / <Description>.')
+}
+
+function textFromCobiexmlRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'Name') || xmlTagText(record, 'name') || xmlAttr(record, 'Name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function cobiexmlRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:cobie:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:cobie:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromCobiexmlRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromCobiexml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = cobiexmlRecords(trimmed, 'Component')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const facilities = cobiexmlRecords(trimmed, 'Facility')
+  if (facilities.length > 0) {
+    return capPages(facilities)
+  }
+  throw new Error('Tệp COBie XML cần các mục <Component> / <Description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
