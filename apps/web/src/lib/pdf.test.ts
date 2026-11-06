@@ -160,6 +160,8 @@ import {
   toNaptan,
   toGtfs,
   toIfopt,
+  toOjp,
+  toTrias,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -315,6 +317,8 @@ import {
   pagesFromNaptan,
   pagesFromGtfs,
   pagesFromIfopt,
+  pagesFromOjp,
+  pagesFromTrias,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -520,6 +524,9 @@ import {
   addFreeTextAnnotations,
   FREETEXT_COLOR,
   FREETEXT_DA,
+  addCaretAnnotations,
+  CARET_COLOR,
+  CARET_SY,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -1065,6 +1072,35 @@ describe('pdf edits', () => {
     const again = await addFreeTextAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addFreeTextAnnotations(bytes, [])).rejects.toThrow(/chữ tự do/)
+  })
+
+  it('adds a caret annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(CARET_SY).toBe('P')
+    expect(CARET_COLOR.g).toBeGreaterThan(CARET_COLOR.r)
+    const filled = await addCaretAnnotations(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Caret'))
+    expect(annot.lookup(PDFName.of('Sy'), PDFName)).toBe(PDFName.of(CARET_SY))
+    const contents = annot.lookup(PDFName.of('Contents'))
+    expect(contents instanceof PDFHexString || contents instanceof PDFString).toBe(true)
+    expect((contents as PDFHexString | PDFString).decodeText()).toBe('Hello')
+    const blank = await addCaretAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(1)
+    const blankContents = (await PDFDocument.load(blank)).context
+      .lookup(blankAnnot.get(0), PDFDict)
+      .lookup(PDFName.of('Contents'))
+    expect((blankContents as PDFHexString | PDFString).decodeText()).toBe('')
+    const pageBox = await addCaretAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addCaretAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addCaretAnnotations(bytes, [])).rejects.toThrow(/dấu chèn/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -5531,6 +5567,42 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromIfopt('<IFOPT xmlns="http://www.ifopt.org.uk/"></IFOPT>')).toThrow(/StopPlace/)
     expect(swapExtension('notes.ifopt', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.ifopt.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toOjp('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.vdv.de/ojp"')
+    expect(toOjp('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toOjp('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromOjp(toOjp('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('ojp', toOjp('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromOjp('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromOjp('<OJP xmlns="http://www.vdv.de/ojp"><Trip><name>Một</name></Trip></OJP>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.ojp', { type: '' }))).toBe('ojp')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.ojp.xml', { type: 'application/ojp+xml' })),
+    ).toBe('ojp')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.oj', { type: '' }))).toThrow()
+    expect(() => pagesFromOjp('<OJP xmlns="http://www.vdv.de/ojp"></OJP>')).toThrow(/StopPoint/)
+    expect(swapExtension('notes.ojp', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.ojp.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toTrias('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.vdv.de/trias"')
+    expect(toTrias('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toTrias('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromTrias(toTrias('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('trias', toTrias('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromTrias('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromTrias('<Trias xmlns="http://www.vdv.de/trias"><Trip><name>Một</name></Trip></Trias>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.trias', { type: '' }))).toBe('trias')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.trias.xml', { type: 'application/trias+xml' })),
+    ).toBe('trias')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.tri', { type: '' }))).toThrow()
+    expect(() => pagesFromTrias('<Trias xmlns="http://www.vdv.de/trias"></Trias>')).toThrow(/StopPoint/)
+    expect(swapExtension('notes.trias', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.trias.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

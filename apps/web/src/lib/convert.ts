@@ -138,6 +138,8 @@ export type ExportFormat =
   | 'naptan'
   | 'gtfs'
   | 'ifopt'
+  | 'ojp'
+  | 'trias'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3063,6 +3065,44 @@ ${places}
 `
 }
 
+export function toOjp(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const points = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <StopPoint id="stop-${index + 1}">
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </StopPoint>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<OJP xmlns="http://www.vdv.de/ojp" version="1.0">
+  <name>${heading}</name>
+${points}
+</OJP>
+`
+}
+
+export function toTrias(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const points = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <StopPoint id="stop-${index + 1}">
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </StopPoint>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Trias xmlns="http://www.vdv.de/trias" version="1.2">
+  <name>${heading}</name>
+${points}
+</Trias>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -4136,6 +4176,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/gtfs+xml;charset=utf-8'
     case 'ifopt':
       return 'application/ifopt+xml;charset=utf-8'
+    case 'ojp':
+      return 'application/ojp+xml;charset=utf-8'
+    case 'trias':
+      return 'application/trias+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

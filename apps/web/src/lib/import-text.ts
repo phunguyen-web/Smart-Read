@@ -141,6 +141,8 @@ export type ImportedTextKind =
   | 'naptan'
   | 'gtfs'
   | 'ifopt'
+  | 'ojp'
+  | 'trias'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -750,6 +752,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'ifopt') {
     return pagesFromIfopt(text)
+  }
+  if (kind === 'ojp') {
+    return pagesFromOjp(text)
+  }
+  if (kind === 'trias') {
+    return pagesFromTrias(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -5361,6 +5369,82 @@ export function pagesFromIfopt(text: string): string[] {
     return capPages(points)
   }
   throw new Error('Tệp IFOPT cần các mục <StopPlace> / <description>.')
+}
+
+function textFromOjpRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function ojpRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:ojp:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:ojp:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromOjpRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromOjp(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = ojpRecords(trimmed, 'StopPoint')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const trips = ojpRecords(trimmed, 'Trip')
+  if (trips.length > 0) {
+    return capPages(trips)
+  }
+  throw new Error('Tệp OJP cần các mục <StopPoint> / <description>.')
+}
+
+function textFromTriasRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function triasRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:trias:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:trias:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromTriasRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromTrias(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = triasRecords(trimmed, 'StopPoint')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const trips = triasRecords(trimmed, 'Trip')
+  if (trips.length > 0) {
+    return capPages(trips)
+  }
+  throw new Error('Tệp TRIAS cần các mục <StopPoint> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
