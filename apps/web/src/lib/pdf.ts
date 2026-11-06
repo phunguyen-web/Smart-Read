@@ -3079,6 +3079,84 @@ export async function addCaretAnnotations(
   return new Uint8Array(await doc.save())
 }
 
+export const INK_COLOR = { r: 0.08, g: 0.18, b: 0.55 } as const
+
+/** Four-point polyline through the overlay box, in page user space. */
+export function inkPathForBox(box: { x: number; y: number; width: number; height: number }): number[] {
+  const w = Math.max(1, box.width)
+  const h = Math.max(1, box.height)
+  return [
+    box.x + w * 0.12,
+    box.y + h * 0.42,
+    box.x + w * 0.38,
+    box.y + h * 0.78,
+    box.x + w * 0.62,
+    box.y + h * 0.28,
+    box.x + w * 0.88,
+    box.y + h * 0.58,
+  ]
+}
+
+/**
+ * Add a PDF `/Ink` annotation on selected pages at the overlay box.
+ * Empty `contents` still creates a blank ink stroke. This is not AcroForm, not XFA,
+ * not a sticky note, not a stamp, not a free-text note, not a caret, not a link, and not a file attachment.
+ */
+export async function addInkAnnotations(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  contents = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn nét mực.')
+  }
+  const note = contents.trim()
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const w = Math.max(1, box.width)
+    const h = Math.max(1, box.height)
+    const inset = Math.max(0.5, Math.min(w, h) * 0.04)
+    const path = inkPathForBox(box)
+    const formPath = path.map((value, i) => (i % 2 === 0 ? value - box.x : value - box.y))
+    const move = `${formPath[0]!.toFixed(2)} ${formPath[1]!.toFixed(2)} m`
+    const lines = [2, 4, 6]
+      .map((i) => `${formPath[i]!.toFixed(2)} ${formPath[i + 1]!.toFixed(2)} l`)
+      .join(' ')
+    const apRef = doc.context.register(
+      doc.context.flateStream(
+        `q ${INK_COLOR.r} ${INK_COLOR.g} ${INK_COLOR.b} RG 0.93 0.95 0.99 rg 1 w ${inset} ${inset} ${Math.max(0.5, w - inset * 2)} ${Math.max(0.5, h - inset * 2)} re B ${INK_COLOR.r} ${INK_COLOR.g} ${INK_COLOR.b} RG 1.5 w ${move} ${lines} S Q`,
+        {
+          Type: 'XObject',
+          Subtype: 'Form',
+          BBox: [0, 0, w, h],
+          Resources: {},
+        },
+      ),
+    )
+    const annot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Ink',
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      Contents: PDFHexString.fromText(note),
+      InkList: [path],
+      C: [INK_COLOR.r, INK_COLOR.g, INK_COLOR.b],
+      T: PDFHexString.fromText('Smart-Read'),
+      F: 4,
+      AP: { N: apRef },
+    })
+    pageAnnotsArray(doc, page).push(doc.context.register(annot))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default
