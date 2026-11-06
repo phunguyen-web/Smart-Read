@@ -146,6 +146,8 @@ export type ExportFormat =
   | 'vdv462'
   | 'vdv455'
   | 'vdv731'
+  | 'vdv301'
+  | 'vdv423'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3223,6 +3225,44 @@ ${displays}
 `
 }
 
+export function toVdv301(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const vehicles = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <Fahrzeug id="stop-${index + 1}">
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </Fahrzeug>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<VDV301 xmlns="http://www.vdv.de/vdv301" version="1.0">
+  <name>${heading}</name>
+${vehicles}
+</VDV301>
+`
+}
+
+export function toVdv423(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const tickets = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <Ticket id="stop-${index + 1}">
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </Ticket>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<VDV423 xmlns="http://www.vdv.de/vdv423" version="1.0">
+  <name>${heading}</name>
+${tickets}
+</VDV423>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -4312,6 +4352,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vdv455+xml;charset=utf-8'
     case 'vdv731':
       return 'application/vdv731+xml;charset=utf-8'
+    case 'vdv301':
+      return 'application/vdv301+xml;charset=utf-8'
+    case 'vdv423':
+      return 'application/vdv423+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

@@ -3300,6 +3300,97 @@ export async function addCircleAnnotations(
   return new Uint8Array(await doc.save())
 }
 
+export const POLYGON_COLOR = { r: 0.42, g: 0.16, b: 0.55 } as const
+
+export const POLYGON_FILL = { r: 0.94, g: 0.88, b: 0.97 } as const
+
+/** Diamond vertices for a Polygon annotation, in page user space. */
+export function polygonVerticesForBox(box: {
+  x: number
+  y: number
+  width: number
+  height: number
+}): number[] {
+  const w = Math.max(1, box.width)
+  const h = Math.max(1, box.height)
+  return [box.x + w / 2, box.y + h, box.x + w, box.y + h / 2, box.x + w / 2, box.y, box.x, box.y + h / 2]
+}
+
+/** Closed diamond path operators for a Polygon annotation appearance, in form space. */
+export function polygonPathOps(w: number, h: number, inset: number): string {
+  const innerW = Math.max(0.5, w - inset * 2)
+  const innerH = Math.max(0.5, h - inset * 2)
+  const left = inset
+  const bottom = inset
+  const right = inset + innerW
+  const top = inset + innerH
+  const cx = inset + innerW / 2
+  const cy = inset + innerH / 2
+  const f = (n: number) => n.toFixed(2)
+  return [`${f(cx)} ${f(top)} m`, `${f(right)} ${f(cy)} l`, `${f(cx)} ${f(bottom)} l`, `${f(left)} ${f(cy)} l`, 'h'].join(
+    ' ',
+  )
+}
+
+/**
+ * Add a PDF `/Polygon` annotation on selected pages at the overlay box.
+ * Empty `contents` still creates a blank polygon. This is not AcroForm, not XFA,
+ * not a sticky note, not a stamp, not a free-text note, not a caret, not ink,
+ * not a square, not a circle, not a link, and not a file attachment. Uses the
+ * full overlay box (not forced to a regular polygon).
+ */
+export async function addPolygonAnnotations(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  contents = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn đa giác.')
+  }
+  const note = contents.trim()
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const w = Math.max(1, box.width)
+    const h = Math.max(1, box.height)
+    const inset = Math.max(0.5, Math.min(w, h) * 0.04)
+    const path = polygonPathOps(w, h, inset)
+    const vertices = polygonVerticesForBox(box)
+    const apRef = doc.context.register(
+      doc.context.flateStream(
+        `q ${POLYGON_COLOR.r} ${POLYGON_COLOR.g} ${POLYGON_COLOR.b} RG ${POLYGON_FILL.r} ${POLYGON_FILL.g} ${POLYGON_FILL.b} rg 1.5 w ${path} B Q`,
+        {
+          Type: 'XObject',
+          Subtype: 'Form',
+          BBox: [0, 0, w, h],
+          Resources: {},
+        },
+      ),
+    )
+    const annot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Polygon',
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      Contents: PDFHexString.fromText(note),
+      Vertices: vertices,
+      C: [POLYGON_COLOR.r, POLYGON_COLOR.g, POLYGON_COLOR.b],
+      IC: [POLYGON_FILL.r, POLYGON_FILL.g, POLYGON_FILL.b],
+      T: PDFHexString.fromText('Smart-Read'),
+      F: 4,
+      AP: { N: apRef },
+    })
+    pageAnnotsArray(doc, page).push(doc.context.register(annot))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default
