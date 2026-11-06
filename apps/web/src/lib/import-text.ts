@@ -129,6 +129,8 @@ export type ImportedTextKind =
   | 'gbxml'
   | 'bcfxml'
   | 'cobiexml'
+  | 'landinfra'
+  | 'infragml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -702,6 +704,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'cobiexml') {
     return pagesFromCobiexml(text)
+  }
+  if (kind === 'landinfra') {
+    return pagesFromLandinfra(text)
+  }
+  if (kind === 'infragml') {
+    return pagesFromInfragml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -4857,6 +4865,82 @@ export function pagesFromCobiexml(text: string): string[] {
     return capPages(facilities)
   }
   throw new Error('Tệp COBie XML cần các mục <Component> / <Description>.')
+}
+
+function textFromLandinfraRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function landinfraRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:lif:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:lif:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromLandinfraRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromLandinfra(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = landinfraRecords(trimmed, 'Feature')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const alignments = landinfraRecords(trimmed, 'Alignment')
+  if (alignments.length > 0) {
+    return capPages(alignments)
+  }
+  throw new Error('Tệp LandInfra XML cần các mục <Feature> / <description>.')
+}
+
+function textFromInfragmlRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function infragmlRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:infra:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:infra:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromInfragmlRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromInfragml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = infragmlRecords(trimmed, 'featureMember')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const roads = infragmlRecords(trimmed, 'Road')
+  if (roads.length > 0) {
+    return capPages(roads)
+  }
+  throw new Error('Tệp InfraGML cần các mục <featureMember> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

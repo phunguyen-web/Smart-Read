@@ -126,6 +126,8 @@ export type ExportFormat =
   | 'gbxml'
   | 'bcfxml'
   | 'cobiexml'
+  | 'landinfra'
+  | 'infragml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2822,6 +2824,44 @@ ${components}
 `
 }
 
+export function toLandinfra(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const features = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <Feature>
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </Feature>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<LandInfra xmlns="http://www.opengis.net/landinfra/2.0">
+  <name>${heading}</name>
+${features}
+</LandInfra>
+`
+}
+
+export function toInfragml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const members = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <featureMember>
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </featureMember>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<InfraGML xmlns="http://www.opengis.net/infragml/1.0">
+  <name>${heading}</name>
+${members}
+</InfraGML>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3871,6 +3911,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/bcfxml+xml;charset=utf-8'
     case 'cobiexml':
       return 'application/cobiexml+xml;charset=utf-8'
+    case 'landinfra':
+      return 'application/landinfra+xml;charset=utf-8'
+    case 'infragml':
+      return 'application/infragml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

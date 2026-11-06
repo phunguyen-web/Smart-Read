@@ -2589,6 +2589,58 @@ export async function addRadioButtons(
   return new Uint8Array(await doc.save())
 }
 
+export const LINK_DEFAULT_URI = 'https://'
+
+export const LINK_BORDER = { r: 0.12, g: 0.35, b: 0.72 } as const
+
+/** Overlay text is the URI. Empty overlay still creates a link to `https://`. */
+export function linkUriFromOverlay(uri = ''): string {
+  const trimmed = uri.trim()
+  return trimmed.length > 0 ? trimmed : LINK_DEFAULT_URI
+}
+
+/**
+ * Add a PDF Link annotation with a URI action on selected pages at the overlay box.
+ * Empty overlay text still creates a link to `https://`.
+ * This is not a named destination, not AcroForm, not a comment, and not a file attachment.
+ */
+export async function addLinkAnnotations(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  uri = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn liên kết.')
+  }
+  const href = linkUriFromOverlay(uri)
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const annot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Link',
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      Border: [0, 0, 1],
+      C: [LINK_BORDER.r, LINK_BORDER.g, LINK_BORDER.b],
+      A: {
+        Type: 'Action',
+        S: 'URI',
+        URI: PDFHexString.fromText(href),
+      },
+      F: 4,
+    })
+    pageAnnotsArray(doc, page).push(doc.context.register(annot))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

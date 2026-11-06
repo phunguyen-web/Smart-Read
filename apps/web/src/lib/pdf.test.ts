@@ -1,4 +1,4 @@
-import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, degrees } from 'pdf-lib'
+import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFString, degrees } from 'pdf-lib'
 import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import {
@@ -148,6 +148,8 @@ import {
   toGbxml,
   toBcfxml,
   toCobiexml,
+  toLandinfra,
+  toInfragml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -291,6 +293,8 @@ import {
   pagesFromGbxml,
   pagesFromBcfxml,
   pagesFromCobiexml,
+  pagesFromLandinfra,
+  pagesFromInfragml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -472,6 +476,10 @@ import {
   RADIO_OPTION,
   RADIO_PREFIX,
   radioNameForPage,
+  addLinkAnnotations,
+  LINK_BORDER,
+  LINK_DEFAULT_URI,
+  linkUriFromOverlay,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -846,6 +854,35 @@ describe('pdf edits', () => {
       .sort()
     expect(names).toEqual([radioNameForPage(0), radioNameForPage(0, 2)])
     await expect(addRadioButtons(bytes, [])).rejects.toThrow(/nút chọn/)
+  })
+
+  it('adds a URI link annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(linkUriFromOverlay('')).toBe(LINK_DEFAULT_URI)
+    expect(linkUriFromOverlay(' https://example.com ')).toBe('https://example.com')
+    expect(LINK_BORDER.b).toBeGreaterThan(LINK_BORDER.r)
+    const filled = await addLinkAnnotations(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'https://example.com')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Link'))
+    const action = annot.lookup(PDFName.of('A'), PDFDict)
+    expect(action.lookup(PDFName.of('S'), PDFName)).toBe(PDFName.of('URI'))
+    const uri = action.lookup(PDFName.of('URI'))
+    expect(uri instanceof PDFHexString || uri instanceof PDFString).toBe(true)
+    expect((uri as PDFHexString | PDFString).decodeText()).toBe('https://example.com')
+    const blank = await addLinkAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(1)
+    const blankUri = (await PDFDocument.load(blank)).context.lookup(blankAnnot.get(0), PDFDict).lookup(PDFName.of('A'), PDFDict).lookup(PDFName.of('URI'))
+    expect((blankUri as PDFHexString | PDFString).decodeText()).toBe(LINK_DEFAULT_URI)
+    const pageBox = await addLinkAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'page', 'https://smart-read.local')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addLinkAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'https://more.example')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addLinkAnnotations(bytes, [])).rejects.toThrow(/liên kết/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -5056,6 +5093,54 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toThrow(/Component/)
     expect(swapExtension('notes.cobiexml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.cobie.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toLandinfra('Demo', ['Một', 'Hai\ndòng'])).toContain(
+      'xmlns="http://www.opengis.net/landinfra/2.0"',
+    )
+    expect(toLandinfra('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toLandinfra('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromLandinfra(toLandinfra('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('landinfra', toLandinfra('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromLandinfra('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromLandinfra(
+        '<LandInfra xmlns="http://www.opengis.net/landinfra/2.0"><Alignment><name>Một</name></Alignment></LandInfra>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.landinfra', { type: '' }))).toBe('landinfra')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.landinfra.xml', { type: 'application/landinfra+xml' })),
+    ).toBe('landinfra')
+    expect(() =>
+      pagesFromLandinfra('<LandInfra xmlns="http://www.opengis.net/landinfra/2.0"></LandInfra>'),
+    ).toThrow(/Feature/)
+    expect(swapExtension('notes.landinfra', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.landinfra.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toInfragml('Demo', ['Một', 'Hai\ndòng'])).toContain(
+      'xmlns="http://www.opengis.net/infragml/1.0"',
+    )
+    expect(toInfragml('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toInfragml('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromInfragml(toInfragml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('infragml', toInfragml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromInfragml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromInfragml(
+        '<InfraGML xmlns="http://www.opengis.net/infragml/1.0"><Road><name>Một</name></Road></InfraGML>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.infragml', { type: '' }))).toBe('infragml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.infragml.xml', { type: 'application/infragml+xml' })),
+    ).toBe('infragml')
+    expect(() =>
+      pagesFromInfragml('<InfraGML xmlns="http://www.opengis.net/infragml/1.0"></InfraGML>'),
+    ).toThrow(/featureMember/)
+    expect(swapExtension('notes.infragml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.infragml.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
