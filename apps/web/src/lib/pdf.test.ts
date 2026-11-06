@@ -164,6 +164,8 @@ import {
   toTrias,
   toVdv453,
   toVdv454,
+  toVdv452,
+  toVdv462,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -323,6 +325,8 @@ import {
   pagesFromTrias,
   pagesFromVdv453,
   pagesFromVdv454,
+  pagesFromVdv452,
+  pagesFromVdv462,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -534,6 +538,9 @@ import {
   addInkAnnotations,
   INK_COLOR,
   inkPathForBox,
+  addSquareAnnotations,
+  SQUARE_COLOR,
+  SQUARE_FILL,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -1141,6 +1148,35 @@ describe('pdf edits', () => {
     const again = await addInkAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addInkAnnotations(bytes, [])).rejects.toThrow(/nét mực/)
+  })
+
+  it('adds a square annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(SQUARE_COLOR.r).toBeGreaterThan(SQUARE_COLOR.g)
+    expect(SQUARE_FILL.r).toBeGreaterThan(SQUARE_COLOR.r)
+    const filled = await addSquareAnnotations(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Square'))
+    expect(annot.lookup(PDFName.of('IC'), PDFArray).size()).toBe(3)
+    const contents = annot.lookup(PDFName.of('Contents'))
+    expect(contents instanceof PDFHexString || contents instanceof PDFString).toBe(true)
+    expect((contents as PDFHexString | PDFString).decodeText()).toBe('Hello')
+    const blank = await addSquareAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(1)
+    const blankContents = (await PDFDocument.load(blank)).context
+      .lookup(blankAnnot.get(0), PDFDict)
+      .lookup(PDFName.of('Contents'))
+    expect((blankContents as PDFHexString | PDFString).decodeText()).toBe('')
+    const pageBox = await addSquareAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addSquareAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addSquareAnnotations(bytes, [])).rejects.toThrow(/hình vuông/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -5687,6 +5723,50 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.vdv454', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.vdv454.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toVdv452('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.vdv.de/vdv452"')
+    expect(toVdv452('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toVdv452('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromVdv452(toVdv452('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vdv452', toVdv452('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVdv452('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromVdv452(
+        '<VDV452 xmlns="http://www.vdv.de/vdv452"><Trip><name>Một</name></Trip></VDV452>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vdv452', { type: '' }))).toBe('vdv452')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.vdv452.xml', { type: 'application/vdv452+xml' })),
+    ).toBe('vdv452')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.vdv', { type: '' }))).toThrow()
+    expect(() => pagesFromVdv452('<VDV452 xmlns="http://www.vdv.de/vdv452"></VDV452>')).toThrow(
+      /Fahrplan/,
+    )
+    expect(swapExtension('notes.vdv452', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.vdv452.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toVdv462('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.vdv.de/vdv462"')
+    expect(toVdv462('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toVdv462('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromVdv462(toVdv462('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vdv462', toVdv462('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVdv462('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromVdv462(
+        '<VDV462 xmlns="http://www.vdv.de/vdv462"><Trip><name>Một</name></Trip></VDV462>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vdv462', { type: '' }))).toBe('vdv462')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.vdv462.xml', { type: 'application/vdv462+xml' })),
+    ).toBe('vdv462')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.vdv', { type: '' }))).toThrow()
+    expect(() => pagesFromVdv462('<VDV462 xmlns="http://www.vdv.de/vdv462"></VDV462>')).toThrow(
+      /Haltestelle/,
+    )
+    expect(swapExtension('notes.vdv462', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.vdv462.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

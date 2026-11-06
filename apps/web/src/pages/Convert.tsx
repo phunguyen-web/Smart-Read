@@ -141,6 +141,8 @@ import {
   toTrias,
   toVdv453,
   toVdv454,
+  toVdv452,
+  toVdv462,
   toJson,
   toJsonl,
   toLatex,
@@ -300,6 +302,8 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'trias', label: 'TRIAS', hint: 'TRIAS StopPoint, description mỗi trang' },
   { id: 'vdv453', label: 'VDV453', hint: 'VDV453 IstFahrt, description mỗi trang' },
   { id: 'vdv454', label: 'VDV454', hint: 'VDV454 Linienfahrplan, description mỗi trang' },
+  { id: 'vdv452', label: 'VDV452', hint: 'VDV452 Fahrplan, description mỗi trang' },
+  { id: 'vdv462', label: 'VDV462', hint: 'VDV462 Haltestelle, description mỗi trang' },
   { id: 'srt', label: 'SRT', hint: 'Phụ đề .srt, một cue mỗi trang' },
   { id: 'vtt', label: 'VTT', hint: 'WebVTT, NOTE title + một cue mỗi trang' },
   { id: 'lrc', label: 'LRC', hint: 'Lời bài hát [mm:ss.xx], một dòng mỗi trang' },
@@ -1197,6 +1201,16 @@ export function Convert() {
           new Blob([toVdv454(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
+      } else if (format === 'vdv452') {
+        downloadBlob(
+          new Blob([toVdv452(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'vdv462') {
+        downloadBlob(
+          new Blob([toVdv462(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
       } else if (format === 'docx' || format === 'doc') {
         const blob = await toDocx(title, pages)
         downloadBlob(blob, swapExtension(doc.name, extensionFor(format)))
@@ -1255,9 +1269,9 @@ export function Convert() {
       <header className="page-head">
         <h1>Chuyển đổi định dạng</h1>
         <p>
-          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, FOXML, EDM, LIDO, VRA, CDWA Lite, SPECTRUM, Darwin Core, Object ID, EAC-CPF, CIDOC CRM, METS Rights, TextMD, PBCore, EBUCore, MPEG-7, AES57, IEEE LOM, IMS CP, NewsML, NITF, SportsML, EventsML, NewsML-G2, rNews, PRISM, hNews, IPTC, ANPA, NINJS, JSON Feed, Activity Streams, GeoJSON, KML, GPX, OSM, GeoRSS, WKT, GML, TopoJSON, SVG, DXF, MapML, CityJSON, IndoorGML, CityGML, LandXML, IFC-XML, gbXML, BCF, COBie, LandInfra, InfraGML, OpenDRIVE, RailML, TransXML, DATEX II, NeTEx, SIRI, TransXChange, NaPTAN, GTFS, IFOPT, OJP, TRIAS, VDV453, VDV454, XLSX, DOCX/DOC,
+          Trích chữ từ PDF rồi xuất TXT, HTML, Markdown, RTF, JSON, JSONL, YAML, XML, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, FOXML, EDM, LIDO, VRA, CDWA Lite, SPECTRUM, Darwin Core, Object ID, EAC-CPF, CIDOC CRM, METS Rights, TextMD, PBCore, EBUCore, MPEG-7, AES57, IEEE LOM, IMS CP, NewsML, NITF, SportsML, EventsML, NewsML-G2, rNews, PRISM, hNews, IPTC, ANPA, NINJS, JSON Feed, Activity Streams, GeoJSON, KML, GPX, OSM, GeoRSS, WKT, GML, TopoJSON, SVG, DXF, MapML, CityJSON, IndoorGML, CityGML, LandXML, IFC-XML, gbXML, BCF, COBie, LandInfra, InfraGML, OpenDRIVE, RailML, TransXML, DATEX II, NeTEx, SIRI, TransXChange, NaPTAN, GTFS, IFOPT, OJP, TRIAS, VDV453, VDV454, VDV452, VDV462, XLSX, DOCX/DOC,
           ODT, ODS, PPTX, ODP, FB2, EPUB hoặc MOBI; hoặc raster từng trang thành PNG/JPEG/WEBP/CBZ. Có
-          thể mở TXT/Markdown/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff/Jupyter/BibTeX/SRT/VTT/LRC/ICS/CUE/ASS/TTML/SBV/SAMI/SUB/STL/SCC/USF/RT/MPL/DjVu/PS/TEI/JATS/RIS/ENW/CSL-JSON/NBIB/CSL-YAML/EndNote XML/MODS/CFF/DataCite/MARCXML/Dublin Core/ONIX/Unixref/BibJSON/PubMed/JSON-LD/BIBFRAME/Crossref/EAD/METS/PREMIS/MIX/ALTO/PAGE/FOXML/EDM/LIDO/VRA/CDWA Lite/SPECTRUM/Darwin Core/Object ID/EAC-CPF/CIDOC CRM/METS Rights/TextMD/PBCore/EBUCore/MPEG-7/AES57/IEEE LOM/IMS CP/NewsML/NITF/SportsML/EventsML/NewsML-G2/rNews/PRISM/hNews/IPTC/ANPA/NINJS/JSON Feed/Activity Streams/GeoJSON/KML/GPX/OSM/GeoRSS/WKT/GML/TopoJSON/SVG/DXF/MapML/CityJSON/IndoorGML/CityGML/LandXML/IFC-XML/gbXML/BCF/COBie/LandInfra/InfraGML/OpenDRIVE/RailML/TransXML/DATEX II/NeTEx/SIRI/TransXChange/NaPTAN/GTFS/IFOPT/OJP/TRIAS/VDV453/VDV454, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2,
+          thể mở TXT/Markdown/HTML/JSON/JSONL/YAML/XML/CSV/TSV/TOML/Org/LaTeX/INI/AsciiDoc/RST/Textile/MediaWiki/DokuWiki/DocBook/OPML/Atom/RSS/Typst/Gemtext/POD/BBCode/Fountain/TiddlyWiki/Texinfo/roff/Jupyter/BibTeX/SRT/VTT/LRC/ICS/CUE/ASS/TTML/SBV/SAMI/SUB/STL/SCC/USF/RT/MPL/DjVu/PS/TEI/JATS/RIS/ENW/CSL-JSON/NBIB/CSL-YAML/EndNote XML/MODS/CFF/DataCite/MARCXML/Dublin Core/ONIX/Unixref/BibJSON/PubMed/JSON-LD/BIBFRAME/Crossref/EAD/METS/PREMIS/MIX/ALTO/PAGE/FOXML/EDM/LIDO/VRA/CDWA Lite/SPECTRUM/Darwin Core/Object ID/EAC-CPF/CIDOC CRM/METS Rights/TextMD/PBCore/EBUCore/MPEG-7/AES57/IEEE LOM/IMS CP/NewsML/NITF/SportsML/EventsML/NewsML-G2/rNews/PRISM/hNews/IPTC/ANPA/NINJS/JSON Feed/Activity Streams/GeoJSON/KML/GPX/OSM/GeoRSS/WKT/GML/TopoJSON/SVG/DXF/MapML/CityJSON/IndoorGML/CityGML/LandXML/IFC-XML/gbXML/BCF/COBie/LandInfra/InfraGML/OpenDRIVE/RailML/TransXML/DATEX II/NeTEx/SIRI/TransXChange/NaPTAN/GTFS/IFOPT/OJP/TRIAS/VDV453/VDV454/VDV452/VDV462, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2,
           EPUB, CBZ hoặc PNG/JPEG/WEBP để tạo PDF trước, rồi xuất tiếp. Có thể xuất đúng các trang đang
           chọn trên Chỉnh sửa, kể cả khi chúng không liền nhau. PDF khóa cần mật khẩu; bản làm việc được giải khóa.
         </p>
@@ -1268,7 +1282,7 @@ export function Convert() {
         <input
           type="file"
           accept={ACCEPT_SOURCES}
-          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, KML, GPX, OSM, GeoRSS, WKT, GML, TopoJSON, SVG, DXF, MapML, CityJSON, IndoorGML, CityGML, LandXML, IFC-XML, gbXML, BCF, COBie, LandInfra, InfraGML, OpenDRIVE, RailML, TransXML, DATEX II, NeTEx, SIRI, TransXChange, NaPTAN, GTFS, IFOPT, OJP, TRIAS, VDV453, VDV454, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, FOXML, EDM, LIDO, VRA, CDWA Lite, SPECTRUM, Darwin Core, Object ID, EAC-CPF, CIDOC CRM, METS Rights, TextMD, PBCore, EBUCore, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chuyển đổi"
+          aria-label="Tải tệp PDF, TXT, Markdown, HTML, JSON, JSONL, YAML, XML, KML, GPX, OSM, GeoRSS, WKT, GML, TopoJSON, SVG, DXF, MapML, CityJSON, IndoorGML, CityGML, LandXML, IFC-XML, gbXML, BCF, COBie, LandInfra, InfraGML, OpenDRIVE, RailML, TransXML, DATEX II, NeTEx, SIRI, TransXChange, NaPTAN, GTFS, IFOPT, OJP, TRIAS, VDV453, VDV454, VDV452, VDV462, CSV, TSV, TOML, Org, LaTeX, INI, AsciiDoc, RST, Textile, MediaWiki, DokuWiki, DocBook, OPML, Atom, RSS, Typst, Gemtext, POD, BBCode, Fountain, TiddlyWiki, Texinfo, roff, Jupyter, BibTeX, SRT, VTT, LRC, ICS, CUE, ASS, TTML, SBV, SAMI, SUB, STL, SCC, USF, RT, MPL, DjVu, PS, TEI, JATS, RIS, ENW, CSL-JSON, NBIB, CSL-YAML, EndNote XML, MODS, CFF, DataCite, MARCXML, Dublin Core, ONIX, Unixref, BibJSON, PubMed, JSON-LD, BIBFRAME, Crossref, EAD, METS, PREMIS, MIX, ALTO, PAGE, FOXML, EDM, LIDO, VRA, CDWA Lite, SPECTRUM, Darwin Core, Object ID, EAC-CPF, CIDOC CRM, METS Rights, TextMD, PBCore, EBUCore, RTF, DOCX, ODT, ODS, XLSX, PPTX, ODP, FB2, EPUB, CBZ, PNG, JPEG hoặc WEBP để chuyển đổi"
           onChange={(event) => void onUpload(event.target.files?.[0])}
         />
       </label>

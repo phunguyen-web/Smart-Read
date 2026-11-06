@@ -3157,6 +3157,66 @@ export async function addInkAnnotations(
   return new Uint8Array(await doc.save())
 }
 
+export const SQUARE_COLOR = { r: 0.62, g: 0.28, b: 0.08 } as const
+
+export const SQUARE_FILL = { r: 0.98, g: 0.93, b: 0.86 } as const
+
+/**
+ * Add a PDF `/Square` annotation on selected pages at the overlay box.
+ * Empty `contents` still creates a blank square. This is not AcroForm, not XFA,
+ * not a sticky note, not a stamp, not a free-text note, not a caret, not ink,
+ * not a link, and not a file attachment. Uses the full overlay box (not forced
+ * to a geometric square).
+ */
+export async function addSquareAnnotations(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  contents = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn hình vuông.')
+  }
+  const note = contents.trim()
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const w = Math.max(1, box.width)
+    const h = Math.max(1, box.height)
+    const inset = Math.max(0.5, Math.min(w, h) * 0.04)
+    const apRef = doc.context.register(
+      doc.context.flateStream(
+        `q ${SQUARE_COLOR.r} ${SQUARE_COLOR.g} ${SQUARE_COLOR.b} RG ${SQUARE_FILL.r} ${SQUARE_FILL.g} ${SQUARE_FILL.b} rg 1.5 w ${inset} ${inset} ${Math.max(0.5, w - inset * 2)} ${Math.max(0.5, h - inset * 2)} re B Q`,
+        {
+          Type: 'XObject',
+          Subtype: 'Form',
+          BBox: [0, 0, w, h],
+          Resources: {},
+        },
+      ),
+    )
+    const annot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Square',
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      Contents: PDFHexString.fromText(note),
+      C: [SQUARE_COLOR.r, SQUARE_COLOR.g, SQUARE_COLOR.b],
+      IC: [SQUARE_FILL.r, SQUARE_FILL.g, SQUARE_FILL.b],
+      T: PDFHexString.fromText('Smart-Read'),
+      F: 4,
+      AP: { N: apRef },
+    })
+    pageAnnotsArray(doc, page).push(doc.context.register(annot))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default
