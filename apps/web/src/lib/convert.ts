@@ -122,6 +122,8 @@ export type ExportFormat =
   | 'indoorgml'
   | 'citygml'
   | 'landxml'
+  | 'ifcxml'
+  | 'gbxml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2733,6 +2735,49 @@ ${parcels}
 `
 }
 
+export function toIfcxml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const buildings = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <IfcBuilding id="page-${index + 1}" Name="Trang ${index + 1}">
+    <Description>${note}</Description>
+  </IfcBuilding>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<ifcXML xmlns="https://standards.buildingsmart.org/IFC/RELEASE/IFC4/ADD2_TC1/XML/SCHEMA">
+  <header>
+    <name>${heading}</name>
+  </header>
+${buildings}
+</ifcXML>
+`
+}
+
+export function toGbxml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const storeys = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `      <BuildingStorey id="page-${index + 1}">
+        <Name>Trang ${index + 1}</Name>
+        <Description>${note}</Description>
+      </BuildingStorey>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gbXML xmlns="http://www.gbxml.org/schema" temperatureUnit="C" lengthUnit="Meters" areaUnit="SquareMeters" volumeUnit="CubicMeters" useSIUnitsForResults="true" version="6.01">
+  <Campus id="campus-1">
+    <Name>${heading}</Name>
+    <Building id="bldg-1">
+${storeys}
+    </Building>
+  </Campus>
+</gbXML>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3774,6 +3819,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/citygml+xml;charset=utf-8'
     case 'landxml':
       return 'application/landxml+xml;charset=utf-8'
+    case 'ifcxml':
+      return 'application/ifcxml+xml;charset=utf-8'
+    case 'gbxml':
+      return 'application/gbxml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

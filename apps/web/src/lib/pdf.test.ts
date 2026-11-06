@@ -144,6 +144,8 @@ import {
   toIndoorgml,
   toCitygml,
   toLandxml,
+  toIfcxml,
+  toGbxml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -283,6 +285,8 @@ import {
   pagesFromIndoorgml,
   pagesFromCitygml,
   pagesFromLandxml,
+  pagesFromIfcxml,
+  pagesFromGbxml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -455,6 +459,10 @@ import {
   CHECKBOX_FILL,
   CHECKBOX_PREFIX,
   checkboxNameForPage,
+  addFileAttachments,
+  ATTACHMENT_ICON,
+  ATTACHMENT_PREFIX,
+  attachmentNameForPage,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -777,6 +785,30 @@ describe('pdf edits', () => {
       .sort()
     expect(names).toEqual([checkboxNameForPage(0), checkboxNameForPage(0, 2)])
     await expect(addCheckboxes(bytes, [])).rejects.toThrow(/hộp chọn/)
+  })
+
+  it('adds a file attachment at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(attachmentNameForPage(0)).toBe(`${ATTACHMENT_PREFIX}.p1`)
+    expect(attachmentNameForPage(0, 2)).toBe(`${ATTACHMENT_PREFIX}.p1s2`)
+    expect(ATTACHMENT_ICON).toBe('Paperclip')
+    const filled = await addFileAttachments(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'x')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('FileAttachment'))
+    expect(annot.lookup(PDFName.of('Name'), PDFName)).toBe(PDFName.of('Paperclip'))
+    const blank = await addFileAttachments(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    expect((await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(
+      1,
+    )
+    const pageBox = await addFileAttachments(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addFileAttachments(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addFileAttachments(bytes, [])).rejects.toThrow(/đính kèm/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -4893,6 +4925,54 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toThrow(/Parcel/)
     expect(swapExtension('notes.landxml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.landxml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toIfcxml('Demo', ['Một', 'Hai\ndòng'])).toContain(
+      'xmlns="https://standards.buildingsmart.org/IFC/RELEASE/IFC4/ADD2_TC1/XML/SCHEMA"',
+    )
+    expect(toIfcxml('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toIfcxml('Demo', ['Một'])).toContain('<Description>Một</Description>')
+    expect(pagesFromIfcxml(toIfcxml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('ifcxml', toIfcxml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromIfcxml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromIfcxml(
+        '<ifcXML xmlns="https://standards.buildingsmart.org/IFC/RELEASE/IFC4/ADD2_TC1/XML/SCHEMA"><IfcSpace Name="Một"><Name>Một</Name></IfcSpace></ifcXML>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ifcxml', { type: '' }))).toBe('ifcxml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.ifc.xml', { type: 'application/ifcxml+xml' })),
+    ).toBe('ifcxml')
+    expect(() =>
+      pagesFromIfcxml(
+        '<ifcXML xmlns="https://standards.buildingsmart.org/IFC/RELEASE/IFC4/ADD2_TC1/XML/SCHEMA"></ifcXML>',
+      ),
+    ).toThrow(/IfcBuilding/)
+    expect(swapExtension('notes.ifcxml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.ifc.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toGbxml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.gbxml.org/schema"')
+    expect(toGbxml('Demo', ['Một'])).toContain('<Name>Demo</Name>')
+    expect(toGbxml('Demo', ['Một'])).toContain('<Description>Một</Description>')
+    expect(pagesFromGbxml(toGbxml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('gbxml', toGbxml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromGbxml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromGbxml(
+        '<gbXML xmlns="http://www.gbxml.org/schema"><Space><Name>Một</Name></Space></gbXML>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.gbxml', { type: '' }))).toBe('gbxml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.gbxml.xml', { type: 'application/gbxml+xml' })),
+    ).toBe('gbxml')
+    expect(() => pagesFromGbxml('<gbXML xmlns="http://www.gbxml.org/schema"></gbXML>')).toThrow(
+      /BuildingStorey/,
+    )
+    expect(swapExtension('notes.gbxml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.gbxml.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

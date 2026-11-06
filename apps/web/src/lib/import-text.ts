@@ -125,6 +125,8 @@ export type ImportedTextKind =
   | 'indoorgml'
   | 'citygml'
   | 'landxml'
+  | 'ifcxml'
+  | 'gbxml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -686,6 +688,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'landxml') {
     return pagesFromLandxml(text)
+  }
+  if (kind === 'ifcxml') {
+    return pagesFromIfcxml(text)
+  }
+  if (kind === 'gbxml') {
+    return pagesFromGbxml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -4687,6 +4695,83 @@ export function pagesFromLandxml(text: string): string[] {
     return capPages(points)
   }
   throw new Error('Tệp LandXML cần các mục <Parcel> / <Desc>.')
+}
+
+function textFromIfcxmlRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'text') ||
+    xmlAttr(record, 'Description')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'Name') || xmlAttr(record, 'Name') || xmlTagText(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function ifcxmlRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:ifc:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:ifc:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromIfcxmlRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromIfcxml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = ifcxmlRecords(trimmed, 'IfcBuilding')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const spaces = ifcxmlRecords(trimmed, 'IfcSpace')
+  if (spaces.length > 0) {
+    return capPages(spaces)
+  }
+  throw new Error('Tệp IFC-XML cần các mục <IfcBuilding> / <Description>.')
+}
+
+function textFromGbxmlRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'Name') || xmlTagText(record, 'name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function gbxmlRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:gb:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:gb:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromGbxmlRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromGbxml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = gbxmlRecords(trimmed, 'BuildingStorey')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const spaces = gbxmlRecords(trimmed, 'Space')
+  if (spaces.length > 0) {
+    return capPages(spaces)
+  }
+  throw new Error('Tệp gbXML cần các mục <BuildingStorey> / <Description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

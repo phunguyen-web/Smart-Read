@@ -2388,6 +2388,139 @@ export async function addCheckboxes(
   return new Uint8Array(await doc.save())
 }
 
+export const ATTACHMENT_PREFIX = 'smartread.attach'
+
+export const ATTACHMENT_ICON = 'Paperclip' as const
+
+/** Embedded-file stem for a page: `smartread.attach.p{n}` then `p{n}s2`, … (no nested terminal). */
+export function attachmentNameForPage(pageIndex: number, serial = 1): string {
+  const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
+  const n = Number.isInteger(serial) && serial >= 1 ? serial : 1
+  return n === 1 ? `${ATTACHMENT_PREFIX}.p${page}` : `${ATTACHMENT_PREFIX}.p${page}s${n}`
+}
+
+function nextAttachmentName(taken: Set<string>, pageIndex: number): string {
+  let serial = 1
+  let name = attachmentNameForPage(pageIndex, serial)
+  while (taken.has(name)) {
+    serial += 1
+    name = attachmentNameForPage(pageIndex, serial)
+  }
+  taken.add(name)
+  return name
+}
+
+function embeddedFileNames(doc: PDFDocument): Set<string> {
+  const taken = new Set<string>()
+  const namesDict = doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)
+  const embedded = namesDict?.lookupMaybe(PDFName.of('EmbeddedFiles'), PDFDict)
+  const arr = embedded?.lookupMaybe(PDFName.of('Names'), PDFArray)
+  if (!arr) {
+    return taken
+  }
+  for (let i = 0; i < arr.size(); i += 2) {
+    const key = arr.get(i)
+    if (key instanceof PDFHexString || key instanceof PDFString) {
+      taken.add(key.decodeText().replace(/\.txt$/i, ''))
+    }
+  }
+  return taken
+}
+
+function embeddedFilesNameArray(doc: PDFDocument): PDFArray {
+  let namesDict = doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)
+  if (!namesDict) {
+    namesDict = doc.context.obj({})
+    doc.catalog.set(PDFName.of('Names'), namesDict)
+  }
+  let embedded = namesDict.lookupMaybe(PDFName.of('EmbeddedFiles'), PDFDict)
+  if (!embedded) {
+    embedded = doc.context.obj({})
+    namesDict.set(PDFName.of('EmbeddedFiles'), embedded)
+  }
+  let arr = embedded.lookupMaybe(PDFName.of('Names'), PDFArray)
+  if (!arr) {
+    arr = doc.context.obj([])
+    embedded.set(PDFName.of('Names'), arr)
+  }
+  return arr
+}
+
+function catalogAfArray(doc: PDFDocument): PDFArray {
+  let af = doc.catalog.lookupMaybe(PDFName.of('AF'), PDFArray)
+  if (!af) {
+    af = doc.context.obj([])
+    doc.catalog.set(PDFName.of('AF'), af)
+  }
+  return af
+}
+
+function embedPlainTextFile(doc: PDFDocument, fileName: string, payload: Uint8Array, description: string): PDFRef {
+  const fileStream = doc.context.flateStream(payload, {
+    Type: 'EmbeddedFile',
+    Subtype: PDFName.of('text/plain'),
+    Params: { Size: payload.length },
+  })
+  const fileStreamRef = doc.context.register(fileStream)
+  const fileSpec = doc.context.obj({
+    Type: 'Filespec',
+    F: PDFString.of(fileName),
+    UF: PDFHexString.fromText(fileName),
+    EF: { F: fileStreamRef },
+    Desc: PDFHexString.fromText(description),
+  })
+  const fileSpecRef = doc.context.register(fileSpec)
+  const names = embeddedFilesNameArray(doc)
+  names.push(PDFHexString.fromText(fileName))
+  names.push(fileSpecRef)
+  catalogAfArray(doc).push(fileSpecRef)
+  return fileSpecRef
+}
+
+/**
+ * Add a PDF FileAttachment annotation on selected pages at the overlay box.
+ * Empty `contents` still creates an empty `.txt` EmbeddedFile.
+ * This is not a comment, not AcroForm, and not XFA.
+ */
+export async function addFileAttachments(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  contents = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đính kèm.')
+  }
+  const taken = embeddedFileNames(doc)
+  const payload = new TextEncoder().encode(contents)
+  const note = contents.trim()
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const name = nextAttachmentName(taken, index)
+    const fileName = `${name}.txt`
+    const fileSpecRef = embedPlainTextFile(doc, fileName, payload, note || name)
+    const annot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'FileAttachment',
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      Contents: PDFHexString.fromText(note || name),
+      Name: ATTACHMENT_ICON,
+      FS: fileSpecRef,
+      T: PDFHexString.fromText('Smart-Read'),
+      F: 4,
+    })
+    pageAnnotsArray(doc, page).push(doc.context.register(annot))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default
