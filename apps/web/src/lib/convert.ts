@@ -128,6 +128,8 @@ export type ExportFormat =
   | 'cobiexml'
   | 'landinfra'
   | 'infragml'
+  | 'opendrive'
+  | 'railml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -2862,6 +2864,45 @@ ${members}
 `
 }
 
+export function toOpendrive(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const roads = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <road name="Trang ${index + 1}" id="${index + 1}" length="1" junction="-1">
+    <description>${note}</description>
+  </road>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="4" name="${heading}"/>
+${roads}
+</OpenDRIVE>
+`
+}
+
+export function toRailml(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const lines = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <line id="line-${index + 1}">
+    <name>Trang ${index + 1}</name>
+    <description>${note}</description>
+  </line>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<railml xmlns="https://www.railml.org/schemas/3.2">
+  <metadata>
+    <name>${heading}</name>
+  </metadata>
+${lines}
+</railml>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -3915,6 +3956,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/landinfra+xml;charset=utf-8'
     case 'infragml':
       return 'application/infragml+xml;charset=utf-8'
+    case 'opendrive':
+      return 'application/vnd.opendrive+xml;charset=utf-8'
+    case 'railml':
+      return 'application/railml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

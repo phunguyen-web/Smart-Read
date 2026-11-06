@@ -2521,6 +2521,127 @@ export async function addFileAttachments(
   return new Uint8Array(await doc.save())
 }
 
+export type EmbeddedAttachment = {
+  name: string
+  pageIndex: number
+  attachmentIndex: number
+  bytes: Uint8Array
+  description: string
+}
+
+function asPdfDict(doc: PDFDocument, value: unknown): PDFDict | null {
+  if (value instanceof PDFDict) {
+    return value
+  }
+  if (value instanceof PDFRef) {
+    const looked = doc.context.lookup(value)
+    return looked instanceof PDFDict ? looked : null
+  }
+  return null
+}
+
+function asPdfStream(doc: PDFDocument, value: unknown): PDFRawStream | null {
+  if (value instanceof PDFRawStream) {
+    return value
+  }
+  if (value instanceof PDFRef) {
+    const looked = doc.context.lookup(value)
+    return looked instanceof PDFRawStream ? looked : null
+  }
+  return null
+}
+
+function decodedEmbeddedFileBytes(stream: PDFRawStream): Uint8Array {
+  try {
+    return decodePDFRawStream(stream).decode()
+  } catch {
+    return stream.getContents()
+  }
+}
+
+function embeddedFileFromSpec(
+  doc: PDFDocument,
+  spec: PDFDict,
+): { name: string; bytes: Uint8Array; description: string } | null {
+  const ef = asPdfDict(doc, spec.get(PDFName.of('EF')))
+  if (!ef) {
+    return null
+  }
+  const stream = asPdfStream(doc, ef.get(PDFName.of('F')) ?? ef.get(PDFName.of('UF')))
+  if (!stream) {
+    return null
+  }
+  const name =
+    decodePdfString(spec.get(PDFName.of('UF'))) ||
+    decodePdfString(spec.get(PDFName.of('F'))) ||
+    'attachment.txt'
+  const description = decodePdfString(spec.get(PDFName.of('Desc')))
+  return { name, bytes: decodedEmbeddedFileBytes(stream), description }
+}
+
+function fileAttachmentAnnotsOnPage(doc: PDFDocument, pageIndex: number): EmbeddedAttachment[] {
+  const annots = doc.getPage(pageIndex).node.lookupMaybe(PDFName.of('Annots'), PDFArray)
+  if (!annots) {
+    return []
+  }
+  const found: EmbeddedAttachment[] = []
+  let attachmentIndex = 0
+  for (let i = 0; i < annots.size(); i += 1) {
+    const annot = asPdfDict(doc, annots.get(i))
+    if (!annot) {
+      continue
+    }
+    if (annot.get(PDFName.of('Subtype')) !== PDFName.of('FileAttachment')) {
+      continue
+    }
+    const spec = asPdfDict(doc, annot.get(PDFName.of('FS')))
+    if (!spec) {
+      continue
+    }
+    const file = embeddedFileFromSpec(doc, spec)
+    if (!file) {
+      continue
+    }
+    found.push({
+      name: file.name,
+      pageIndex,
+      attachmentIndex,
+      bytes: file.bytes,
+      description: file.description,
+    })
+    attachmentIndex += 1
+  }
+  return found
+}
+
+/** List FileAttachment annotations on selected pages. Does not mutate the PDF. */
+export async function listFileAttachments(
+  bytes: Uint8Array,
+  pageIndexes: readonly number[],
+): Promise<EmbeddedAttachment[]> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted([...pageIndexes], false).filter(
+    (index) => Number.isInteger(index) && index >= 0 && index < count,
+  )
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để xem đính kèm.')
+  }
+  return unique.flatMap((index) => fileAttachmentAnnotsOnPage(doc, index))
+}
+
+/** Pull EmbeddedFile bytes from FileAttachment annotations on selected pages. Does not mutate the PDF. */
+export async function extractFileAttachments(
+  bytes: Uint8Array,
+  pageIndexes: readonly number[],
+): Promise<EmbeddedAttachment[]> {
+  const files = await listFileAttachments(bytes, pageIndexes)
+  if (files.length === 0) {
+    throw new Error('Không tìm thấy tệp đính kèm.')
+  }
+  return files
+}
+
 export const RADIO_PREFIX = 'smartread.radio'
 
 export const RADIO_OPTION = 'Yes' as const

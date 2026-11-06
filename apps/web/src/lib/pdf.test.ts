@@ -150,6 +150,8 @@ import {
   toCobiexml,
   toLandinfra,
   toInfragml,
+  toOpendrive,
+  toRailml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -295,6 +297,8 @@ import {
   pagesFromCobiexml,
   pagesFromLandinfra,
   pagesFromInfragml,
+  pagesFromOpendrive,
+  pagesFromRailml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -345,6 +349,8 @@ import {
 import {
   embeddedImageName,
   embeddedImageZipName,
+  embeddedAttachmentName,
+  embeddedAttachmentZipName,
   encryptedPdfName,
   extractedPdfName,
   imageKindFromFile,
@@ -471,6 +477,8 @@ import {
   ATTACHMENT_ICON,
   ATTACHMENT_PREFIX,
   attachmentNameForPage,
+  extractFileAttachments,
+  listFileAttachments,
   addRadioButtons,
   RADIO_FILL,
   RADIO_OPTION,
@@ -826,6 +834,32 @@ describe('pdf edits', () => {
     const again = await addFileAttachments(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addFileAttachments(bytes, [])).rejects.toThrow(/đính kèm/)
+  })
+
+  it('lists and extracts file attachments from selected pages', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(embeddedAttachmentName('demo.pdf', 0, 0, 'smartread.attach.p1.txt')).toBe(
+      'demo-trang-1-dinh-kem-1.txt',
+    )
+    expect(embeddedAttachmentZipName('demo.pdf')).toBe('demo-dinh-kem.zip')
+    await expect(listFileAttachments(bytes, [0])).resolves.toEqual([])
+    await expect(extractFileAttachments(bytes, [0])).rejects.toThrow(/đính kèm/)
+    await expect(extractFileAttachments(bytes, [])).rejects.toThrow(/đính kèm/)
+    const filled = await addFileAttachments(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'hello')
+    const listed = await listFileAttachments(filled, [0])
+    expect(listed).toHaveLength(1)
+    expect(listed[0]!.name).toBe(`${attachmentNameForPage(0)}.txt`)
+    expect(listed[0]!.pageIndex).toBe(0)
+    expect(listed[0]!.attachmentIndex).toBe(0)
+    expect(new TextDecoder().decode(listed[0]!.bytes)).toBe('hello')
+    const blank = await addFileAttachments(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const emptyFile = await extractFileAttachments(blank, [0])
+    expect(emptyFile).toHaveLength(1)
+    expect(emptyFile[0]!.bytes).toHaveLength(0)
+    const again = await addFileAttachments(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    const two = await extractFileAttachments(again, [0])
+    expect(two).toHaveLength(2)
+    expect(two.map((file) => new TextDecoder().decode(file.bytes))).toEqual(['hello', 'More'])
   })
 
   it('adds a fillable radio button at the overlay box', async () => {
@@ -5141,6 +5175,48 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toThrow(/featureMember/)
     expect(swapExtension('notes.infragml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.infragml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toOpendrive('Demo', ['Một', 'Hai\ndòng'])).toContain('<OpenDRIVE>')
+    expect(toOpendrive('Demo', ['Một'])).toContain('name="Demo"')
+    expect(toOpendrive('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromOpendrive(toOpendrive('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('opendrive', toOpendrive('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromOpendrive('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromOpendrive(
+        '<OpenDRIVE><junction name="Một"><description></description></junction></OpenDRIVE>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.opendrive', { type: '' }))).toBe('opendrive')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.opendrive.xml', { type: 'application/vnd.opendrive+xml' })),
+    ).toBe('opendrive')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xodr', { type: '' }))).toBe('opendrive')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.od', { type: '' }))).toThrow()
+    expect(() => pagesFromOpendrive('<OpenDRIVE></OpenDRIVE>')).toThrow(/OpenDRIVE/)
+    expect(swapExtension('notes.opendrive', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.opendrive.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.xodr', 'pdf')).toBe('notes.pdf')
+
+    expect(toRailml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="https://www.railml.org/schemas/3.2"')
+    expect(toRailml('Demo', ['Một'])).toContain('<name>Demo</name>')
+    expect(toRailml('Demo', ['Một'])).toContain('<description>Một</description>')
+    expect(pagesFromRailml(toRailml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('railml', toRailml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromRailml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromRailml('<railml xmlns="https://www.railml.org/schemas/3.2"><track><name>Một</name></track></railml>'),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.railml', { type: '' }))).toBe('railml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.railml.xml', { type: 'application/railml+xml' })),
+    ).toBe('railml')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.rail', { type: '' }))).toThrow()
+    expect(() => pagesFromRailml('<railml xmlns="https://www.railml.org/schemas/3.2"></railml>')).toThrow(
+      /RailML/,
+    )
+    expect(swapExtension('notes.railml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.railml.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

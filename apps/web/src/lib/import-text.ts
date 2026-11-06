@@ -131,6 +131,8 @@ export type ImportedTextKind =
   | 'cobiexml'
   | 'landinfra'
   | 'infragml'
+  | 'opendrive'
+  | 'railml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -710,6 +712,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'infragml') {
     return pagesFromInfragml(text)
+  }
+  if (kind === 'opendrive') {
+    return pagesFromOpendrive(text)
+  }
+  if (kind === 'railml') {
+    return pagesFromRailml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -4941,6 +4949,82 @@ export function pagesFromInfragml(text: string): string[] {
     return capPages(roads)
   }
   throw new Error('Tệp InfraGML cần các mục <featureMember> / <description>.')
+}
+
+function textFromOpendriveRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function opendriveRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:odr:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:odr:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromOpendriveRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromOpendrive(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = opendriveRecords(trimmed, 'road')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const junctions = opendriveRecords(trimmed, 'junction')
+  if (junctions.length > 0) {
+    return capPages(junctions)
+  }
+  throw new Error('Tệp OpenDRIVE cần các mục <road> / <description>.')
+}
+
+function textFromRailmlRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'Description') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'name') || xmlTagText(record, 'Name') || xmlAttr(record, 'name')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function railmlRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:rail:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:rail:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromRailmlRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromRailml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = railmlRecords(trimmed, 'line')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const tracks = railmlRecords(trimmed, 'track')
+  if (tracks.length > 0) {
+    return capPages(tracks)
+  }
+  throw new Error('Tệp RailML cần các mục <line> / <description>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
