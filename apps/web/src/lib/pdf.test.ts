@@ -212,6 +212,7 @@ import {
   toVxml,
   toPls,
   toMusicxml,
+  toMei,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -419,6 +420,7 @@ import {
   pagesFromVxml,
   pagesFromPls,
   pagesFromMusicxml,
+  pagesFromMei,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -702,6 +704,8 @@ import {
   addPageTransitions,
   PAGE_TRANSITION_DURATION,
   PAGE_TRANSITION_STYLE,
+  setPageDurations,
+  PAGE_DURATION,
   flattenAnnotations,
   setOpenAction,
   setViewerPreferences,
@@ -2278,6 +2282,31 @@ describe('pdf edits', () => {
       PDFName.of('Dissolve'),
     )
     await expect(addPageTransitions(bytes, [])).rejects.toThrow(/hiệu ứng/)
+  })
+
+  it('sets page Dur presentation duration on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(PAGE_DURATION).toBe(4)
+    expect(PAGE_DURATION).not.toBe(PAGE_TRANSITION_DURATION)
+    const filled = await setPageDurations(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    expect(doc.getPage(0).node.lookup(PDFName.of('Dur'), PDFNumber).asNumber()).toBe(PAGE_DURATION)
+    expect(doc.getPage(2).node.lookup(PDFName.of('Dur'), PDFNumber).asNumber()).toBe(PAGE_DURATION)
+    expect(doc.getPage(1).node.get(PDFName.of('Dur'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.get(PDFName.of('AA'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Collection'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Lang'))).toBeUndefined()
+    const again = await setPageDurations(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    expect(againDoc.getPage(1).node.lookup(PDFName.of('Dur'), PDFNumber).asNumber()).toBe(PAGE_DURATION)
+    expect(againDoc.getPage(0).node.lookup(PDFName.of('Dur'), PDFNumber).asNumber()).toBe(PAGE_DURATION)
+    await expect(setPageDurations(bytes, [])).rejects.toThrow(/thời lượng/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -8265,6 +8294,8 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toPls('Demo', ['Một'])).not.toContain('<score-partwise')
     expect(toPls('Demo', ['Một'])).not.toContain('<measure')
     expect(toPls('Demo', ['Một'])).not.toContain('<words>')
+    expect(toPls('Demo', ['Một'])).not.toContain('<mei')
+    expect(toPls('Demo', ['Một'])).not.toContain('<dir>')
     expect(pagesFromPls(toPls('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('pls', toPls('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromPls('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -8303,6 +8334,9 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toMusicxml('Demo', ['Một'])).not.toContain('<level1>')
     expect(toMusicxml('Demo', ['Một'])).not.toContain('<topic')
     expect(toMusicxml('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<mei')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<dir>')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<meiHead')
     expect(pagesFromMusicxml(toMusicxml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('musicxml', toMusicxml('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromMusicxml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -8324,6 +8358,53 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromMusicxml('<score-partwise></score-partwise>\n')).toThrow(/MusicXML/)
     expect(swapExtension('notes.musicxml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.musicxml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toMei('Demo', ['Một', 'Hai\ndòng'])).toContain('<mei')
+    expect(toMei('Demo', ['Một'])).toContain('<measure')
+    expect(toMei('Demo', ['Một'])).toContain('<dir>')
+    expect(toMei('Demo', ['Một'])).toContain('<meiHead')
+    expect(toMei('Demo', ['Một'])).toContain('<music')
+    expect(toMei('Demo', ['Một'])).toContain('Một')
+    expect(toMei('Demo', ['Một'])).toContain('Demo')
+    expect(toMei('Demo', ['Một'])).not.toContain('<score-partwise')
+    expect(toMei('Demo', ['Một'])).not.toContain('<words>')
+    expect(toMei('Demo', ['Một'])).not.toContain('<part-list>')
+    expect(toMei('Demo', ['Một'])).not.toContain('<lexicon')
+    expect(toMei('Demo', ['Một'])).not.toContain('<lexeme>')
+    expect(toMei('Demo', ['Một'])).not.toContain('<phoneme>')
+    expect(toMei('Demo', ['Một'])).not.toContain('<vxml')
+    expect(toMei('Demo', ['Một'])).not.toContain('<form>')
+    expect(toMei('Demo', ['Một'])).not.toContain('<prompt>')
+    expect(toMei('Demo', ['Một'])).not.toContain('<speak')
+    expect(toMei('Demo', ['Một'])).not.toContain('<math')
+    expect(toMei('Demo', ['Một'])).not.toContain('<mrow>')
+    expect(toMei('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toMei('Demo', ['Một'])).not.toContain('<level1>')
+    expect(toMei('Demo', ['Một'])).not.toContain('<topic')
+    expect(toMei('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(pagesFromMei(toMei('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('mei', toMei('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromMei('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromMei('<measure><dir>Một</dir></measure>\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.mei', { type: '' }))).toBe('mei')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.mei.xml', { type: 'application/mei+xml' })),
+    ).toBe('mei')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.musicxml', { type: '' }))).toBe('musicxml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.pls', { type: '' }))).toBe('pls')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vxml', { type: '' }))).toBe('vxml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ssml', { type: '' }))).toBe('ssml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mathml', { type: '' }))).toBe('mathml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dtbook', { type: '' }))).toBe('dtbook')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dita', { type: '' }))).toBe('dita')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mei.xml.xml', { type: '' }))).toBe('xml')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.mxl', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.mus', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.abc', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() => pagesFromMei('<mei></mei>\n')).toThrow(/MEI/)
+    expect(swapExtension('notes.mei', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.mei.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

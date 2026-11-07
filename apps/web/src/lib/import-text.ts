@@ -193,6 +193,7 @@ export type ImportedTextKind =
   | 'vxml'
   | 'pls'
   | 'musicxml'
+  | 'mei'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -958,6 +959,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'musicxml') {
     return pagesFromMusicxml(text)
+  }
+  if (kind === 'mei') {
+    return pagesFromMei(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7839,6 +7843,46 @@ export function pagesFromMusicxml(text: string): string[] {
     return capPages(words)
   }
   throw new Error('Tệp MusicXML cần các mục measure / words.')
+}
+
+function textFromMeiMeasure(record: string): string {
+  const dirs = [...record.matchAll(/<dir\b[^>]*>([\s\S]*?)<\/dir>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (dirs.length > 0) {
+    return dirs.join('\n')
+  }
+  const annots = [...record.matchAll(/<annot\b[^>]*>([\s\S]*?)<\/annot>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (annots.length > 0) {
+    return annots.join('\n')
+  }
+  const body = unescapeXml(record.replace(/<[^>]+>/g, '')).trim()
+  if (body && !/^Trang\s+\d+$/.test(body)) {
+    return body
+  }
+  return ''
+}
+
+export function pagesFromMei(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const measures = [...trimmed.matchAll(/<measure\b[^>]*>([\s\S]*?)<\/measure>/gi)]
+    .map((match) => textFromMeiMeasure(match[1]!))
+    .filter((page) => page.length > 0)
+  if (measures.length > 0) {
+    return capPages(measures)
+  }
+  const dirs = [...trimmed.matchAll(/<dir\b[^>]*>([\s\S]*?)<\/dir>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (dirs.length > 0) {
+    return capPages(dirs)
+  }
+  throw new Error('Tệp MEI cần các mục measure / dir.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
