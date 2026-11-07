@@ -164,6 +164,8 @@ export type ExportFormat =
   | 'vdv460'
   | 'xliff'
   | 'tmx'
+  | 'tbx'
+  | 'po'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3592,6 +3594,56 @@ ${items}
 `
 }
 
+export function toTbx(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const items = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <termEntry id="stop-${index + 1}">
+    <term>${note}</term>
+    <note>Trang ${index + 1}</note>
+  </termEntry>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<tbx type="TBX-Basic" xml:lang="vi">
+  <sourceDesc>${heading}</sourceDesc>
+${items}
+</tbx>
+`
+}
+
+export function escapePo(value: string): string {
+  return value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('"', '\\"')
+    .replaceAll('\r\n', '\\n')
+    .replaceAll('\n', '\\n')
+    .replaceAll('\r', '\\n')
+    .replaceAll('\t', '\\t')
+}
+
+export function toPo(title: string, pages: string[]): string {
+  const heading = escapePo((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const items = pages
+    .map((text, index) => {
+      const note = escapePo(text.trim() || '(không có chữ)')
+      return `#. Trang ${index + 1}
+msgid "${note}"
+msgstr "${note}"`
+    })
+    .join('\n\n')
+  return `msgid ""
+msgstr ""
+"Project-Id-Version: ${heading}\\n"
+"MIME-Version: 1.0\\n"
+"Content-Type: text/plain; charset=UTF-8\\n"
+"Language: vi\\n"
+
+${items}
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -4717,6 +4769,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/xliff+xml;charset=utf-8'
     case 'tmx':
       return 'application/tmx+xml;charset=utf-8'
+    case 'tbx':
+      return 'application/tbx+xml;charset=utf-8'
+    case 'po':
+      return 'text/x-po;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

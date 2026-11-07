@@ -167,6 +167,8 @@ export type ImportedTextKind =
   | 'vdv460'
   | 'xliff'
   | 'tmx'
+  | 'tbx'
+  | 'po'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -854,6 +856,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'tmx') {
     return pagesFromTmx(text)
+  }
+  if (kind === 'tbx') {
+    return pagesFromTbx(text)
+  }
+  if (kind === 'po') {
+    return pagesFromPo(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -6467,6 +6475,99 @@ export function pagesFromTmx(text: string): string[] {
     return capPages(segs)
   }
   throw new Error('Tệp TMX cần các mục <tu> / <seg>.')
+}
+
+function textFromTbxRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'term') ||
+    xmlTagText(record, 'tbx:term') ||
+    xmlTagText(record, 'text')
+  if (body) {
+    return body
+  }
+  const title =
+    xmlTagText(record, 'note') ||
+    xmlTagText(record, 'tbx:note') ||
+    xmlTagText(record, 'name') ||
+    xmlAttr(record, 'id')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  const plain = unescapeXml(record.replace(/<[^>]+>/g, '')).trim()
+  if (plain && !/^Trang\s+\d+$/.test(plain)) {
+    return plain
+  }
+  return ''
+}
+
+function tbxRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:tbx:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:tbx:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromTbxRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromTbx(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = tbxRecords(trimmed, 'termEntry')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const terms = tbxRecords(trimmed, 'term')
+  if (terms.length > 0) {
+    return capPages(terms)
+  }
+  throw new Error('Tệp TBX cần các mục <termEntry> / <term>.')
+}
+
+function unescapePo(value: string): string {
+  return value
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\')
+}
+
+function poQuoted(value: string): string {
+  return unescapePo(value).trim()
+}
+
+function textFromPoEntry(msgid: string, msgstr: string, comment: string): string {
+  const body = poQuoted(msgstr) || poQuoted(msgid)
+  if (body) {
+    return body
+  }
+  const note = comment.trim()
+  if (note && !/^Trang\s+\d+$/.test(note)) {
+    return note
+  }
+  return ''
+}
+
+export function pagesFromPo(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const entryPattern =
+    /(?:^|\n)(?:#\.\s*([^\n]*)\n)?msgid\s+"((?:\\.|[^"\\])*)"\s*\nmsgstr\s+"((?:\\.|[^"\\])*)"/g
+  const pages = [...trimmed.matchAll(entryPattern)]
+    .filter((match) => match[2] !== '')
+    .map((match) => textFromPoEntry(match[2]!, match[3]!, match[1] ?? ''))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const msgstrOnly = [...trimmed.matchAll(/(?:^|\n)msgstr\s+"((?:\\.|[^"\\])+)"/g)]
+    .map((match) => poQuoted(match[1]!))
+    .filter((page) => page.length > 0)
+  if (msgstrOnly.length > 0) {
+    return capPages(msgstrOnly)
+  }
+  throw new Error('Tệp PO cần các mục msgid / msgstr.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

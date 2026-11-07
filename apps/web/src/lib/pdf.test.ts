@@ -186,6 +186,8 @@ import {
   toVdv460,
   toXliff,
   toTmx,
+  toTbx,
+  toPo,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -367,6 +369,8 @@ import {
   pagesFromVdv460,
   pagesFromXliff,
   pagesFromTmx,
+  pagesFromTbx,
+  pagesFromPo,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -620,6 +624,9 @@ import {
   redactAnnotQuadPointsForBox,
   addPopupAnnotations,
   POPUP_COLOR,
+  addWatermarkAnnotations,
+  WATERMARK_ANNOT_COLOR,
+  watermarkAnnotPathOps,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -1637,6 +1644,42 @@ describe('pdf edits', () => {
       /cửa sổ/,
     )
     await expect(addPopupAnnotations(bytes, [])).rejects.toThrow(/cửa sổ/)
+  })
+
+  it('adds a watermark annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(WATERMARK_ANNOT_COLOR.b).toBeGreaterThan(WATERMARK_ANNOT_COLOR.r)
+    const ops = watermarkAnnotPathOps(100, 50, 2)
+    expect(ops).toContain(' re')
+    expect(ops.endsWith(' h')).toBe(false)
+    const filled = await addWatermarkAnnotations(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Watermark'))
+    expect(annot.lookupMaybe(PDFName.of('QuadPoints'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('Vertices'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('L'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('IC'), PDFArray)).toBeUndefined()
+    expect(annot.lookup(PDFName.of('FixedPrint'), PDFDict)).toBeTruthy()
+    expect(annot.lookup(PDFName.of('AP'), PDFDict)).toBeTruthy()
+    const contents = annot.lookup(PDFName.of('Contents'))
+    expect(contents instanceof PDFHexString || contents instanceof PDFString).toBe(true)
+    expect((contents as PDFHexString | PDFString).decodeText()).toBe('Hello')
+    const blank = await addWatermarkAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(1)
+    const blankContents = (await PDFDocument.load(blank)).context
+      .lookup(blankAnnot.get(0), PDFDict)
+      .lookup(PDFName.of('Contents'))
+    expect((blankContents as PDFHexString | PDFString).decodeText()).toBe('')
+    const pageBox = await addWatermarkAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addWatermarkAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addWatermarkAnnotations(bytes, [])).rejects.toThrow(/dấu nước/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -6663,6 +6706,36 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromTmx('<tmx version="1.4"></tmx>')).toThrow(/tu/)
     expect(swapExtension('notes.tmx', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.tmx.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toTbx('Demo', ['Một', 'Hai\ndòng'])).toContain('<tbx type="TBX-Basic"')
+    expect(toTbx('Demo', ['Một'])).toContain('<sourceDesc>Demo</sourceDesc>')
+    expect(toTbx('Demo', ['Một'])).toContain('<term>Một</term>')
+    expect(pagesFromTbx(toTbx('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('tbx', toTbx('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromTbx('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromTbx('<tbx type="TBX-Basic"><term>Một</term></tbx>')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.tbx', { type: '' }))).toBe('tbx')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.tbx.xml', { type: 'application/tbx+xml' })),
+    ).toBe('tbx')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromTbx('<tbx type="TBX-Basic"></tbx>')).toThrow(/termEntry/)
+    expect(swapExtension('notes.tbx', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.tbx.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toPo('Demo', ['Một', 'Hai\ndòng'])).toContain('Project-Id-Version: Demo')
+    expect(toPo('Demo', ['Một'])).toContain('msgid "Một"')
+    expect(toPo('Demo', ['Một'])).toContain('msgstr "Một"')
+    expect(pagesFromPo(toPo('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('po', toPo('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromPo('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromPo('msgstr "Một"\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.po', { type: '' }))).toBe('po')
+    expect(sourceKindFromFile(new File(['x'], 'notes.pot', { type: 'text/x-po' }))).toBe('po')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() => pagesFromPo('msgid ""\nmsgstr ""\n')).toThrow(/msgid/)
+    expect(swapExtension('notes.po', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.pot', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
