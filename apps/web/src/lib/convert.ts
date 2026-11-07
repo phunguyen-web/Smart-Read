@@ -186,6 +186,7 @@ export type ExportFormat =
   | 'jscal'
   | 'dtbook'
   | 'ssml'
+  | 'mathml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4157,6 +4158,28 @@ ${paras}
 `
 }
 
+export function toMathml(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const rows = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `    <mtext>${escapeHtml(line)}</mtext>`)
+        .join('\n')
+      return `  <mrow>
+    <mtext>Trang ${index + 1}</mtext>
+${lines}
+  </mrow>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <!-- ${heading} -->
+${rows}
+</math>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5326,6 +5349,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-dtbook+xml;charset=utf-8'
     case 'ssml':
       return 'application/ssml+xml;charset=utf-8'
+    case 'mathml':
+      return 'application/mathml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

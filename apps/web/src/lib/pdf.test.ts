@@ -208,6 +208,7 @@ import {
   toJscal,
   toDtbook,
   toSsml,
+  toMathml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -411,6 +412,7 @@ import {
   pagesFromJscal,
   pagesFromDtbook,
   pagesFromSsml,
+  pagesFromMathml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -704,6 +706,7 @@ import {
   languageTagFromOverlay,
   setMarkInfo,
   setXmpMetadata,
+  setOutputIntents,
   addSignatureFields,
   SIGNATURE_FIELD_PREFIX,
   SIGNATURE_FIELD_FILL,
@@ -2411,6 +2414,52 @@ describe('pdf edits', () => {
     expect(againXml).toContain('Trang 2')
     expect(againDoc.getPage(1).node.get(PDFName.of('Metadata'))).toBeInstanceOf(PDFRef)
     await expect(setXmpMetadata(bytes, [])).rejects.toThrow(/XMP/)
+  })
+
+  it('sets catalog OutputIntents and page Group on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    const tagged = await setOutputIntents(bytes, [2, 0])
+    expect(await pageCount(tagged)).toBe(3)
+    const doc = await PDFDocument.load(tagged)
+    const intents = doc.catalog.lookup(PDFName.of('OutputIntents'), PDFArray)
+    expect(intents.size()).toBe(1)
+    const intentRef = intents.get(0)
+    expect(intentRef).toBeInstanceOf(PDFRef)
+    const intent = doc.context.lookup(intentRef as PDFRef, PDFDict)
+    expect(intent.lookup(PDFName.of('Type'))).toBe(PDFName.of('OutputIntent'))
+    expect(intent.lookup(PDFName.of('S'))).toBe(PDFName.of('GTS_PDFA1'))
+    expect((intent.lookup(PDFName.of('OutputConditionIdentifier')) as PDFString).decodeText()).toBe(
+      'sRGB IEC61966-2.1',
+    )
+    const group0 = doc.getPage(0).node.lookup(PDFName.of('Group'), PDFDict)
+    expect(group0.lookup(PDFName.of('Type'))).toBe(PDFName.of('Group'))
+    expect(group0.lookup(PDFName.of('S'))).toBe(PDFName.of('Transparency'))
+    expect(group0.lookup(PDFName.of('CS'))).toBe(PDFName.of('DeviceRGB'))
+    expect(doc.getPage(2).node.lookup(PDFName.of('Group'), PDFDict).lookup(PDFName.of('S'))).toBe(
+      PDFName.of('Transparency'),
+    )
+    expect(doc.getPage(1).node.get(PDFName.of('Group'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('ViewerPreferences'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Threads'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Lang'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('MarkInfo'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Metadata'))).toBeUndefined()
+    const again = await setOutputIntents(tagged, [1])
+    const againDoc = await PDFDocument.load(again)
+    const againIntents = againDoc.catalog.lookup(PDFName.of('OutputIntents'), PDFArray)
+    expect(againIntents.size()).toBe(1)
+    const againRef = againIntents.get(0)
+    expect(againRef).toBeInstanceOf(PDFRef)
+    const againIntent = againDoc.context.lookup(againRef as PDFRef, PDFDict)
+    expect(againIntent.lookup(PDFName.of('Type'))).toBe(PDFName.of('OutputIntent'))
+    expect(againDoc.getPage(1).node.lookup(PDFName.of('Group'), PDFDict).lookup(PDFName.of('CS'))).toBe(
+      PDFName.of('DeviceRGB'),
+    )
+    await expect(setOutputIntents(bytes, [])).rejects.toThrow(/màu in/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -7915,6 +7964,35 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromSsml('<speak></speak>\n')).toThrow(/SSML/)
     expect(swapExtension('notes.ssml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.ssml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toMathml('Demo', ['Một', 'Hai\ndòng'])).toContain('<math')
+    expect(toMathml('Demo', ['Một'])).toContain('<mrow>')
+    expect(toMathml('Demo', ['Một'])).toContain('<mtext>')
+    expect(toMathml('Demo', ['Một'])).toContain('Một')
+    expect(toMathml('Demo', ['Một'])).toContain('Demo')
+    expect(toMathml('Demo', ['Một'])).not.toContain('<speak')
+    expect(toMathml('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toMathml('Demo', ['Một'])).not.toContain('<level1>')
+    expect(toMathml('Demo', ['Một'])).not.toContain('<topic')
+    expect(toMathml('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(pagesFromMathml(toMathml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('mathml', toMathml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromMathml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromMathml('<mrow><mtext>Một</mtext></mrow>\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.mathml', { type: '' }))).toBe('mathml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.mathml.xml', { type: 'application/mathml+xml' })),
+    ).toBe('mathml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mml', { type: '' }))).toBe('mathml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ssml', { type: '' }))).toBe('ssml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dtbook', { type: '' }))).toBe('dtbook')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dita', { type: '' }))).toBe('dita')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mathml.xml.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromMathml('<math></math>\n')).toThrow(/MathML/)
+    expect(swapExtension('notes.mathml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.mathml.xml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.mml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

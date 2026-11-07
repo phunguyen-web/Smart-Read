@@ -5477,6 +5477,50 @@ export async function setXmpMetadata(
   return new Uint8Array(await doc.save())
 }
 
+/**
+ * Set catalog `/OutputIntents` (GTS_PDFA1 sRGB) and page `/Group`
+ * (`Type` Group, `S` Transparency, `CS` DeviceRGB) on unique-sorted selected
+ * pages. Empty indexes throw. Replacing an existing OutputIntents array is
+ * allowed. This is not Info dict `setMetadata`, not catalog `/Metadata` XMP,
+ * not an annotation, not overlay-box markup, not `/Lang`, not `/MarkInfo`,
+ * not `/Trans`, not flatten, not OpenAction, not ViewerPreferences, not
+ * OCProperties, not article threads, not AcroForm, and not associated files
+ * `/AF`.
+ */
+export async function setOutputIntents(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn màu in.')
+  }
+  const intentRef = doc.context.register(
+    doc.context.obj({
+      Type: 'OutputIntent',
+      S: 'GTS_PDFA1',
+      OutputConditionIdentifier: PDFString.of('sRGB IEC61966-2.1'),
+      Info: PDFString.of('sRGB IEC61966-2.1'),
+      RegistryName: PDFString.of('http://www.color.org'),
+    }),
+  )
+  doc.catalog.set(PDFName.of('OutputIntents'), doc.context.obj([intentRef]))
+  for (const index of unique) {
+    doc.getPage(index).node.set(
+      PDFName.of('Group'),
+      doc.context.obj({
+        Type: 'Group',
+        S: 'Transparency',
+        CS: 'DeviceRGB',
+        I: true,
+      }),
+    )
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

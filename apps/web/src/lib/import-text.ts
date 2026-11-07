@@ -189,6 +189,7 @@ export type ImportedTextKind =
   | 'jscal'
   | 'dtbook'
   | 'ssml'
+  | 'mathml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -942,6 +943,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'ssml') {
     return pagesFromSsml(text)
+  }
+  if (kind === 'mathml') {
+    return pagesFromMathml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7675,6 +7679,40 @@ export function pagesFromSsml(text: string): string[] {
     return capPages(sentences)
   }
   throw new Error('Tệp SSML cần các mục p / s.')
+}
+
+function textFromMathmlRow(record: string): string {
+  const texts = [...record.matchAll(/<mtext\b[^>]*>([\s\S]*?)<\/mtext>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (texts.length > 0) {
+    return texts.join('\n')
+  }
+  const body = unescapeXml(record.replace(/<[^>]+>/g, '')).trim()
+  if (body && !/^Trang\s+\d+$/.test(body)) {
+    return body
+  }
+  return ''
+}
+
+export function pagesFromMathml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const rows = [...trimmed.matchAll(/<mrow\b[^>]*>([\s\S]*?)<\/mrow>/gi)]
+    .map((match) => textFromMathmlRow(match[1]!))
+    .filter((page) => page.length > 0)
+  if (rows.length > 0) {
+    return capPages(rows)
+  }
+  const texts = [...trimmed.matchAll(/<mtext\b[^>]*>([\s\S]*?)<\/mtext>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (texts.length > 0) {
+    return capPages(texts)
+  }
+  throw new Error('Tệp MathML cần các mục mrow / mtext.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
