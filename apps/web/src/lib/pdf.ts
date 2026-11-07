@@ -9,8 +9,12 @@ import {
   PDFRef,
   PDFString,
   StandardFonts,
+  concatTransformationMatrix,
   decodePDFRawStream,
   degrees,
+  drawObject,
+  popGraphicsState,
+  pushGraphicsState,
   rgb,
 } from 'pdf-lib'
 import { PdfPasswordRequiredError, isPdfPasswordError } from './encrypt.ts'
@@ -4905,6 +4909,148 @@ export async function addPageTransitions(
         D: PAGE_TRANSITION_DURATION,
       }),
     )
+  }
+  return new Uint8Array(await doc.save())
+}
+
+function pdfNumberOf(value: unknown): number | undefined {
+  return value instanceof PDFNumber ? value.asNumber() : undefined
+}
+
+function annotRectBox(annot: PDFDict): { x: number; y: number; width: number; height: number } | undefined {
+  const rect = annot.lookupMaybe(PDFName.of('Rect'), PDFArray)
+  if (!rect || rect.size() < 4) {
+    return undefined
+  }
+  const x1 = pdfNumberOf(rect.get(0))
+  const y1 = pdfNumberOf(rect.get(1))
+  const x2 = pdfNumberOf(rect.get(2))
+  const y2 = pdfNumberOf(rect.get(3))
+  if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) {
+    return undefined
+  }
+  const x = Math.min(x1, x2)
+  const y = Math.min(y1, y2)
+  const width = Math.abs(x2 - x1)
+  const height = Math.abs(y2 - y1)
+  if (width <= 0 || height <= 0) {
+    return undefined
+  }
+  return { x, y, width, height }
+}
+
+function annotAppearanceRef(annot: PDFDict): PDFRef | undefined {
+  const ap = annot.lookupMaybe(PDFName.of('AP'), PDFDict)
+  if (!ap) {
+    return undefined
+  }
+  const normal = ap.get(PDFName.of('N'))
+  return normal instanceof PDFRef ? normal : undefined
+}
+
+function formBBoxSize(doc: PDFDocument, ref: PDFRef): { width: number; height: number } {
+  const obj = doc.context.lookup(ref)
+  const dict =
+    obj instanceof PDFRawStream
+      ? obj.dict
+      : obj instanceof PDFDict
+        ? obj
+        : undefined
+  const bbox = dict?.lookupMaybe(PDFName.of('BBox'), PDFArray)
+  if (!bbox || bbox.size() < 4) {
+    return { width: 1, height: 1 }
+  }
+  const x1 = pdfNumberOf(bbox.get(0)) ?? 0
+  const y1 = pdfNumberOf(bbox.get(1)) ?? 0
+  const x2 = pdfNumberOf(bbox.get(2)) ?? 1
+  const y2 = pdfNumberOf(bbox.get(3)) ?? 1
+  return {
+    width: Math.max(1, Math.abs(x2 - x1)),
+    height: Math.max(1, Math.abs(y2 - y1)),
+  }
+}
+
+function annotRgb(annot: PDFDict): { r: number; g: number; b: number } | undefined {
+  const color = annot.lookupMaybe(PDFName.of('C'), PDFArray)
+  if (!color || color.size() < 3) {
+    return undefined
+  }
+  const r = pdfNumberOf(color.get(0))
+  const g = pdfNumberOf(color.get(1))
+  const b = pdfNumberOf(color.get(2))
+  if (r === undefined || g === undefined || b === undefined) {
+    return undefined
+  }
+  return { r, g, b }
+}
+
+function flattenOneAnnot(
+  doc: PDFDocument,
+  page: ReturnType<PDFDocument['getPage']>,
+  annot: PDFDict,
+): void {
+  const box = annotRectBox(annot)
+  if (!box) {
+    return
+  }
+  const apRef = annotAppearanceRef(annot)
+  if (apRef) {
+    const name = page.node.newXObject('Fmt', apRef)
+    const bbox = formBBoxSize(doc, apRef)
+    const sx = box.width / bbox.width
+    const sy = box.height / bbox.height
+    page.pushOperators(
+      pushGraphicsState(),
+      concatTransformationMatrix(sx, 0, 0, sy, box.x, box.y),
+      drawObject(name),
+      popGraphicsState(),
+    )
+    return
+  }
+  const fill = annotRgb(annot) ?? { r: 0.75, g: 0.75, b: 0.75 }
+  page.drawRectangle({
+    x: box.x,
+    y: box.y,
+    width: box.width,
+    height: box.height,
+    color: rgb(fill.r, fill.g, fill.b),
+    opacity: 0.35,
+    borderWidth: 0,
+  })
+}
+
+/**
+ * Flatten PDF annotations on selected pages into page content, then drop
+ * `/Annots` on those pages. Appearance streams (`AP` / `N`) are drawn as form
+ * XObjects; annots without an appearance fall back to a filled `Rect`. Empty
+ * indexes throw. Pages with no annots succeed. This is not a new annotation,
+ * not a `/Trans` page transition, not overlay-box markup, not AcroForm, not
+ * XFA, and not applying redaction content removal. Replacing an already-flat
+ * page is allowed.
+ */
+export async function flattenAnnotations(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để làm phẳng chú thích.')
+  }
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray)
+    if (annots && annots.size() > 0) {
+      for (let i = 0; i < annots.size(); i += 1) {
+        const ref = annots.get(i)
+        const annot = ref instanceof PDFRef ? doc.context.lookup(ref, PDFDict) : undefined
+        if (annot) {
+          flattenOneAnnot(doc, page, annot)
+        }
+      }
+    }
+    page.node.delete(PDFName.of('Annots'))
   }
   return new Uint8Array(await doc.save())
 }

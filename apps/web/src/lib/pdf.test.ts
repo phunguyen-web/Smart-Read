@@ -199,6 +199,7 @@ import {
   toVtimezone,
   toValarm,
   toVevent,
+  toXcal,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -393,6 +394,7 @@ import {
   pagesFromVtimezone,
   pagesFromValarm,
   pagesFromVevent,
+  pagesFromXcal,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -676,6 +678,7 @@ import {
   addPageTransitions,
   PAGE_TRANSITION_DURATION,
   PAGE_TRANSITION_STYLE,
+  flattenAnnotations,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -2084,6 +2087,29 @@ describe('pdf edits', () => {
       PDFName.of('Dissolve'),
     )
     await expect(addPageTransitions(bytes, [])).rejects.toThrow(/hiệu ứng/)
+  })
+
+  it('flattens annotations on selected pages into page content', async () => {
+    const bytes = await samplePdf(['Note'])
+    const noted = await addStickyNotes(bytes, [0], OVERLAY_PRESETS.center, 'line', 'Hello')
+    expect((await PDFDocument.load(noted)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(1)
+    const flat = await flattenAnnotations(noted, [0])
+    expect(await pageCount(flat)).toBe(1)
+    const doc = await PDFDocument.load(flat)
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    const projected = await addProjectionAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line', 'Hello')
+    const flatProjected = await flattenAnnotations(projected, [0])
+    expect(
+      (await PDFDocument.load(flatProjected)).getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0,
+    ).toBe(0)
+    const again = await flattenAnnotations(flat, [0])
+    expect((await PDFDocument.load(again)).getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(
+      0,
+    )
+    const none = await flattenAnnotations(bytes, [0])
+    expect(await pageCount(none)).toBe(1)
+    await expect(flattenAnnotations(bytes, [])).rejects.toThrow(/làm phẳng/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -7349,6 +7375,32 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromVevent('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR\n')).toThrow(/VEVENT/)
     expect(swapExtension('notes.vevent', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.event', 'pdf')).toBe('notes.pdf')
+
+    expect(toXcal('Demo', ['Một', 'Hai\ndòng'])).toContain('<vevent>')
+    expect(toXcal('Demo', ['Một'])).toContain('xmlns="urn:ietf:params:xml:ns:icalendar-2.0"')
+    expect(toXcal('Demo', ['Một'])).toContain('<x-wr-calname><text>Demo</text></x-wr-calname>')
+    expect(toXcal('Demo', ['Một'])).toContain('<description><text>Một</text></description>')
+    expect(toXcal('Demo', ['Một'])).toContain('<status><text>CONFIRMED</text></status>')
+    expect(toXcal('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(pagesFromXcal(toXcal('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('xcal', toXcal('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromXcal('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromXcal('<description>Một</description>\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.xcal', { type: '' }))).toBe('xcal')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.ics.xml', { type: 'application/calendar+xml' })),
+    ).toBe('xcal')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ics', { type: '' }))).toBe('ics')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vevent', { type: '' }))).toBe('vevent')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() =>
+      pagesFromXcal(
+        '<icalendar xmlns="urn:ietf:params:xml:ns:icalendar-2.0"><vcalendar></vcalendar></icalendar>\n',
+      ),
+    ).toThrow(/xCal/)
+    expect(swapExtension('notes.xcal', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.ics.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

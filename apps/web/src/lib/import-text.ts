@@ -180,6 +180,7 @@ export type ImportedTextKind =
   | 'vtimezone'
   | 'valarm'
   | 'vevent'
+  | 'xcal'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -906,6 +907,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'vevent') {
     return pagesFromVevent(text)
+  }
+  if (kind === 'xcal') {
+    return pagesFromXcal(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7093,6 +7097,44 @@ export function pagesFromVevent(text: string): string[] {
     return capPages(descriptions)
   }
   throw new Error('Tệp sự kiện cần các mục VEVENT / DESCRIPTION.')
+}
+
+function textFromXcal(record: string): string {
+  const description = xmlTagText(record, 'description')
+  if (description) {
+    return description
+  }
+  const comment = xmlTagText(record, 'comment')
+  if (comment) {
+    return comment
+  }
+  const summary = xmlTagText(record, 'summary')
+  if (summary && !/^Trang\s+\d+$/.test(summary)) {
+    return summary
+  }
+  return ''
+}
+
+export function pagesFromXcal(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  if (/<vevent\b/i.test(trimmed)) {
+    const pages = [...trimmed.matchAll(/<vevent\b[^>]*>([\s\S]*?)<\/vevent>/gi)]
+      .map((match) => textFromXcal(match[1]!))
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  const descriptions = [...trimmed.matchAll(/<description\b[^>]*>([\s\S]*?)<\/description>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0)
+  if (descriptions.length > 0) {
+    return capPages(descriptions)
+  }
+  throw new Error('Tệp xCal cần các mục vevent / description.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

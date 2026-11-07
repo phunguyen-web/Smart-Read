@@ -177,6 +177,7 @@ export type ExportFormat =
   | 'vtimezone'
   | 'valarm'
   | 'vevent'
+  | 'xcal'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3903,6 +3904,48 @@ export function toVevent(title: string, pages: string[]): string {
   return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${events}\nEND:VCALENDAR\n`
 }
 
+export function formatXcalDate(totalSeconds: number): string {
+  const stamp = formatIcsDate(totalSeconds)
+  return `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(9, 11)}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}Z`
+}
+
+export function toXcal(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const events = pages
+    .map((text, index) => {
+      const body = escapeXml(text.trim() || '(không có chữ)')
+      const start = formatXcalDate(index * CUE_SECONDS)
+      const end = formatXcalDate((index + 1) * CUE_SECONDS)
+      return `      <vevent>
+        <properties>
+          <uid><text>page-${index + 1}@smart-read</text></uid>
+          <dtstamp><date-time>1970-01-01T00:00:00Z</date-time></dtstamp>
+          <dtstart><date-time>${start}</date-time></dtstart>
+          <dtend><date-time>${end}</date-time></dtend>
+          <summary><text>Trang ${index + 1}</text></summary>
+          <description><text>${body}</text></description>
+          <status><text>CONFIRMED</text></status>
+        </properties>
+      </vevent>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<icalendar xmlns="urn:ietf:params:xml:ns:icalendar-2.0">
+  <vcalendar>
+    <properties>
+      <prodid><text>-//Smart-Read//EN</text></prodid>
+      <version><text>2.0</text></version>
+      <calscale><text>GREGORIAN</text></calscale>
+      <x-wr-calname><text>${heading}</text></x-wr-calname>
+    </properties>
+    <components>
+${events}
+    </components>
+  </vcalendar>
+</icalendar>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5054,6 +5097,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-valarm;charset=utf-8'
     case 'vevent':
       return 'text/x-vevent;charset=utf-8'
+    case 'xcal':
+      return 'application/calendar+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
