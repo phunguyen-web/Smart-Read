@@ -2392,6 +2392,173 @@ export async function addSignatureFields(
   return new Uint8Array(await doc.save())
 }
 
+export const SUBMIT_FIELD_PREFIX = 'smartread.submit'
+
+export const RESET_FIELD_PREFIX = 'smartread.reset'
+
+export const SUBMIT_FIELD_FILL = { r: 0.82, g: 0.94, b: 0.84 } as const
+
+export const RESET_FIELD_FILL = { r: 0.97, g: 0.88, b: 0.8 } as const
+
+/** AcroForm pushbutton flag (`Ff` bit 17). */
+export const PUSHBUTTON_FLAG = 65536
+
+export const SUBMIT_FORM_URL = 'https://smart-read.local/submit'
+
+/** Helvetica / WinAnsi caption (`ử` in Gửi is not encodable). */
+export const SUBMIT_BUTTON_CAPTION = 'Gui'
+
+/** Helvetica / WinAnsi caption (`Xóa` folds to Xoa). */
+export const RESET_BUTTON_CAPTION = 'Xoa'
+
+/** AcroForm field name for a page: `smartread.submit.p{n}` then `p{n}s2`, … */
+export function submitFieldNameForPage(pageIndex: number, serial = 1): string {
+  const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
+  const n = Number.isInteger(serial) && serial >= 1 ? serial : 1
+  return n === 1 ? `${SUBMIT_FIELD_PREFIX}.p${page}` : `${SUBMIT_FIELD_PREFIX}.p${page}s${n}`
+}
+
+function nextSubmitFieldName(taken: Set<string>, pageIndex: number): string {
+  let serial = 1
+  let name = submitFieldNameForPage(pageIndex, serial)
+  while (taken.has(name)) {
+    serial += 1
+    name = submitFieldNameForPage(pageIndex, serial)
+  }
+  taken.add(name)
+  return name
+}
+
+/** AcroForm field name for a page: `smartread.reset.p{n}` then `p{n}s2`, … */
+export function resetFieldNameForPage(pageIndex: number, serial = 1): string {
+  const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
+  const n = Number.isInteger(serial) && serial >= 1 ? serial : 1
+  return n === 1 ? `${RESET_FIELD_PREFIX}.p${page}` : `${RESET_FIELD_PREFIX}.p${page}s${n}`
+}
+
+function nextResetFieldName(taken: Set<string>, pageIndex: number): string {
+  let serial = 1
+  let name = resetFieldNameForPage(pageIndex, serial)
+  while (taken.has(name)) {
+    serial += 1
+    name = resetFieldNameForPage(pageIndex, serial)
+  }
+  taken.add(name)
+  return name
+}
+
+type PushButtonAction =
+  | { kind: 'submit' }
+  | { kind: 'reset' }
+
+async function addPushButtonFields(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition,
+  size: RedactSizeId,
+  options: {
+    emptyError: string
+    caption: string
+    fill: { r: number; g: number; b: number }
+    nextName: (taken: Set<string>, pageIndex: number) => string
+    action: PushButtonAction
+  },
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error(options.emptyError)
+  }
+  const taken = acroFormFieldTitles(doc)
+  const fields = ensureAcroFormFields(doc)
+  const actionDict =
+    options.action.kind === 'submit'
+      ? {
+          Type: 'Action',
+          S: 'SubmitForm',
+          F: PDFString.of(SUBMIT_FORM_URL),
+        }
+      : {
+          Type: 'Action',
+          S: 'ResetForm',
+        }
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const widget = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Widget',
+      FT: 'Btn',
+      Ff: PUSHBUTTON_FLAG,
+      T: PDFString.of(options.nextName(taken, index)),
+      TU: PDFString.of(options.caption),
+      F: 4,
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      P: page.ref,
+      H: 'P',
+      MK: {
+        CA: PDFString.of(options.caption),
+        BG: [options.fill.r, options.fill.g, options.fill.b],
+        BC: [0.18, 0.28, 0.2],
+      },
+      A: actionDict,
+    })
+    const ref = doc.context.register(widget)
+    pageAnnotsArray(doc, page).push(ref)
+    fields.push(ref)
+  }
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Add an AcroForm submit pushbutton (`FT` `/Btn`, `Ff` pushbutton, `/A`
+ * SubmitForm) on selected pages at the overlay box. Empty indexes throw. New
+ * serial names are allowed on a page that already has a field. This is not
+ * catalog `/AA` `setAdditionalActions`, not OpenAction, not a signature field,
+ * not PKCS#7, not a text field, not a radio, not a checkbox, not XFA, not
+ * `/Trans`, not flatten, and not `/AF`.
+ */
+export async function addSubmitButtons(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+): Promise<Uint8Array> {
+  return addPushButtonFields(bytes, pageIndexes, position, size, {
+    emptyError: 'Chọn ít nhất một trang để gắn nút gửi.',
+    caption: SUBMIT_BUTTON_CAPTION,
+    fill: SUBMIT_FIELD_FILL,
+    nextName: nextSubmitFieldName,
+    action: { kind: 'submit' },
+  })
+}
+
+/**
+ * Add an AcroForm reset pushbutton (`FT` `/Btn`, `Ff` pushbutton, `/A`
+ * ResetForm) on selected pages at the overlay box. Empty indexes throw. New
+ * serial names are allowed on a page that already has a field. This is not
+ * catalog `/AA` `setAdditionalActions`, not OpenAction, not a submit button,
+ * not a signature field, not PKCS#7, not a text field, not a radio, not a
+ * checkbox, not XFA, not `/Trans`, not flatten, and not `/AF`.
+ */
+export async function addResetButtons(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+): Promise<Uint8Array> {
+  return addPushButtonFields(bytes, pageIndexes, position, size, {
+    emptyError: 'Chọn ít nhất một trang để gắn nút xóa.',
+    caption: RESET_BUTTON_CAPTION,
+    fill: RESET_FIELD_FILL,
+    nextName: nextResetFieldName,
+    action: { kind: 'reset' },
+  })
+}
+
 export const STICKY_NOTE_COLOR = { r: 1, g: 0.85, b: 0.2 } as const
 
 function pageAnnotsArray(doc: PDFDocument, page: ReturnType<PDFDocument['getPage']>): PDFArray {
