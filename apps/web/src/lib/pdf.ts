@@ -4627,6 +4627,86 @@ export async function addThreeDAnnotations(
   return new Uint8Array(await doc.save())
 }
 
+export const PRINTER_MARK_COLOR = { r: 0.08, g: 0.62, b: 0.74 } as const
+
+/** Closed plus operators for a PrinterMark annotation appearance, in form space. */
+export function printerMarkPathOps(w: number, h: number, inset: number): string {
+  const left = inset
+  const right = Math.max(inset + 0.5, w - inset)
+  const bottom = inset
+  const top = Math.max(inset + 0.5, h - inset)
+  const midX = (left + right) / 2
+  const midY = (bottom + top) / 2
+  const bar = Math.max(0.6, Math.min(right - left, top - bottom) * 0.18)
+  const f = (n: number) => n.toFixed(2)
+  return `${f(left)} ${f(midY - bar / 2)} m ${f(right)} ${f(midY - bar / 2)} l ${f(right)} ${f(midY + bar / 2)} l ${f(left)} ${f(midY + bar / 2)} l h ${f(midX - bar / 2)} ${f(bottom)} m ${f(midX + bar / 2)} ${f(bottom)} l ${f(midX + bar / 2)} ${f(top)} l ${f(midX - bar / 2)} ${f(top)} l h`
+}
+
+/**
+ * Add a PDF `/PrinterMark` annotation on selected pages at the overlay box.
+ * Empty `contents` still creates a silent printer's mark. This is not a `/3D`
+ * annotation, not a `/RichMedia` annotation, not a `/Movie` annotation, not a
+ * `/Sound` annotation, not a `/Screen` annotation, not the visual
+ * `addWatermark` page stamp, not a `/Watermark` annotation, not AcroForm, not
+ * XFA, not a sticky note, not a popup, not a stamp, not a free-text note, not
+ * a caret, not ink, not a square, not a circle, not a polygon, not a polyline,
+ * not a line, not a squiggly underline, not a highlight, not an underline,
+ * not a strikeout, not a redact, not a visual blackout, not a link, and not a
+ * file attachment. Uses the full overlay box (not forced to a geometric line)
+ * plus a filled `/AP` plus, `MN` Registration, and no `Movie` / no `Sound` /
+ * no `Name` / no `RichMediaContent` / no `3DD` / no `FixedPrint` / no `MK` /
+ * no `QuadPoints` / no `Vertices` / no `L` / no `IC` fill.
+ */
+export async function addPrinterMarkAnnotations(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  contents = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn dấu in.')
+  }
+  const note = contents.trim()
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const w = Math.max(1, box.width)
+    const h = Math.max(1, box.height)
+    const inset = Math.max(0.5, Math.min(w, h) * 0.08)
+    const path = printerMarkPathOps(w, h, inset)
+    const apRef = doc.context.register(
+      doc.context.flateStream(
+        `q ${PRINTER_MARK_COLOR.r} ${PRINTER_MARK_COLOR.g} ${PRINTER_MARK_COLOR.b} rg ${path} f Q`,
+        {
+          Type: 'XObject',
+          Subtype: 'Form',
+          BBox: [0, 0, w, h],
+          Resources: {},
+        },
+      ),
+    )
+    const annot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'PrinterMark',
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      Contents: PDFHexString.fromText(note),
+      C: [PRINTER_MARK_COLOR.r, PRINTER_MARK_COLOR.g, PRINTER_MARK_COLOR.b],
+      T: PDFHexString.fromText('Smart-Read'),
+      F: 4,
+      MN: 'Registration',
+      AP: { N: apRef },
+    })
+    pageAnnotsArray(doc, page).push(doc.context.register(annot))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

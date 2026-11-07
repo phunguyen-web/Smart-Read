@@ -173,6 +173,7 @@ export type ExportFormat =
   | 'vtodo'
   | 'vjournal'
   | 'vfreebusy'
+  | 'vavailability'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3806,6 +3807,31 @@ export function toVfreebusy(title: string, pages: string[]): string {
   return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${blocks}\nEND:VCALENDAR\n`
 }
 
+export function toVavailability(title: string, pages: string[]): string {
+  const heading = escapeIcs((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const blocks = pages
+    .map((text, index) => {
+      const body = text.trim() || '(không có chữ)'
+      const start = formatIcsDate(index * CUE_SECONDS)
+      const end = formatIcsDate((index + 1) * CUE_SECONDS)
+      return [
+        'BEGIN:VAVAILABILITY',
+        `UID:page-${index + 1}@smart-read`,
+        'DTSTAMP:19700101T000000Z',
+        `DTSTART:${start}`,
+        `DTEND:${end}`,
+        `COMMENT:${escapeIcs(body)}`,
+        'BEGIN:AVAILABLE',
+        `DTSTART:${start}`,
+        `DTEND:${end}`,
+        'END:AVAILABLE',
+        'END:VAVAILABILITY',
+      ].join('\n')
+    })
+    .join('\n')
+  return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${blocks}\nEND:VCALENDAR\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -4949,6 +4975,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-vjournal;charset=utf-8'
     case 'vfreebusy':
       return 'text/x-vfreebusy;charset=utf-8'
+    case 'vavailability':
+      return 'text/x-vavailability;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

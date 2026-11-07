@@ -195,6 +195,7 @@ import {
   toVtodo,
   toVjournal,
   toVfreebusy,
+  toVavailability,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -385,6 +386,7 @@ import {
   pagesFromVtodo,
   pagesFromVjournal,
   pagesFromVfreebusy,
+  pagesFromVavailability,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -656,6 +658,9 @@ import {
   addThreeDAnnotations,
   THREE_D_COLOR,
   threeDAnnotPathOps,
+  addPrinterMarkAnnotations,
+  PRINTER_MARK_COLOR,
+  printerMarkPathOps,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -1912,6 +1917,49 @@ describe('pdf edits', () => {
     const again = await addThreeDAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addThreeDAnnotations(bytes, [])).rejects.toThrow(/mô hình/)
+  })
+
+  it('adds a printer mark annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(PRINTER_MARK_COLOR.g).toBeGreaterThan(PRINTER_MARK_COLOR.r)
+    const ops = printerMarkPathOps(100, 50, 2)
+    expect(ops).toContain(' m ')
+    expect(ops.endsWith(' h')).toBe(true)
+    const filled = await addPrinterMarkAnnotations(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('PrinterMark'))
+    expect(annot.lookup(PDFName.of('MN'), PDFName)).toBe(PDFName.of('Registration'))
+    expect(annot.lookupMaybe(PDFName.of('Movie'), PDFDict)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('Sound'), PDFRef)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('Name'), PDFName)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('RichMediaContent'), PDFDict)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('3DD'), PDFRef)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('QuadPoints'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('Vertices'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('L'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('IC'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('MK'), PDFDict)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('FixedPrint'), PDFDict)).toBeUndefined()
+    expect(annot.lookup(PDFName.of('AP'), PDFDict)).toBeTruthy()
+    const contents = annot.lookup(PDFName.of('Contents'))
+    expect(contents instanceof PDFHexString || contents instanceof PDFString).toBe(true)
+    expect((contents as PDFHexString | PDFString).decodeText()).toBe('Hello')
+    const blank = await addPrinterMarkAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(1)
+    const blankContents = (await PDFDocument.load(blank)).context
+      .lookup(blankAnnot.get(0), PDFDict)
+      .lookup(PDFName.of('Contents'))
+    expect((blankContents as PDFHexString | PDFString).decodeText()).toBe('')
+    const pageBox = await addPrinterMarkAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addPrinterMarkAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addPrinterMarkAnnotations(bytes, [])).rejects.toThrow(/dấu in/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -7089,6 +7137,29 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.vfreebusy', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.freebusy', 'pdf')).toBe('notes.pdf')
+
+    expect(toVavailability('Demo', ['Một', 'Hai\ndòng'])).toContain('BEGIN:VAVAILABILITY')
+    expect(toVavailability('Demo', ['Một'])).toContain('X-WR-CALNAME:Demo')
+    expect(toVavailability('Demo', ['Một'])).toContain('COMMENT:Một')
+    expect(toVavailability('Demo', ['Một'])).toContain('BEGIN:AVAILABLE')
+    expect(pagesFromVavailability(toVavailability('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vavailability', toVavailability('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVavailability('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromVavailability('COMMENT:Một\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vavailability', { type: '' }))).toBe(
+      'vavailability',
+    )
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.availability', { type: 'text/x-vavailability' })),
+    ).toBe('vavailability')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ics', { type: '' }))).toBe('ics')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vfreebusy', { type: '' }))).toBe('vfreebusy')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() => pagesFromVavailability('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR\n')).toThrow(
+      /VAVAILABILITY/,
+    )
+    expect(swapExtension('notes.vavailability', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.availability', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
