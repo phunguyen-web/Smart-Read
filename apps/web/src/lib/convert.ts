@@ -188,6 +188,7 @@ export type ExportFormat =
   | 'ssml'
   | 'mathml'
   | 'vxml'
+  | 'pls'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4205,6 +4206,28 @@ ${forms}
 `
 }
 
+export function toPls(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const lexemes = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `    <phoneme>${escapeHtml(line)}</phoneme>`)
+        .join('\n')
+      return `  <lexeme>
+    <grapheme>Trang ${index + 1}</grapheme>
+${lines}
+  </lexeme>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<lexicon version="1.0" xmlns="http://www.w3.org/2005/01/pronunciation-lexicon" alphabet="ipa" xml:lang="vi">
+  <!-- ${heading} -->
+${lexemes}
+</lexicon>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5378,6 +5401,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/mathml+xml;charset=utf-8'
     case 'vxml':
       return 'application/voicexml+xml;charset=utf-8'
+    case 'pls':
+      return 'application/pls+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
