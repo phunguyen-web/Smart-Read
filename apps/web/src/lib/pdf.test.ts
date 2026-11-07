@@ -204,6 +204,7 @@ import {
   toJcard,
   toXcard,
   toHcard,
+  toHcal,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -403,6 +404,7 @@ import {
   pagesFromJcard,
   pagesFromXcard,
   pagesFromHcard,
+  pagesFromHcal,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -691,6 +693,10 @@ import {
   setViewerPreferences,
   setOptionalContentGroups,
   setArticleThreads,
+  addSignatureFields,
+  SIGNATURE_FIELD_PREFIX,
+  SIGNATURE_FIELD_FILL,
+  signatureFieldNameForPage,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -965,6 +971,52 @@ describe('pdf edits', () => {
       .sort()
     expect(names).toEqual([textFieldNameForPage(0), textFieldNameForPage(0, 2)])
     await expect(addTextFields(bytes, [])).rejects.toThrow(/ô chữ/)
+  })
+
+  it('adds unsigned AcroForm signature fields on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(signatureFieldNameForPage(0)).toBe(`${SIGNATURE_FIELD_PREFIX}.p1`)
+    expect(signatureFieldNameForPage(0, 2)).toBe(`${SIGNATURE_FIELD_PREFIX}.p1s2`)
+    expect(SIGNATURE_FIELD_FILL.b).toBe(1)
+    const signed = await addSignatureFields(bytes, [2, 0], OVERLAY_PRESETS['top-left'], 'block')
+    expect(await pageCount(signed)).toBe(3)
+    const doc = await PDFDocument.load(signed)
+    const acro = doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict)
+    const fields = acro.lookup(PDFName.of('Fields'), PDFArray)
+    expect(fields.size()).toBe(2)
+    const firstRef = fields.get(0)
+    expect(firstRef).toBeInstanceOf(PDFRef)
+    const first = doc.context.lookup(firstRef as PDFRef, PDFDict)
+    expect(first.lookup(PDFName.of('Type'), PDFName)).toBe(PDFName.of('Annot'))
+    expect(first.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Widget'))
+    expect(first.lookup(PDFName.of('FT'), PDFName)).toBe(PDFName.of('Sig'))
+    const title = first.lookup(PDFName.of('T'))
+    expect((title as PDFHexString | PDFString).decodeText()).toBe(signatureFieldNameForPage(0))
+    expect(first.get(PDFName.of('P'))).toBe(doc.getPage(0).ref)
+    const rect = first.lookup(PDFName.of('Rect'), PDFArray)
+    expect(rect.size()).toBe(4)
+    expect(doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(1)
+    expect(doc.getPage(1).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(2).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(1)
+    expect(doc.catalog.lookupMaybe(PDFName.of('Threads'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('ViewerPreferences'), PDFDict)).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    const again = await addSignatureFields(signed, [0], OVERLAY_PRESETS['bottom-right'], 'line')
+    const againDoc = await PDFDocument.load(again)
+    const againFields = againDoc.catalog.lookup(PDFName.of('AcroForm'), PDFDict).lookup(PDFName.of('Fields'), PDFArray)
+    expect(againFields.size()).toBe(3)
+    const names = [0, 1, 2].map((i) => {
+      const dict = againDoc.context.lookup(againFields.get(i) as PDFRef, PDFDict)
+      return (dict.lookup(PDFName.of('T')) as PDFHexString | PDFString).decodeText()
+    })
+    expect(names.sort()).toEqual([
+      signatureFieldNameForPage(0),
+      signatureFieldNameForPage(0, 2),
+      signatureFieldNameForPage(2),
+    ])
+    await expect(addSignatureFields(bytes, [])).rejects.toThrow(/ký số/)
   })
 
   it('adds a sticky-note annotation at the overlay box', async () => {
@@ -7641,6 +7693,32 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromHcard('<div class="hcards"></div>\n')).toThrow(/hCard/)
     expect(swapExtension('notes.hcard', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.hcard.html', 'pdf')).toBe('notes.pdf')
+
+    expect(toHcal('Demo', ['Một', 'Hai\ndòng'])).toContain('class="vevent"')
+    expect(toHcal('Demo', ['Một'])).toContain('class="summary"')
+    expect(toHcal('Demo', ['Một'])).toContain('class="description"')
+    expect(toHcal('Demo', ['Một'])).toContain('Một')
+    expect(toHcal('Demo', ['Một'])).toContain('Demo')
+    expect(toHcal('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toHcal('Demo', ['Một'])).not.toContain('<vevent>')
+    expect(toHcal('Demo', ['Một'])).not.toContain('["vevent"')
+    expect(toHcal('Demo', ['Một'])).not.toContain('class="vcard"')
+    expect(pagesFromHcal(toHcal('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('hcal', toHcal('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromHcal('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromHcal('<span class="description">Một</span>\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.hcal', { type: '' }))).toBe('hcal')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.hcal.html', { type: 'text/x-hcal+html' })),
+    ).toBe('hcal')
+    expect(sourceKindFromFile(new File(['x'], 'notes.html', { type: '' }))).toBe('html')
+    expect(sourceKindFromFile(new File(['x'], 'notes.htm', { type: '' }))).toBe('html')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ics', { type: '' }))).toBe('ics')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vevent', { type: '' }))).toBe('vevent')
+    expect(sourceKindFromFile(new File(['x'], 'notes.hcard', { type: '' }))).toBe('hcard')
+    expect(() => pagesFromHcal('<div class="vevents"></div>\n')).toThrow(/hCal/)
+    expect(swapExtension('notes.hcal', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.hcal.html', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

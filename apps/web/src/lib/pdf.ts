@@ -2275,6 +2275,123 @@ export async function addTextFields(
   return new Uint8Array(await doc.save())
 }
 
+export const SIGNATURE_FIELD_PREFIX = 'smartread.sig'
+
+export const SIGNATURE_FIELD_FILL = { r: 0.93, g: 0.96, b: 1 } as const
+
+/** AcroForm field name for a page: `smartread.sig.p{n}` then `p{n}s2`, … (no nested terminal). */
+export function signatureFieldNameForPage(pageIndex: number, serial = 1): string {
+  const page = Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : 1
+  const n = Number.isInteger(serial) && serial >= 1 ? serial : 1
+  return n === 1 ? `${SIGNATURE_FIELD_PREFIX}.p${page}` : `${SIGNATURE_FIELD_PREFIX}.p${page}s${n}`
+}
+
+function nextSignatureFieldName(taken: Set<string>, pageIndex: number): string {
+  let serial = 1
+  let name = signatureFieldNameForPage(pageIndex, serial)
+  while (taken.has(name)) {
+    serial += 1
+    name = signatureFieldNameForPage(pageIndex, serial)
+  }
+  taken.add(name)
+  return name
+}
+
+function acroFormFieldTitles(doc: PDFDocument): Set<string> {
+  const names = new Set<string>()
+  try {
+    for (const field of doc.getForm().getFields()) {
+      names.add(field.getName())
+    }
+  } catch {
+    /* pdf-lib may skip or reject /Sig until Fields are walked */
+  }
+  const acroForm = doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict)
+  if (!acroForm) {
+    return names
+  }
+  const fields = acroForm.lookupMaybe(PDFName.of('Fields'), PDFArray)
+  if (!fields) {
+    return names
+  }
+  for (let i = 0; i < fields.size(); i += 1) {
+    const item = fields.get(i)
+    const dict = item instanceof PDFRef ? doc.context.lookup(item, PDFDict) : (item as PDFDict)
+    const title =
+      dict.lookupMaybe(PDFName.of('T'), PDFString) ?? dict.lookupMaybe(PDFName.of('T'), PDFHexString)
+    if (title) {
+      names.add((title as PDFHexString | PDFString).decodeText())
+    }
+  }
+  return names
+}
+
+function ensureAcroFormFields(doc: PDFDocument): PDFArray {
+  try {
+    doc.getForm()
+  } catch {
+    /* existing /Sig widgets may not round-trip through PDFForm */
+  }
+  let acroForm = doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict)
+  if (!acroForm) {
+    acroForm = doc.context.obj({ Fields: [] }) as PDFDict
+    doc.catalog.set(PDFName.of('AcroForm'), acroForm)
+  }
+  let fields = acroForm.lookupMaybe(PDFName.of('Fields'), PDFArray)
+  if (!fields) {
+    fields = doc.context.obj([]) as PDFArray
+    acroForm.set(PDFName.of('Fields'), fields)
+  }
+  return fields
+}
+
+/**
+ * Add an unsigned AcroForm signature field (`FT` `/Sig`, widget annot) on
+ * selected pages at the overlay box. Empty indexes throw. New serial names are
+ * allowed on a page that already has a field. This is not ink `signPages`,
+ * not a text field, not XFA, not `/Trans`, not flatten, not OpenAction, not
+ * ViewerPreferences, not OCProperties, not article threads, and not `/AF`.
+ */
+export async function addSignatureFields(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn ký số.')
+  }
+  const taken = acroFormFieldTitles(doc)
+  const fields = ensureAcroFormFields(doc)
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const widget = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Widget',
+      FT: 'Sig',
+      T: PDFString.of(nextSignatureFieldName(taken, index)),
+      F: 4,
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      P: page.ref,
+      H: 'N',
+      MK: {
+        BG: [SIGNATURE_FIELD_FILL.r, SIGNATURE_FIELD_FILL.g, SIGNATURE_FIELD_FILL.b],
+        BC: [0.12, 0.22, 0.48],
+      },
+    })
+    const ref = doc.context.register(widget)
+    pageAnnotsArray(doc, page).push(ref)
+    fields.push(ref)
+  }
+  return new Uint8Array(await doc.save())
+}
+
 export const STICKY_NOTE_COLOR = { r: 1, g: 0.85, b: 0.2 } as const
 
 function pageAnnotsArray(doc: PDFDocument, page: ReturnType<PDFDocument['getPage']>): PDFArray {

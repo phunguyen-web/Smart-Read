@@ -182,6 +182,7 @@ export type ExportFormat =
   | 'jcard'
   | 'xcard'
   | 'hcard'
+  | 'hcal'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4052,6 +4053,30 @@ ${cards}
 `
 }
 
+export function toHcal(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const events = pages
+    .map((text, index) => {
+      const description = escapeHtml(text.trim() || '(không có chữ)').replace(/\n/g, '<br>')
+      return `  <div class="vevent">
+    <span class="summary">Trang ${index + 1}</span>
+    <span class="description">${description}</span>
+  </div>`
+    })
+    .join('\n')
+  return `<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <title>${heading}</title>
+</head>
+<body>
+${events}
+</body>
+</html>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5213,6 +5238,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vcard+xml;charset=utf-8'
     case 'hcard':
       return 'text/x-hcard+html;charset=utf-8'
+    case 'hcal':
+      return 'text/x-hcal+html;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

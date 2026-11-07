@@ -185,6 +185,7 @@ export type ImportedTextKind =
   | 'jcard'
   | 'xcard'
   | 'hcard'
+  | 'hcal'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -926,6 +927,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'hcard') {
     return pagesFromHcard(text)
+  }
+  if (kind === 'hcal') {
+    return pagesFromHcal(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7476,6 +7480,49 @@ export function pagesFromHcard(text: string): string[] {
     return capPages(notes)
   }
   throw new Error('Tệp hCard cần các mục vcard / note.')
+}
+
+function textFromHcal(record: string): string {
+  const description =
+    htmlClassText(record, 'description') || htmlClassText(record, 'p-description')
+  if (description) {
+    return description
+  }
+  const summary = htmlClassText(record, 'summary') || htmlClassText(record, 'p-summary')
+  if (summary && !/^Trang\s+\d+$/.test(summary)) {
+    return summary
+  }
+  return ''
+}
+
+export function pagesFromHcal(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const events = [
+    ...trimmed.matchAll(
+      /<(?:div|article|section|span)[^>]*class=["'][^"']*\b(?:vevent|h-event)\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|article|section|span)>/gi,
+    ),
+  ]
+    .map((match) => textFromHcal(match[1]!))
+    .filter((page) => page.length > 0)
+  if (events.length > 0) {
+    return capPages(events)
+  }
+  const descriptions = [
+    ...trimmed.matchAll(
+      /<[^>]*class=["'][^"']*\b(?:description|p-description)\b[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/gi,
+    ),
+  ]
+    .map((match) =>
+      unescapeHtmlEntities(match[1]!.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim(),
+    )
+    .filter((page) => page.length > 0)
+  if (descriptions.length > 0) {
+    return capPages(descriptions)
+  }
+  throw new Error('Tệp hCal cần các mục vevent / description.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
