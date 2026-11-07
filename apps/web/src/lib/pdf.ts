@@ -4868,6 +4868,47 @@ export async function addProjectionAnnotations(
   return new Uint8Array(await doc.save())
 }
 
+export const PAGE_TRANSITION_STYLE = 'Dissolve' as const
+export const PAGE_TRANSITION_DURATION = 1
+
+/**
+ * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
+ * `D` 1). Empty indexes throw. This is a page dictionary transition, not a
+ * `/Projection` annotation, not a `/TrapNet` annotation, not a `/PrinterMark`
+ * annotation, not a `/3D` annotation, not a `/RichMedia` annotation, not a
+ * `/Movie` annotation, not a `/Sound` annotation, not a `/Screen` annotation,
+ * not the visual `addWatermark` page stamp, not a `/Watermark` annotation, not
+ * AcroForm, not XFA, not a sticky note, not a popup, not a stamp, not a
+ * free-text note, not a caret, not ink, not a square, not a circle, not a
+ * polygon, not a polyline, not a line, not a squiggly underline, not a
+ * highlight, not an underline, not a strikeout, not a redact, not a visual
+ * blackout, not a link, and not a file attachment. Replacing an existing
+ * `/Trans` is allowed (one transition per page).
+ */
+export async function addPageTransitions(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn hiệu ứng.')
+  }
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    page.node.set(
+      PDFName.of('Trans'),
+      doc.context.obj({
+        Type: 'Trans',
+        S: PAGE_TRANSITION_STYLE,
+        D: PAGE_TRANSITION_DURATION,
+      }),
+    )
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

@@ -176,6 +176,7 @@ export type ExportFormat =
   | 'vavailability'
   | 'vtimezone'
   | 'valarm'
+  | 'vevent'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3878,6 +3879,30 @@ export function toValarm(title: string, pages: string[]): string {
   return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${alarms}\nEND:VCALENDAR\n`
 }
 
+export function toVevent(title: string, pages: string[]): string {
+  const heading = escapeIcs((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const events = pages
+    .map((text, index) => {
+      const body = text.trim() || '(không có chữ)'
+      const summary = escapeIcs(`Trang ${index + 1}`)
+      const start = formatIcsDate(index * CUE_SECONDS)
+      const end = formatIcsDate((index + 1) * CUE_SECONDS)
+      return [
+        'BEGIN:VEVENT',
+        `UID:page-${index + 1}@smart-read`,
+        'DTSTAMP:19700101T000000Z',
+        `DTSTART:${start}`,
+        `DTEND:${end}`,
+        `SUMMARY:${summary}`,
+        `DESCRIPTION:${escapeIcs(body)}`,
+        'STATUS:CONFIRMED',
+        'END:VEVENT',
+      ].join('\n')
+    })
+    .join('\n')
+  return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${events}\nEND:VCALENDAR\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5027,6 +5052,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-vtimezone;charset=utf-8'
     case 'valarm':
       return 'text/x-valarm;charset=utf-8'
+    case 'vevent':
+      return 'text/x-vevent;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

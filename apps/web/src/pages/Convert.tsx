@@ -175,6 +175,7 @@ import {
   toVavailability,
   toVtimezone,
   toValarm,
+  toVevent,
   toJson,
   toJsonl,
   toLatex,
@@ -368,6 +369,7 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'vavailability', label: 'VAVAILABILITY', hint: 'iCalendar VAVAILABILITY, một khoảng rảnh mỗi trang' },
   { id: 'vtimezone', label: 'VTIMEZONE', hint: 'iCalendar VTIMEZONE, một múi giờ mỗi trang' },
   { id: 'valarm', label: 'VALARM', hint: 'iCalendar VALARM, một báo thức mỗi trang' },
+  { id: 'vevent', label: 'VEVENT', hint: 'iCalendar VEVENT, một sự kiện mỗi trang' },
   { id: 'srt', label: 'SRT', hint: 'Phụ đề .srt, một cue mỗi trang' },
   { id: 'vtt', label: 'VTT', hint: 'WebVTT, NOTE title + một cue mỗi trang' },
   { id: 'lrc', label: 'LRC', hint: 'Lời bài hát [mm:ss.xx], một dòng mỗi trang' },
@@ -1433,6 +1435,11 @@ export function Convert() {
       } else if (format === 'valarm') {
         downloadBlob(
           new Blob([toValarm(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'vevent') {
+        downloadBlob(
+          new Blob([toVevent(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
       } else if (format === 'docx' || format === 'doc') {

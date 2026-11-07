@@ -198,6 +198,7 @@ import {
   toVavailability,
   toVtimezone,
   toValarm,
+  toVevent,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -391,6 +392,7 @@ import {
   pagesFromVavailability,
   pagesFromVtimezone,
   pagesFromValarm,
+  pagesFromVevent,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -671,6 +673,9 @@ import {
   addProjectionAnnotations,
   PROJECTION_COLOR,
   projectionPathOps,
+  addPageTransitions,
+  PAGE_TRANSITION_DURATION,
+  PAGE_TRANSITION_STYLE,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -2059,6 +2064,26 @@ describe('pdf edits', () => {
     const again = await addProjectionAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addProjectionAnnotations(bytes, [])).rejects.toThrow(/chiếu/)
+  })
+
+  it('adds a dissolve page transition on selected pages', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(PAGE_TRANSITION_STYLE).toBe('Dissolve')
+    expect(PAGE_TRANSITION_DURATION).toBe(1)
+    const filled = await addPageTransitions(bytes, [0])
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const trans = doc.getPage(0).node.lookup(PDFName.of('Trans'), PDFDict)
+    expect(trans.lookup(PDFName.of('Type'), PDFName)).toBe(PDFName.of('Trans'))
+    expect(trans.lookup(PDFName.of('S'), PDFName)).toBe(PDFName.of('Dissolve'))
+    expect(trans.lookup(PDFName.of('D'), PDFNumber).asNumber()).toBe(1)
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    const again = await addPageTransitions(filled, [0])
+    const againDoc = await PDFDocument.load(again)
+    expect(againDoc.getPage(0).node.lookup(PDFName.of('Trans'), PDFDict).lookup(PDFName.of('S'), PDFName)).toBe(
+      PDFName.of('Dissolve'),
+    )
+    await expect(addPageTransitions(bytes, [])).rejects.toThrow(/hiệu ứng/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -7304,6 +7329,26 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromValarm('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR\n')).toThrow(/VALARM/)
     expect(swapExtension('notes.valarm', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.alarm', 'pdf')).toBe('notes.pdf')
+
+    expect(toVevent('Demo', ['Một', 'Hai\ndòng'])).toContain('BEGIN:VEVENT')
+    expect(toVevent('Demo', ['Một'])).toContain('X-WR-CALNAME:Demo')
+    expect(toVevent('Demo', ['Một'])).toContain('DESCRIPTION:Một')
+    expect(toVevent('Demo', ['Một'])).toContain('STATUS:CONFIRMED')
+    expect(toVevent('Demo', ['Một'])).toContain('SUMMARY:Trang 1')
+    expect(pagesFromVevent(toVevent('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vevent', toVevent('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVevent('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromVevent('DESCRIPTION:Một\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vevent', { type: '' }))).toBe('vevent')
+    expect(sourceKindFromFile(new File(['x'], 'notes.event', { type: 'text/x-vevent' }))).toBe(
+      'vevent',
+    )
+    expect(sourceKindFromFile(new File(['x'], 'notes.ics', { type: '' }))).toBe('ics')
+    expect(sourceKindFromFile(new File(['x'], 'notes.valarm', { type: '' }))).toBe('valarm')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() => pagesFromVevent('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR\n')).toThrow(/VEVENT/)
+    expect(swapExtension('notes.vevent', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.event', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
