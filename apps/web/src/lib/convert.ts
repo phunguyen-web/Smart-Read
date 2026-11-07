@@ -170,6 +170,7 @@ export type ExportFormat =
   | 'vcard'
   | 'rdf'
   | 'opds'
+  | 'vtodo'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3738,6 +3739,28 @@ ${entries}
 `
 }
 
+export function toVtodo(title: string, pages: string[]): string {
+  const heading = escapeIcs((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const todos = pages
+    .map((text, index) => {
+      const body = text.trim() || '(không có chữ)'
+      const summary = escapeIcs(`Trang ${index + 1}`)
+      const due = formatIcsDate((index + 1) * CUE_SECONDS)
+      return [
+        'BEGIN:VTODO',
+        `UID:page-${index + 1}@smart-read`,
+        'DTSTAMP:19700101T000000Z',
+        `DUE:${due}`,
+        `SUMMARY:${summary}`,
+        `DESCRIPTION:${escapeIcs(body)}`,
+        'STATUS:NEEDS-ACTION',
+        'END:VTODO',
+      ].join('\n')
+    })
+    .join('\n')
+  return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${todos}\nEND:VCALENDAR\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -4875,6 +4898,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/rdf+xml;charset=utf-8'
     case 'opds':
       return 'application/opds+xml;charset=utf-8'
+    case 'vtodo':
+      return 'text/x-vtodo;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
