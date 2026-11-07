@@ -185,6 +185,7 @@ export type ExportFormat =
   | 'hcal'
   | 'jscal'
   | 'dtbook'
+  | 'ssml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4134,6 +4135,28 @@ ${levels}
 `
 }
 
+export function toSsml(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const paras = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `    <s>${escapeHtml(line)}</s>`)
+        .join('\n')
+      return `  <p>
+    <s>Trang ${index + 1}</s>
+${lines}
+  </p>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<speak version="1.1" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="vi">
+  <!-- ${heading} -->
+${paras}
+</speak>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5301,6 +5324,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/jscalendar+json;charset=utf-8'
     case 'dtbook':
       return 'application/x-dtbook+xml;charset=utf-8'
+    case 'ssml':
+      return 'application/ssml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

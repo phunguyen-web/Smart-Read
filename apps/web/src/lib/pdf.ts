@@ -5412,6 +5412,71 @@ export async function setMarkInfo(
   return new Uint8Array(await doc.save())
 }
 
+function xmpPacket(pageIndexes: readonly number[]): string {
+  const subjects = pageIndexes
+    .map((index) => `     <rdf:li>Trang ${index + 1}</rdf:li>`)
+    .join('\n')
+  return `<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:pdf="http://ns.adobe.com/pdf/1.3/">
+   <dc:format>application/pdf</dc:format>
+   <dc:title>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default">Smart-Read</rdf:li>
+    </rdf:Alt>
+   </dc:title>
+   <dc:subject>
+    <rdf:Bag>
+${subjects}
+    </rdf:Bag>
+   </dc:subject>
+   <pdf:Producer>Smart-Read</pdf:Producer>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="w"?>
+`
+}
+
+function embedXmpStream(doc: PDFDocument, pageIndexes: readonly number[]): PDFRef {
+  const xml = new TextEncoder().encode(xmpPacket(pageIndexes))
+  return doc.context.register(
+    doc.context.flateStream(xml, {
+      Type: 'Metadata',
+      Subtype: 'XML',
+    }),
+  )
+}
+
+/**
+ * Set catalog `/Metadata` (XMP packet, Type/Metadata Subtype/XML) and page
+ * `/Metadata` streams on unique-sorted selected pages. Empty indexes throw.
+ * Replacing an existing Metadata stream is allowed. This is not Info dict
+ * `setMetadata`, not an annotation, not overlay-box markup, not `/Lang`, not
+ * `/MarkInfo`, not `/Trans`, not flatten, not OpenAction, not
+ * ViewerPreferences, not OCProperties, not article threads, not AcroForm, and
+ * not associated files `/AF`.
+ */
+export async function setXmpMetadata(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn XMP.')
+  }
+  doc.catalog.set(PDFName.of('Metadata'), embedXmpStream(doc, unique))
+  for (const index of unique) {
+    doc.getPage(index).node.set(PDFName.of('Metadata'), embedXmpStream(doc, [index]))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

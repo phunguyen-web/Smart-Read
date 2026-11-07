@@ -1,4 +1,4 @@
-import { PDFArray, PDFBool, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRef, PDFString, degrees } from 'pdf-lib'
+import { PDFArray, PDFBool, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRawStream, PDFRef, PDFString, decodePDFRawStream, degrees } from 'pdf-lib'
 import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import {
@@ -207,6 +207,7 @@ import {
   toHcal,
   toJscal,
   toDtbook,
+  toSsml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -409,6 +410,7 @@ import {
   pagesFromHcal,
   pagesFromJscal,
   pagesFromDtbook,
+  pagesFromSsml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -701,6 +703,7 @@ import {
   DOCUMENT_LANGUAGE,
   languageTagFromOverlay,
   setMarkInfo,
+  setXmpMetadata,
   addSignatureFields,
   SIGNATURE_FIELD_PREFIX,
   SIGNATURE_FIELD_FILL,
@@ -2364,6 +2367,50 @@ describe('pdf edits', () => {
     expect(againMark.lookup(PDFName.of('Marked'))).toBe(PDFBool.True)
     expect(againDoc.getPage(1).node.lookup(PDFName.of('Tabs'), PDFName)).toBe(PDFName.of('S'))
     await expect(setMarkInfo(bytes, [])).rejects.toThrow(/thẻ/)
+  })
+
+  it('sets catalog XMP Metadata and page Metadata on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    const titled = await setMetadata(bytes, { title: 'Info Title' })
+    const tagged = await setXmpMetadata(titled, [2, 0])
+    expect(await pageCount(tagged)).toBe(3)
+    expect(await readMetadata(tagged)).toMatchObject({ title: 'Info Title' })
+    const doc = await PDFDocument.load(tagged)
+    const catalogRef = doc.catalog.get(PDFName.of('Metadata'))
+    expect(catalogRef).toBeInstanceOf(PDFRef)
+    const catalogStream = doc.context.lookup(catalogRef as PDFRef)
+    expect(catalogStream).toBeInstanceOf(PDFRawStream)
+    const stream = catalogStream as PDFRawStream
+    expect(stream.dict.lookup(PDFName.of('Type'))).toBe(PDFName.of('Metadata'))
+    expect(stream.dict.lookup(PDFName.of('Subtype'))).toBe(PDFName.of('XML'))
+    const xml = new TextDecoder().decode(decodePDFRawStream(stream).decode())
+    expect(xml).toContain('xmpmeta')
+    expect(xml).toContain('application/pdf')
+    expect(xml).toContain('Smart-Read')
+    expect(xml).toContain('Trang 1')
+    expect(xml).toContain('Trang 3')
+    expect(xml).not.toContain('Trang 2')
+    expect(doc.getPage(0).node.get(PDFName.of('Metadata'))).toBeInstanceOf(PDFRef)
+    expect(doc.getPage(2).node.get(PDFName.of('Metadata'))).toBeInstanceOf(PDFRef)
+    expect(doc.getPage(1).node.get(PDFName.of('Metadata'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('ViewerPreferences'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Threads'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Lang'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('MarkInfo'), PDFDict)).toBeUndefined()
+    const again = await setXmpMetadata(tagged, [1])
+    const againDoc = await PDFDocument.load(again)
+    const againRef = againDoc.catalog.get(PDFName.of('Metadata'))
+    expect(againRef).toBeInstanceOf(PDFRef)
+    const againXml = new TextDecoder().decode(
+      decodePDFRawStream(againDoc.context.lookup(againRef as PDFRef) as PDFRawStream).decode(),
+    )
+    expect(againXml).toContain('Trang 2')
+    expect(againDoc.getPage(1).node.get(PDFName.of('Metadata'))).toBeInstanceOf(PDFRef)
+    await expect(setXmpMetadata(bytes, [])).rejects.toThrow(/XMP/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -7843,6 +7890,31 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromDtbook('<dtbook></dtbook>\n')).toThrow(/DTBook/)
     expect(swapExtension('notes.dtbook', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.dtbook.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toSsml('Demo', ['Một', 'Hai\ndòng'])).toContain('<speak')
+    expect(toSsml('Demo', ['Một'])).toContain('<p>')
+    expect(toSsml('Demo', ['Một'])).toContain('<s>')
+    expect(toSsml('Demo', ['Một'])).toContain('Một')
+    expect(toSsml('Demo', ['Một'])).toContain('Demo')
+    expect(toSsml('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toSsml('Demo', ['Một'])).not.toContain('<level1>')
+    expect(toSsml('Demo', ['Một'])).not.toContain('<topic')
+    expect(toSsml('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(pagesFromSsml(toSsml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('ssml', toSsml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromSsml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromSsml('<p><s>Một</s></p>\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.ssml', { type: '' }))).toBe('ssml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.ssml.xml', { type: 'application/ssml+xml' })),
+    ).toBe('ssml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dtbook', { type: '' }))).toBe('dtbook')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dita', { type: '' }))).toBe('dita')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ssml.xml.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromSsml('<speak></speak>\n')).toThrow(/SSML/)
+    expect(swapExtension('notes.ssml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.ssml.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
