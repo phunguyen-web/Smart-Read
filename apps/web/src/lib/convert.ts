@@ -166,6 +166,8 @@ export type ExportFormat =
   | 'tmx'
   | 'tbx'
   | 'po'
+  | 'dita'
+  | 'vcard'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3644,6 +3646,53 @@ ${items}
 `
 }
 
+export function toDita(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const items = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <topic id="stop-${index + 1}">
+    <title>Trang ${index + 1}</title>
+    <body>
+      <p>${note}</p>
+    </body>
+  </topic>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<dita>
+  <title>${heading}</title>
+${items}
+</dita>
+`
+}
+
+export function escapeVcard(value: string): string {
+  return value
+    .replaceAll('\\', '\\\\')
+    .replaceAll(';', '\\;')
+    .replaceAll(',', '\\,')
+    .replaceAll('\r\n', '\\n')
+    .replaceAll('\n', '\\n')
+    .replaceAll('\r', '\\n')
+}
+
+export function toVcard(title: string, pages: string[]): string {
+  const heading = escapeVcard((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const items = pages
+    .map((text, index) => {
+      const note = escapeVcard(text.trim() || '(không có chữ)')
+      return `BEGIN:VCARD
+VERSION:3.0
+PRODID:-//Smart-Read//${heading}//EN
+FN:Trang ${index + 1}
+NOTE:${note}
+END:VCARD`
+    })
+    .join('\n')
+  return `${items}\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -4773,6 +4822,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/tbx+xml;charset=utf-8'
     case 'po':
       return 'text/x-po;charset=utf-8'
+    case 'dita':
+      return 'application/dita+xml;charset=utf-8'
+    case 'vcard':
+      return 'text/vcard;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

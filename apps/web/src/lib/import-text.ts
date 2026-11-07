@@ -169,6 +169,8 @@ export type ImportedTextKind =
   | 'tmx'
   | 'tbx'
   | 'po'
+  | 'dita'
+  | 'vcard'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -862,6 +864,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'po') {
     return pagesFromPo(text)
+  }
+  if (kind === 'dita') {
+    return pagesFromDita(text)
+  }
+  if (kind === 'vcard') {
+    return pagesFromVcard(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -6568,6 +6576,102 @@ export function pagesFromPo(text: string): string[] {
     return capPages(msgstrOnly)
   }
   throw new Error('Tệp PO cần các mục msgid / msgstr.')
+}
+
+function textFromDitaRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'p') ||
+    xmlTagText(record, 'dita:p') ||
+    xmlTagText(record, 'body')
+  if (body) {
+    return body
+  }
+  const title =
+    xmlTagText(record, 'shortdesc') ||
+    xmlTagText(record, 'title') ||
+    xmlTagText(record, 'dita:title') ||
+    xmlAttr(record, 'id')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  const plain = unescapeXml(record.replace(/<[^>]+>/g, '')).trim()
+  if (plain && !/^Trang\s+\d+$/.test(plain)) {
+    return plain
+  }
+  return ''
+}
+
+function ditaRecords(trimmed: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:dita:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:dita:)?${tag}>`, 'gi')
+  return [...trimmed.matchAll(pattern)]
+    .map((match) => textFromDitaRecord(`${match[1]!} ${match[2]!}`))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromDita(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = ditaRecords(trimmed, 'topic')
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const paras = ditaRecords(trimmed, 'p')
+  if (paras.length > 0) {
+    return capPages(paras)
+  }
+  throw new Error('Tệp DITA cần các mục <topic> / <p>.')
+}
+
+function unescapeVcard(value: string): string {
+  return value
+    .replace(/\\n/gi, '\n')
+    .replace(/\\,/g, ',')
+    .replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\')
+}
+
+function vcardField(block: string, name: string): string {
+  const pattern = new RegExp(`(?:^|\\n)${name}(?:;[^\n:]*)?:([^\\n]*)`, 'i')
+  const match = block.match(pattern)
+  return match ? unescapeVcard(match[1]!.trim()) : ''
+}
+
+function textFromVcard(block: string): string {
+  const note = vcardField(block, 'NOTE')
+  if (note) {
+    return note
+  }
+  const fn = vcardField(block, 'FN')
+  if (fn && !/^Trang\s+\d+$/.test(fn)) {
+    return fn
+  }
+  const n = vcardField(block, 'N')
+  if (n && !/^Trang\s+\d+$/.test(n)) {
+    return n
+  }
+  return ''
+}
+
+export function pagesFromVcard(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const blocks = [...trimmed.matchAll(/BEGIN:VCARD([\s\S]*?)END:VCARD/gi)]
+    .map((match) => textFromVcard(match[1]!))
+    .filter((page) => page.length > 0)
+  if (blocks.length > 0) {
+    return capPages(blocks)
+  }
+  const notes = [...trimmed.matchAll(/(?:^|\n)NOTE(?:;[^\n:]*)?:([^\n]+)/gi)]
+    .map((match) => unescapeVcard(match[1]!.trim()))
+    .filter((page) => page.length > 0)
+  if (notes.length > 0) {
+    return capPages(notes)
+  }
+  throw new Error('Tệp vCard cần các mục NOTE / FN.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

@@ -188,6 +188,8 @@ import {
   toTmx,
   toTbx,
   toPo,
+  toDita,
+  toVcard,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -371,6 +373,8 @@ import {
   pagesFromTmx,
   pagesFromTbx,
   pagesFromPo,
+  pagesFromDita,
+  pagesFromVcard,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -627,6 +631,9 @@ import {
   addWatermarkAnnotations,
   WATERMARK_ANNOT_COLOR,
   watermarkAnnotPathOps,
+  addScreenAnnotations,
+  SCREEN_COLOR,
+  screenAnnotPathOps,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -1680,6 +1687,43 @@ describe('pdf edits', () => {
     const again = await addWatermarkAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addWatermarkAnnotations(bytes, [])).rejects.toThrow(/dấu nước/)
+  })
+
+  it('adds a screen annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(SCREEN_COLOR.g).toBeGreaterThan(SCREEN_COLOR.r)
+    const ops = screenAnnotPathOps(100, 50, 2)
+    expect(ops).toContain(' re')
+    expect(ops.endsWith(' h')).toBe(false)
+    const filled = await addScreenAnnotations(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Screen'))
+    expect(annot.lookupMaybe(PDFName.of('QuadPoints'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('Vertices'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('L'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('IC'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('FixedPrint'), PDFDict)).toBeUndefined()
+    expect(annot.lookup(PDFName.of('AP'), PDFDict)).toBeTruthy()
+    expect(annot.lookup(PDFName.of('MK'), PDFDict)).toBeTruthy()
+    const contents = annot.lookup(PDFName.of('Contents'))
+    expect(contents instanceof PDFHexString || contents instanceof PDFString).toBe(true)
+    expect((contents as PDFHexString | PDFString).decodeText()).toBe('Hello')
+    const blank = await addScreenAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(1)
+    const blankContents = (await PDFDocument.load(blank)).context
+      .lookup(blankAnnot.get(0), PDFDict)
+      .lookup(PDFName.of('Contents'))
+    expect((blankContents as PDFHexString | PDFString).decodeText()).toBe('')
+    const pageBox = await addScreenAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addScreenAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addScreenAnnotations(bytes, [])).rejects.toThrow(/màn hình/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -6736,6 +6780,36 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromPo('msgid ""\nmsgstr ""\n')).toThrow(/msgid/)
     expect(swapExtension('notes.po', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.pot', 'pdf')).toBe('notes.pdf')
+
+    expect(toDita('Demo', ['Một', 'Hai\ndòng'])).toContain('<dita>')
+    expect(toDita('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toDita('Demo', ['Một'])).toContain('<p>Một</p>')
+    expect(pagesFromDita(toDita('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('dita', toDita('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromDita('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromDita('<dita><p>Một</p></dita>')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.dita', { type: '' }))).toBe('dita')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.dita.xml', { type: 'application/dita+xml' })),
+    ).toBe('dita')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromDita('<dita></dita>')).toThrow(/topic/)
+    expect(swapExtension('notes.dita', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.dita.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toVcard('Demo', ['Một', 'Hai\ndòng'])).toContain('BEGIN:VCARD')
+    expect(toVcard('Demo', ['Một'])).toContain('PRODID:-//Smart-Read//Demo//EN')
+    expect(toVcard('Demo', ['Một'])).toContain('NOTE:Một')
+    expect(pagesFromVcard(toVcard('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vcard', toVcard('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVcard('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromVcard('NOTE:Một\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vcf', { type: '' }))).toBe('vcard')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vcard', { type: 'text/vcard' }))).toBe('vcard')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() => pagesFromVcard('BEGIN:VCARD\nVERSION:3.0\nEND:VCARD\n')).toThrow(/NOTE/)
+    expect(swapExtension('notes.vcf', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.vcard', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
