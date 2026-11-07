@@ -178,6 +178,7 @@ export type ExportFormat =
   | 'valarm'
   | 'vevent'
   | 'xcal'
+  | 'jcal'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3946,6 +3947,38 @@ ${events}
 `
 }
 
+export function toJcal(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const events = pages.map((text, index) => {
+    const body = text.trim() || '(không có chữ)'
+    const start = formatXcalDate(index * CUE_SECONDS)
+    const end = formatXcalDate((index + 1) * CUE_SECONDS)
+    return [
+      'vevent',
+      [
+        ['uid', {}, 'text', `page-${index + 1}@smart-read`],
+        ['dtstamp', {}, 'date-time', '1970-01-01T00:00:00Z'],
+        ['dtstart', {}, 'date-time', start],
+        ['dtend', {}, 'date-time', end],
+        ['summary', {}, 'text', `Trang ${index + 1}`],
+        ['description', {}, 'text', body],
+        ['status', {}, 'text', 'CONFIRMED'],
+      ],
+      [],
+    ]
+  })
+  return `${JSON.stringify([
+    'vcalendar',
+    [
+      ['prodid', {}, 'text', '-//Smart-Read//EN'],
+      ['version', {}, 'text', '2.0'],
+      ['calscale', {}, 'text', 'GREGORIAN'],
+      ['x-wr-calname', {}, 'text', heading],
+    ],
+    events,
+  ])}\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5099,6 +5132,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-vevent;charset=utf-8'
     case 'xcal':
       return 'application/calendar+xml;charset=utf-8'
+    case 'jcal':
+      return 'application/calendar+json;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

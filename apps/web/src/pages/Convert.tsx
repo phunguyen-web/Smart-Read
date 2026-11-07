@@ -177,6 +177,7 @@ import {
   toValarm,
   toVevent,
   toXcal,
+  toJcal,
   toJson,
   toJsonl,
   toLatex,
@@ -372,6 +373,7 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'valarm', label: 'VALARM', hint: 'iCalendar VALARM, một báo thức mỗi trang' },
   { id: 'vevent', label: 'VEVENT', hint: 'iCalendar VEVENT, một sự kiện mỗi trang' },
   { id: 'xcal', label: 'xCal', hint: 'xCal XML iCalendar, một vevent mỗi trang' },
+  { id: 'jcal', label: 'jCal', hint: 'jCal JSON iCalendar, một vevent mỗi trang' },
   { id: 'srt', label: 'SRT', hint: 'Phụ đề .srt, một cue mỗi trang' },
   { id: 'vtt', label: 'VTT', hint: 'WebVTT, NOTE title + một cue mỗi trang' },
   { id: 'lrc', label: 'LRC', hint: 'Lời bài hát [mm:ss.xx], một dòng mỗi trang' },
@@ -1447,6 +1449,11 @@ export function Convert() {
       } else if (format === 'xcal') {
         downloadBlob(
           new Blob([toXcal(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'jcal') {
+        downloadBlob(
+          new Blob([toJcal(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
       } else if (format === 'docx' || format === 'doc') {

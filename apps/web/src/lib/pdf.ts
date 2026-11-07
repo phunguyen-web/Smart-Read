@@ -5055,6 +5055,34 @@ export async function flattenAnnotations(
   return new Uint8Array(await doc.save())
 }
 
+/**
+ * Set catalog `/OpenAction` to a GoTo of the first selected page (`Fit`).
+ * Empty indexes throw. Replacing an existing OpenAction is allowed. This is
+ * not an annotation, not a `/Trans` page transition, not flatten, not overlay,
+ * not AcroForm, not XFA, and not associated files `/AF`.
+ */
+export async function setOpenAction(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đặt hành động khi mở.')
+  }
+  const page = doc.getPage(unique[0]!)
+  doc.catalog.set(
+    PDFName.of('OpenAction'),
+    doc.context.obj({
+      Type: 'Action',
+      S: 'GoTo',
+      D: [page.ref, PDFName.of('Fit')],
+    }),
+  )
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default
