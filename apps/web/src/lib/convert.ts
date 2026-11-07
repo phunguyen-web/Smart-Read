@@ -171,6 +171,7 @@ export type ExportFormat =
   | 'rdf'
   | 'opds'
   | 'vtodo'
+  | 'vjournal'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3761,6 +3762,27 @@ export function toVtodo(title: string, pages: string[]): string {
   return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${todos}\nEND:VCALENDAR\n`
 }
 
+export function toVjournal(title: string, pages: string[]): string {
+  const heading = escapeIcs((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const journals = pages
+    .map((text, index) => {
+      const body = text.trim() || '(không có chữ)'
+      const summary = escapeIcs(`Trang ${index + 1}`)
+      const start = formatIcsDate(index * CUE_SECONDS)
+      return [
+        'BEGIN:VJOURNAL',
+        `UID:page-${index + 1}@smart-read`,
+        'DTSTAMP:19700101T000000Z',
+        `DTSTART:${start}`,
+        `SUMMARY:${summary}`,
+        `DESCRIPTION:${escapeIcs(body)}`,
+        'END:VJOURNAL',
+      ].join('\n')
+    })
+    .join('\n')
+  return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${journals}\nEND:VCALENDAR\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -4900,6 +4922,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/opds+xml;charset=utf-8'
     case 'vtodo':
       return 'text/x-vtodo;charset=utf-8'
+    case 'vjournal':
+      return 'text/x-vjournal;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

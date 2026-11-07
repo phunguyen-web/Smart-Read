@@ -174,6 +174,7 @@ export type ImportedTextKind =
   | 'rdf'
   | 'opds'
   | 'vtodo'
+  | 'vjournal'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -882,6 +883,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'vtodo') {
     return pagesFromVtodo(text)
+  }
+  if (kind === 'vjournal') {
+    return pagesFromVjournal(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -6809,6 +6813,46 @@ export function pagesFromVtodo(text: string): string[] {
     return capPages(descriptions)
   }
   throw new Error('Tệp việc cần các mục VTODO / DESCRIPTION.')
+}
+
+function textFromVjournal(block: string): string {
+  const description = icsField(block, 'DESCRIPTION')
+  if (description) {
+    return description
+  }
+  const summary = icsField(block, 'SUMMARY')
+  if (summary && !/^Trang\s+\d+$/.test(summary)) {
+    return summary
+  }
+  return ''
+}
+
+export function pagesFromVjournal(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const unfolded = unfoldIcs(trimmed)
+  if (/BEGIN:VJOURNAL/i.test(unfolded)) {
+    const pages = unfolded
+      .split(/BEGIN:VJOURNAL/i)
+      .slice(1)
+      .map((chunk) => {
+        const block = chunk.split(/END:VJOURNAL/i)[0] ?? ''
+        return textFromVjournal(block)
+      })
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  const descriptions = [...unfolded.matchAll(/(?:^|\n)DESCRIPTION[;:]([^\n]*)/gi)]
+    .map((match) => unescapeIcs(match[1]!.trim()))
+    .filter((page) => page.length > 0)
+  if (descriptions.length > 0) {
+    return capPages(descriptions)
+  }
+  throw new Error('Tệp nhật ký cần các mục VJOURNAL / DESCRIPTION.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
