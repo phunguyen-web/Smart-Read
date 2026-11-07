@@ -5380,6 +5380,38 @@ export async function setDocumentLanguage(
   return new Uint8Array(await doc.save())
 }
 
+/**
+ * Set catalog `/MarkInfo` (`Marked` true, `UserProperties` false, `Suspects`
+ * false) and page `/Tabs` `/S` on unique-sorted selected pages. Empty indexes
+ * throw. Replacing an existing MarkInfo is allowed. This is not an annotation,
+ * not overlay-box markup, not `/Trans`, not flatten, not OpenAction, not
+ * ViewerPreferences, not OCProperties, not article threads, not document
+ * language, not AcroForm, and not associated files `/AF`.
+ */
+export async function setMarkInfo(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn thẻ.')
+  }
+  doc.catalog.set(
+    PDFName.of('MarkInfo'),
+    doc.context.obj({
+      Marked: true,
+      UserProperties: false,
+      Suspects: false,
+    }),
+  )
+  for (const index of unique) {
+    doc.getPage(index).node.set(PDFName.of('Tabs'), PDFName.of('S'))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

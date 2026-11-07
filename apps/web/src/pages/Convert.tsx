@@ -183,6 +183,7 @@ import {
   toHcard,
   toHcal,
   toJscal,
+  toDtbook,
   toJson,
   toJsonl,
   toLatex,
@@ -384,6 +385,7 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'hcard', label: 'hCard', hint: 'hCard HTML vCard, một thẻ mỗi trang' },
   { id: 'hcal', label: 'hCal', hint: 'hCal HTML iCalendar, một sự kiện mỗi trang' },
   { id: 'jscal', label: 'JSCalendar', hint: 'JSCalendar JSON, một sự kiện mỗi trang' },
+  { id: 'dtbook', label: 'DTBook', hint: 'DAISY DTBook XML, một level1 mỗi trang' },
   { id: 'srt', label: 'SRT', hint: 'Phụ đề .srt, một cue mỗi trang' },
   { id: 'vtt', label: 'VTT', hint: 'WebVTT, NOTE title + một cue mỗi trang' },
   { id: 'lrc', label: 'LRC', hint: 'Lời bài hát [mm:ss.xx], một dòng mỗi trang' },
@@ -1489,6 +1491,11 @@ export function Convert() {
       } else if (format === 'jscal') {
         downloadBlob(
           new Blob([toJscal(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'dtbook') {
+        downloadBlob(
+          new Blob([toDtbook(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
       } else if (format === 'docx' || format === 'doc') {

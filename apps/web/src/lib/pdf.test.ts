@@ -206,6 +206,7 @@ import {
   toHcard,
   toHcal,
   toJscal,
+  toDtbook,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -407,6 +408,7 @@ import {
   pagesFromHcard,
   pagesFromHcal,
   pagesFromJscal,
+  pagesFromDtbook,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -698,6 +700,7 @@ import {
   setDocumentLanguage,
   DOCUMENT_LANGUAGE,
   languageTagFromOverlay,
+  setMarkInfo,
   addSignatureFields,
   SIGNATURE_FIELD_PREFIX,
   SIGNATURE_FIELD_FILL,
@@ -2334,6 +2337,33 @@ describe('pdf edits', () => {
     const pageLang = againDoc.getPage(1).node.lookup(PDFName.of('Lang'))
     expect((pageLang as PDFHexString | PDFString).decodeText()).toBe('en-US')
     await expect(setDocumentLanguage(bytes, [])).rejects.toThrow(/ngôn ngữ/)
+  })
+
+  it('sets catalog MarkInfo and page Tabs on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    const tagged = await setMarkInfo(bytes, [2, 0])
+    expect(await pageCount(tagged)).toBe(3)
+    const doc = await PDFDocument.load(tagged)
+    const markInfo = doc.catalog.lookup(PDFName.of('MarkInfo'), PDFDict)
+    expect(markInfo.lookup(PDFName.of('Marked'))).toBe(PDFBool.True)
+    expect(markInfo.lookup(PDFName.of('UserProperties'))).toBe(PDFBool.False)
+    expect(markInfo.lookup(PDFName.of('Suspects'))).toBe(PDFBool.False)
+    expect(doc.getPage(0).node.lookup(PDFName.of('Tabs'), PDFName)).toBe(PDFName.of('S'))
+    expect(doc.getPage(2).node.lookup(PDFName.of('Tabs'), PDFName)).toBe(PDFName.of('S'))
+    expect(doc.getPage(1).node.get(PDFName.of('Tabs'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('ViewerPreferences'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Threads'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Lang'))).toBeUndefined()
+    const again = await setMarkInfo(tagged, [1])
+    const againDoc = await PDFDocument.load(again)
+    const againMark = againDoc.catalog.lookup(PDFName.of('MarkInfo'), PDFDict)
+    expect(againMark.lookup(PDFName.of('Marked'))).toBe(PDFBool.True)
+    expect(againDoc.getPage(1).node.lookup(PDFName.of('Tabs'), PDFName)).toBe(PDFName.of('S'))
+    await expect(setMarkInfo(bytes, [])).rejects.toThrow(/thẻ/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -7788,6 +7818,31 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toThrow(/JSCalendar/)
     expect(swapExtension('notes.jscal', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.jscalendar.json', 'pdf')).toBe('notes.pdf')
+
+    expect(toDtbook('Demo', ['Một', 'Hai\ndòng'])).toContain('<dtbook')
+    expect(toDtbook('Demo', ['Một'])).toContain('<level1>')
+    expect(toDtbook('Demo', ['Một'])).toContain('<p>')
+    expect(toDtbook('Demo', ['Một'])).toContain('Một')
+    expect(toDtbook('Demo', ['Một'])).toContain('Demo')
+    expect(toDtbook('Demo', ['Một'])).not.toContain('<article')
+    expect(toDtbook('Demo', ['Một'])).not.toContain('<topic')
+    expect(toDtbook('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toDtbook('Demo', ['Một'])).not.toContain('"@type"')
+    expect(pagesFromDtbook(toDtbook('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('dtbook', toDtbook('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromDtbook('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromDtbook('<level1><p>Một</p></level1>\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.dtbook', { type: '' }))).toBe('dtbook')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.dtbook.xml', { type: 'application/x-dtbook+xml' })),
+    ).toBe('dtbook')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dita', { type: '' }))).toBe('dita')
+    expect(sourceKindFromFile(new File(['x'], 'notes.docbook', { type: '' }))).toBe('dbk')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dtbook.xml.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromDtbook('<dtbook></dtbook>\n')).toThrow(/DTBook/)
+    expect(swapExtension('notes.dtbook', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.dtbook.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

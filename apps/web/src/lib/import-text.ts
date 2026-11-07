@@ -187,6 +187,7 @@ export type ImportedTextKind =
   | 'hcard'
   | 'hcal'
   | 'jscal'
+  | 'dtbook'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -934,6 +935,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'jscal') {
     return pagesFromJscal(text)
+  }
+  if (kind === 'dtbook') {
+    return pagesFromDtbook(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7599,6 +7603,40 @@ export function pagesFromJscal(text: string): string[] {
     }
   }
   throw new Error('Tệp JSCalendar cần các mục Event / description.')
+}
+
+function textFromDtbook(record: string): string {
+  const paras = [...record.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0)
+  if (paras.length > 0) {
+    return paras.join('\n')
+  }
+  const heading = xmlTagText(record, 'h1') || xmlTagText(record, 'h2') || xmlTagText(record, 'title')
+  if (heading && !/^Trang\s+\d+$/.test(heading)) {
+    return heading
+  }
+  return ''
+}
+
+export function pagesFromDtbook(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const levels = [...trimmed.matchAll(/<level1\b[^>]*>([\s\S]*?)<\/level1>/gi)]
+    .map((match) => textFromDtbook(match[1]!))
+    .filter((page) => page.length > 0)
+  if (levels.length > 0) {
+    return capPages(levels)
+  }
+  const paras = [...trimmed.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0)
+  if (paras.length > 0) {
+    return capPages(paras)
+  }
+  throw new Error('Tệp DTBook cần các mục level1 / p.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

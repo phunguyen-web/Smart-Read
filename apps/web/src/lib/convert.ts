@@ -184,6 +184,7 @@ export type ExportFormat =
   | 'hcard'
   | 'hcal'
   | 'jscal'
+  | 'dtbook'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4101,6 +4102,38 @@ export function toJscal(title: string, pages: string[]): string {
   })}\n`
 }
 
+export function toDtbook(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const levels = pages
+    .map((text, index) => {
+      const paras = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `        <p>${escapeHtml(line)}</p>`)
+        .join('\n')
+      return `      <level1>
+        <h1>Trang ${index + 1}</h1>
+${paras}
+      </level1>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<dtbook version="2005-3" xmlns="http://www.daisy.org/z3986/2005/dtbook/" xml:lang="vi">
+  <head>
+    <meta name="dc:Title" content="${heading}"/>
+    <title>${heading}</title>
+  </head>
+  <book>
+    <frontmatter>
+      <doctitle>${heading}</doctitle>
+    </frontmatter>
+    <bodymatter>
+${levels}
+    </bodymatter>
+  </book>
+</dtbook>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5266,6 +5299,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-hcal+html;charset=utf-8'
     case 'jscal':
       return 'application/jscalendar+json;charset=utf-8'
+    case 'dtbook':
+      return 'application/x-dtbook+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
