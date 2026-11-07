@@ -4239,6 +4239,92 @@ export async function addScreenAnnotations(
   return new Uint8Array(await doc.save())
 }
 
+export const SOUND_COLOR = { r: 0.62, g: 0.32, b: 0.72 } as const
+
+/** Closed triangle operators for a Sound annotation appearance, in form space. */
+export function soundAnnotPathOps(w: number, h: number, inset: number): string {
+  const left = inset
+  const right = Math.max(inset + 0.5, w - inset)
+  const bottom = inset
+  const top = Math.max(inset + 0.5, h - inset)
+  const midY = (bottom + top) / 2
+  const f = (n: number) => n.toFixed(2)
+  return `${f(left)} ${f(bottom)} m ${f(right)} ${f(midY)} l ${f(left)} ${f(top)} l h`
+}
+
+/**
+ * Add a PDF `/Sound` annotation on selected pages at the overlay box.
+ * Empty `contents` still creates a silent speaker mark. This is not the visual
+ * `addWatermark` page stamp, not a `/Watermark` annotation, not a `/Screen`
+ * annotation, not AcroForm, not XFA, not a sticky note, not a popup, not a
+ * stamp, not a free-text note, not a caret, not ink, not a square, not a
+ * circle, not a polygon, not a polyline, not a line, not a squiggly underline,
+ * not a highlight, not an underline, not a strikeout, not a redact, not a
+ * visual blackout, not a link, and not a file attachment. Uses the full overlay
+ * box (not forced to a geometric line) plus a filled `/AP` triangle, a `Sound`
+ * stream (`R`/`C`/`B`/`E` Raw silence), `Name` Speaker, and no `FixedPrint` /
+ * no `MK` / no `QuadPoints` / no `Vertices` / no `L` / no `IC` fill.
+ */
+export async function addSoundAnnotations(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  position: OverlayPosition = OVERLAY_PRESETS['top-left'],
+  size: RedactSizeId = 'block',
+  contents = '',
+): Promise<Uint8Array> {
+  const style = assertRedactSize(size)
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn âm thanh.')
+  }
+  const note = contents.trim()
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const box = redactBoxForPage(width, height, position, style)
+    const w = Math.max(1, box.width)
+    const h = Math.max(1, box.height)
+    const inset = Math.max(0.5, Math.min(w, h) * 0.12)
+    const path = soundAnnotPathOps(w, h, inset)
+    const apRef = doc.context.register(
+      doc.context.flateStream(
+        `q ${SOUND_COLOR.r} ${SOUND_COLOR.g} ${SOUND_COLOR.b} rg ${path} f Q`,
+        {
+          Type: 'XObject',
+          Subtype: 'Form',
+          BBox: [0, 0, w, h],
+          Resources: {},
+        },
+      ),
+    )
+    const soundRef = doc.context.register(
+      doc.context.flateStream(new Uint8Array(16), {
+        Type: 'Sound',
+        R: 8000,
+        C: 1,
+        B: 8,
+        E: 'Raw',
+      }),
+    )
+    const annot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Sound',
+      Rect: [box.x, box.y, box.x + box.width, box.y + box.height],
+      Contents: PDFHexString.fromText(note),
+      C: [SOUND_COLOR.r, SOUND_COLOR.g, SOUND_COLOR.b],
+      T: PDFHexString.fromText('Smart-Read'),
+      F: 4,
+      Name: 'Speaker',
+      Sound: soundRef,
+      AP: { N: apRef },
+    })
+    pageAnnotsArray(doc, page).push(doc.context.register(annot))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

@@ -168,6 +168,8 @@ export type ExportFormat =
   | 'po'
   | 'dita'
   | 'vcard'
+  | 'rdf'
+  | 'opds'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3687,10 +3689,53 @@ VERSION:3.0
 PRODID:-//Smart-Read//${heading}//EN
 FN:Trang ${index + 1}
 NOTE:${note}
-END:VCARD`
+    END:VCARD`
     })
     .join('\n')
   return `${items}\n`
+}
+
+export function toRdf(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const items = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <rdf:Description rdf:about="https://smart-read.local/page/${index + 1}">
+    <dc:title>Trang ${index + 1}</dc:title>
+    <dc:description>${note}</dc:description>
+  </rdf:Description>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <dc:title>${heading}</dc:title>
+${items}
+</rdf:RDF>
+`
+}
+
+export function toOpds(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const entries = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <entry>
+    <title>Trang ${index + 1}</title>
+    <id>urn:uuid:smart-read-page-${index + 1}</id>
+    <updated>${ATOM_UPDATED}</updated>
+    <content type="text">${note}</content>
+  </entry>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog">
+  <title>${heading}</title>
+  <id>urn:uuid:smart-read-catalog</id>
+  <updated>${ATOM_UPDATED}</updated>
+${entries}
+</feed>
+`
 }
 
 export function toLatex(title: string, pages: string[]): string {
@@ -4826,6 +4871,10 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/dita+xml;charset=utf-8'
     case 'vcard':
       return 'text/vcard;charset=utf-8'
+    case 'rdf':
+      return 'application/rdf+xml;charset=utf-8'
+    case 'opds':
+      return 'application/opds+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

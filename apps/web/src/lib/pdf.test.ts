@@ -190,6 +190,8 @@ import {
   toPo,
   toDita,
   toVcard,
+  toRdf,
+  toOpds,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -375,6 +377,8 @@ import {
   pagesFromPo,
   pagesFromDita,
   pagesFromVcard,
+  pagesFromRdf,
+  pagesFromOpds,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -634,6 +638,9 @@ import {
   addScreenAnnotations,
   SCREEN_COLOR,
   screenAnnotPathOps,
+  addSoundAnnotations,
+  SOUND_COLOR,
+  soundAnnotPathOps,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -1724,6 +1731,46 @@ describe('pdf edits', () => {
     const again = await addScreenAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addScreenAnnotations(bytes, [])).rejects.toThrow(/màn hình/)
+  })
+
+  it('adds a sound annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(SOUND_COLOR.r).toBeGreaterThan(SOUND_COLOR.g)
+    const ops = soundAnnotPathOps(100, 50, 2)
+    expect(ops).toContain(' m ')
+    expect(ops.endsWith(' h')).toBe(true)
+    const filled = await addSoundAnnotations(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Sound'))
+    expect(annot.lookup(PDFName.of('Name'), PDFName)).toBe(PDFName.of('Speaker'))
+    expect(annot.lookup(PDFName.of('Sound'))).toBeTruthy()
+    expect(annot.get(PDFName.of('Sound'))).toBeInstanceOf(PDFRef)
+    expect(annot.lookupMaybe(PDFName.of('QuadPoints'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('Vertices'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('L'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('IC'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('MK'), PDFDict)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('FixedPrint'), PDFDict)).toBeUndefined()
+    expect(annot.lookup(PDFName.of('AP'), PDFDict)).toBeTruthy()
+    const contents = annot.lookup(PDFName.of('Contents'))
+    expect(contents instanceof PDFHexString || contents instanceof PDFString).toBe(true)
+    expect((contents as PDFHexString | PDFString).decodeText()).toBe('Hello')
+    const blank = await addSoundAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(1)
+    const blankContents = (await PDFDocument.load(blank)).context
+      .lookup(blankAnnot.get(0), PDFDict)
+      .lookup(PDFName.of('Contents'))
+    expect((blankContents as PDFHexString | PDFString).decodeText()).toBe('')
+    const pageBox = await addSoundAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addSoundAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addSoundAnnotations(bytes, [])).rejects.toThrow(/âm thanh/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -6810,6 +6857,41 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromVcard('BEGIN:VCARD\nVERSION:3.0\nEND:VCARD\n')).toThrow(/NOTE/)
     expect(swapExtension('notes.vcf', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.vcard', 'pdf')).toBe('notes.pdf')
+
+    expect(toRdf('Demo', ['Một', 'Hai\ndòng'])).toContain('<rdf:RDF')
+    expect(toRdf('Demo', ['Một'])).toContain('<dc:title>Demo</dc:title>')
+    expect(toRdf('Demo', ['Một'])).toContain('<dc:description>Một</dc:description>')
+    expect(pagesFromRdf(toRdf('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('rdf', toRdf('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromRdf('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromRdf('<rdf:RDF><dc:description>Một</dc:description></rdf:RDF>')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.rdf', { type: '' }))).toBe('rdf')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.rdf.xml', { type: 'application/rdf+xml' })),
+    ).toBe('rdf')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromRdf('<rdf:RDF></rdf:RDF>')).toThrow(/Description/)
+    expect(swapExtension('notes.rdf', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.rdf.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toOpds('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns:opds=')
+    expect(toOpds('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toOpds('Demo', ['Một'])).toContain('<content type="text">Một</content>')
+    expect(pagesFromOpds(toOpds('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('opds', toOpds('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromOpds('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromOpds('<feed xmlns="http://www.w3.org/2005/Atom"><content>Một</content></feed>')).toEqual(
+      ['Một'],
+    )
+    expect(sourceKindFromFile(new File(['x'], 'notes.opds', { type: '' }))).toBe('opds')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.opds.xml', { type: 'application/opds+xml' })),
+    ).toBe('opds')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.atom', { type: '' }))).toBe('atom')
+    expect(() => pagesFromOpds('<feed xmlns="http://www.w3.org/2005/Atom"></feed>')).toThrow(/entry/)
+    expect(swapExtension('notes.opds', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.opds.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

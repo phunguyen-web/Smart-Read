@@ -171,6 +171,8 @@ export type ImportedTextKind =
   | 'po'
   | 'dita'
   | 'vcard'
+  | 'rdf'
+  | 'opds'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -870,6 +872,12 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'vcard') {
     return pagesFromVcard(text)
+  }
+  if (kind === 'rdf') {
+    return pagesFromRdf(text)
+  }
+  if (kind === 'opds') {
+    return pagesFromOpds(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -6672,6 +6680,91 @@ export function pagesFromVcard(text: string): string[] {
     return capPages(notes)
   }
   throw new Error('Tệp vCard cần các mục NOTE / FN.')
+}
+
+function textFromRdfRecord(record: string): string {
+  const body =
+    xmlTagText(record, 'dc:description') ||
+    xmlTagText(record, 'description') ||
+    xmlTagText(record, 'rdfs:comment')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'dc:title') || xmlTagText(record, 'title')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  const plain = unescapeXml(record.replace(/<[^>]+>/g, '')).trim()
+  if (plain && !/^Trang\s+\d+$/.test(plain)) {
+    return plain
+  }
+  return ''
+}
+
+export function pagesFromRdf(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [
+    ...trimmed.matchAll(/<(?:rdf:)?Description\b[^>]*>([\s\S]*?)<\/(?:rdf:)?Description>/gi),
+  ]
+  const pages = records
+    .map((match) => textFromRdfRecord(match[1]!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const descriptions = [
+    ...trimmed.matchAll(/<(?:dc:)?description\b[^>]*>([\s\S]*?)<\/(?:dc:)?description>/gi),
+  ]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0)
+  if (descriptions.length > 0) {
+    return capPages(descriptions)
+  }
+  throw new Error('Tệp RDF cần các mục <rdf:Description> / <dc:description>.')
+}
+
+function textFromOpdsEntry(record: string): string {
+  const body =
+    xmlTagText(record, 'content') ||
+    xmlTagText(record, 'summary') ||
+    xmlTagText(record, 'opds:content')
+  if (body) {
+    return body
+  }
+  const title = xmlTagText(record, 'title') || xmlTagText(record, 'atom:title')
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  const plain = unescapeXml(record.replace(/<[^>]+>/g, '')).trim()
+  if (plain && !/^Trang\s+\d+$/.test(plain)) {
+    return plain
+  }
+  return ''
+}
+
+export function pagesFromOpds(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const entries = [...trimmed.matchAll(/<(?:atom:)?entry\b[^>]*>([\s\S]*?)<\/(?:atom:)?entry>/gi)]
+    .map((match) => textFromOpdsEntry(match[1]!))
+    .filter((page) => page.length > 0)
+  if (entries.length > 0) {
+    return capPages(entries)
+  }
+  const contents = [
+    ...trimmed.matchAll(/<(?:atom:)?content\b[^>]*>([\s\S]*?)<\/(?:atom:)?content>/gi),
+  ]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0)
+  if (contents.length > 0) {
+    return capPages(contents)
+  }
+  throw new Error('Tệp OPDS cần các mục <entry> / <content>.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
