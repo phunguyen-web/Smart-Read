@@ -205,6 +205,7 @@ import {
   toXcard,
   toHcard,
   toHcal,
+  toJscal,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -405,6 +406,7 @@ import {
   pagesFromXcard,
   pagesFromHcard,
   pagesFromHcal,
+  pagesFromJscal,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -693,6 +695,9 @@ import {
   setViewerPreferences,
   setOptionalContentGroups,
   setArticleThreads,
+  setDocumentLanguage,
+  DOCUMENT_LANGUAGE,
+  languageTagFromOverlay,
   addSignatureFields,
   SIGNATURE_FIELD_PREFIX,
   SIGNATURE_FIELD_FILL,
@@ -2298,6 +2303,37 @@ describe('pdf edits', () => {
     const againFirst = againDoc.context.lookup(againThread.get(PDFName.of('F')) as PDFRef, PDFDict)
     expect(againFirst.get(PDFName.of('P'))).toBe(againDoc.getPage(1).ref)
     await expect(setArticleThreads(bytes, [])).rejects.toThrow(/bài/)
+  })
+
+  it('sets catalog Lang and page Lang on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(DOCUMENT_LANGUAGE).toBe('vi')
+    expect(languageTagFromOverlay('')).toBe('vi')
+    expect(languageTagFromOverlay('en-US')).toBe('en-US')
+    expect(languageTagFromOverlay('not a tag')).toBe('vi')
+    const tagged = await setDocumentLanguage(bytes, [2, 0])
+    expect(await pageCount(tagged)).toBe(3)
+    const doc = await PDFDocument.load(tagged)
+    const catalogLang = doc.catalog.lookup(PDFName.of('Lang'))
+    expect((catalogLang as PDFHexString | PDFString).decodeText()).toBe('vi')
+    const first = doc.getPage(0).node.lookup(PDFName.of('Lang'))
+    expect((first as PDFHexString | PDFString).decodeText()).toBe('vi')
+    const third = doc.getPage(2).node.lookup(PDFName.of('Lang'))
+    expect((third as PDFHexString | PDFString).decodeText()).toBe('vi')
+    expect(doc.getPage(1).node.get(PDFName.of('Lang'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('ViewerPreferences'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Threads'), PDFArray)).toBeUndefined()
+    const again = await setDocumentLanguage(tagged, [1], 'en-US')
+    const againDoc = await PDFDocument.load(again)
+    const againLang = againDoc.catalog.lookup(PDFName.of('Lang'))
+    expect((againLang as PDFHexString | PDFString).decodeText()).toBe('en-US')
+    const pageLang = againDoc.getPage(1).node.lookup(PDFName.of('Lang'))
+    expect((pageLang as PDFHexString | PDFString).decodeText()).toBe('en-US')
+    await expect(setDocumentLanguage(bytes, [])).rejects.toThrow(/ngôn ngữ/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -7719,6 +7755,39 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromHcal('<div class="vevents"></div>\n')).toThrow(/hCal/)
     expect(swapExtension('notes.hcal', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.hcal.html', 'pdf')).toBe('notes.pdf')
+
+    expect(toJscal('Demo', ['Một', 'Hai\ndòng'])).toContain('"@type"')
+    expect(toJscal('Demo', ['Một'])).toContain('"Group"')
+    expect(toJscal('Demo', ['Một'])).toContain('"Event"')
+    expect(toJscal('Demo', ['Một'])).toContain('"description"')
+    expect(toJscal('Demo', ['Một'])).toContain('Một')
+    expect(toJscal('Demo', ['Một'])).toContain('Demo')
+    expect(toJscal('Demo', ['Một'])).toContain('confirmed')
+    expect(toJscal('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toJscal('Demo', ['Một'])).not.toContain('<vevent>')
+    expect(toJscal('Demo', ['Một'])).not.toContain('["vevent"')
+    expect(toJscal('Demo', ['Một'])).not.toContain('class="vevent"')
+    expect(pagesFromJscal(toJscal('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('jscal', toJscal('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromJscal('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromJscal(JSON.stringify({ '@type': 'Event', description: 'Một' }))).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.jscal', { type: '' }))).toBe('jscal')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.jscalendar.json', { type: 'application/jscalendar+json' }),
+      ),
+    ).toBe('jscal')
+    expect(sourceKindFromFile(new File(['x'], 'notes.json', { type: '' }))).toBe('json')
+    expect(sourceKindFromFile(new File(['x'], 'notes.jcal', { type: '' }))).toBe('jcal')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ics', { type: '' }))).toBe('ics')
+    expect(sourceKindFromFile(new File(['x'], 'notes.hcal', { type: '' }))).toBe('hcal')
+    expect(sourceKindFromFile(new File(['x'], 'notes.jscal.json', { type: '' }))).toBe('json')
+    expect(() => pagesFromJscal('{"@type":"Group","entries":[]}\n')).toThrow(/JSCalendar/)
+    expect(() =>
+      pagesFromJscal(JSON.stringify({ '@type': 'Task', description: 'Một' })),
+    ).toThrow(/JSCalendar/)
+    expect(swapExtension('notes.jscal', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.jscalendar.json', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

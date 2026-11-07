@@ -183,6 +183,7 @@ export type ExportFormat =
   | 'xcard'
   | 'hcard'
   | 'hcal'
+  | 'jscal'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4077,6 +4078,29 @@ ${events}
 `
 }
 
+export function toJscal(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const entries = pages.map((text, index) => {
+    const body = text.trim() || '(không có chữ)'
+    const start = formatXcalDate(index * CUE_SECONDS).replace(/Z$/, '')
+    return {
+      '@type': 'Event',
+      uid: `page-${index + 1}@smart-read`,
+      title: `Trang ${index + 1}`,
+      description: body,
+      start,
+      duration: `PT${CUE_SECONDS}S`,
+      status: 'confirmed',
+    }
+  })
+  return `${JSON.stringify({
+    '@type': 'Group',
+    uid: 'smart-read',
+    title: heading,
+    entries,
+  })}\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5240,6 +5264,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-hcard+html;charset=utf-8'
     case 'hcal':
       return 'text/x-hcal+html;charset=utf-8'
+    case 'jscal':
+      return 'application/jscalendar+json;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

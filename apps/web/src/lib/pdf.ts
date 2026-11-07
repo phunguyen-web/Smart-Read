@@ -5337,6 +5337,49 @@ export async function setArticleThreads(
   return new Uint8Array(await doc.save())
 }
 
+export const DOCUMENT_LANGUAGE = 'vi'
+
+/**
+ * Turn overlay text into a short BCP 47 language tag. Empty or invalid input
+ * falls back to `DOCUMENT_LANGUAGE` (`vi`). This is not a page overlay and not
+ * a metadata Info string.
+ */
+export function languageTagFromOverlay(text = ''): string {
+  const tag = text.trim()
+  if (/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,3}$/.test(tag)) {
+    return tag
+  }
+  return DOCUMENT_LANGUAGE
+}
+
+/**
+ * Set catalog `/Lang` and page `/Lang` on unique-sorted selected pages.
+ * Empty indexes throw. Replacing an existing Lang is allowed. Overlay text may
+ * supply a BCP 47 tag (`languageTagFromOverlay`); otherwise `vi`. This is not
+ * an annotation, not overlay-box markup, not `/Trans`, not flatten, not
+ * OpenAction, not ViewerPreferences, not OCProperties, not article threads,
+ * not AcroForm, and not associated files `/AF`.
+ */
+export async function setDocumentLanguage(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+  language = DOCUMENT_LANGUAGE,
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đặt ngôn ngữ.')
+  }
+  const tag = languageTagFromOverlay(language)
+  const lang = PDFString.of(tag)
+  doc.catalog.set(PDFName.of('Lang'), lang)
+  for (const index of unique) {
+    doc.getPage(index).node.set(PDFName.of('Lang'), PDFString.of(tag))
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

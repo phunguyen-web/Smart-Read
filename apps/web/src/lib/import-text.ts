@@ -186,6 +186,7 @@ export type ImportedTextKind =
   | 'xcard'
   | 'hcard'
   | 'hcal'
+  | 'jscal'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -930,6 +931,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'hcal') {
     return pagesFromHcal(text)
+  }
+  if (kind === 'jscal') {
+    return pagesFromJscal(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7523,6 +7527,78 @@ export function pagesFromHcal(text: string): string[] {
     return capPages(descriptions)
   }
   throw new Error('Tệp hCal cần các mục vevent / description.')
+}
+
+function jscalText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value.trim()
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value).trim()
+  }
+  return ''
+}
+
+function textFromJscal(record: Record<string, unknown>): string {
+  const description = jscalText(record.description)
+  if (description) {
+    return description
+  }
+  const title = jscalText(record.title)
+  if (title && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+function jscalTypeOf(record: Record<string, unknown>): string {
+  return jscalText(record['@type']).toLowerCase()
+}
+
+function collectJscalPages(node: unknown, into: string[]): void {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) {
+    return
+  }
+  const record = node as Record<string, unknown>
+  const type = jscalTypeOf(record)
+  if (type === 'event') {
+    const page = textFromJscal(record)
+    if (page) {
+      into.push(page)
+    }
+    return
+  }
+  if (type === 'group' && Array.isArray(record.entries)) {
+    for (const entry of record.entries) {
+      collectJscalPages(entry, into)
+    }
+  }
+}
+
+export function pagesFromJscal(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(trimmed)
+  } catch {
+    throw new Error('Tệp JSCalendar cần các mục Event / description.')
+  }
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    const record = parsed as Record<string, unknown>
+    const type = jscalTypeOf(record)
+    if (type === 'event' || type === 'group') {
+      const pages: string[] = []
+      collectJscalPages(record, pages)
+      if (pages.length > 0) {
+        return capPages(pages)
+      }
+      throw new Error('Tệp JSCalendar cần các mục Event / description.')
+    }
+    if ('pages' in record) {
+      return pagesFromJson(trimmed)
+    }
+  }
+  throw new Error('Tệp JSCalendar cần các mục Event / description.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
