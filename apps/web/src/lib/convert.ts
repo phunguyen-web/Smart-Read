@@ -187,6 +187,7 @@ export type ExportFormat =
   | 'dtbook'
   | 'ssml'
   | 'mathml'
+  | 'vxml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4180,6 +4181,30 @@ ${rows}
 `
 }
 
+export function toVxml(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const forms = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `      <prompt>${escapeHtml(line)}</prompt>`)
+        .join('\n')
+      return `  <form>
+    <block>
+      <prompt>Trang ${index + 1}</prompt>
+${lines}
+    </block>
+  </form>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<vxml version="2.1" xmlns="http://www.w3.org/2001/vxml" xml:lang="vi">
+  <!-- ${heading} -->
+${forms}
+</vxml>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5351,6 +5376,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/ssml+xml;charset=utf-8'
     case 'mathml':
       return 'application/mathml+xml;charset=utf-8'
+    case 'vxml':
+      return 'application/voicexml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

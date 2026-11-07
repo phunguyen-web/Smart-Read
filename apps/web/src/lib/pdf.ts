@@ -5521,6 +5521,60 @@ export async function setOutputIntents(
   return new Uint8Array(await doc.save())
 }
 
+/**
+ * Set catalog `/Collection` (PDF portfolio: Type Collection, View D, Schema
+ * CollectionSchema) and page `/PieceInfo` `/Collection` on unique-sorted
+ * selected pages. Empty indexes throw. Replacing an existing Collection
+ * dictionary is allowed. This is not Info dict `setMetadata`, not catalog
+ * `/Metadata` XMP, not catalog `/OutputIntents`, not an annotation, not
+ * overlay-box markup, not `/Lang`, not `/MarkInfo`, not `/Trans`, not flatten,
+ * not OpenAction, not ViewerPreferences, not OCProperties, not article
+ * threads, not AcroForm, and not associated files `/AF`.
+ */
+export async function setCollection(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn hồ sơ.')
+  }
+  const pageField = doc.context.obj({
+    Type: 'CollectionField',
+    Subtype: 'N',
+    N: PDFString.of('Page'),
+    O: 0,
+  })
+  doc.catalog.set(
+    PDFName.of('Collection'),
+    doc.context.obj({
+      Type: 'Collection',
+      View: 'D',
+      Schema: {
+        Type: 'CollectionSchema',
+        Page: pageField,
+      },
+    }),
+  )
+  for (const index of unique) {
+    doc.getPage(index).node.set(
+      PDFName.of('PieceInfo'),
+      doc.context.obj({
+        Collection: {
+          LastModified: PDFString.of('D:20260101000000Z'),
+          Private: {
+            Type: 'CollectionItem',
+            Page: index + 1,
+          },
+        },
+      }),
+    )
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default
