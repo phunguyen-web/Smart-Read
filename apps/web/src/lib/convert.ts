@@ -180,6 +180,7 @@ export type ExportFormat =
   | 'xcal'
   | 'jcal'
   | 'jcard'
+  | 'xcard'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3998,6 +3999,33 @@ export function toJcard(title: string, pages: string[]): string {
   return `${JSON.stringify(cards)}\n`
 }
 
+export function toXcard(title: string, pages: string[]): string {
+  const heading = escapeXml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const cards = pages
+    .map((text, index) => {
+      const note = escapeXml(text.trim() || '(không có chữ)')
+      return `  <vcard>
+    <fn><text>Trang ${index + 1}</text></fn>
+    <n>
+      <surname>Trang ${index + 1}</surname>
+      <given></given>
+      <additional></additional>
+      <prefix></prefix>
+      <suffix></suffix>
+    </n>
+    <note><text>${note}</text></note>
+    <prodid><text>-//Smart-Read//${heading}//EN</text></prodid>
+    <version><text>4.0</text></version>
+  </vcard>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<vcards xmlns="urn:ietf:params:xml:ns:vcard-4.0">
+${cards}
+</vcards>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5155,6 +5183,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/calendar+json;charset=utf-8'
     case 'jcard':
       return 'application/vcard+json;charset=utf-8'
+    case 'xcard':
+      return 'application/vcard+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
