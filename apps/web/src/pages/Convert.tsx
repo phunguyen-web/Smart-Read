@@ -180,6 +180,7 @@ import {
   toJcal,
   toJcard,
   toXcard,
+  toHcard,
   toJson,
   toJsonl,
   toLatex,
@@ -378,6 +379,7 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'jcal', label: 'jCal', hint: 'jCal JSON iCalendar, một vevent mỗi trang' },
   { id: 'jcard', label: 'jCard', hint: 'jCard JSON vCard, một thẻ mỗi trang' },
   { id: 'xcard', label: 'xCard', hint: 'xCard XML vCard, một thẻ mỗi trang' },
+  { id: 'hcard', label: 'hCard', hint: 'hCard HTML vCard, một thẻ mỗi trang' },
   { id: 'srt', label: 'SRT', hint: 'Phụ đề .srt, một cue mỗi trang' },
   { id: 'vtt', label: 'VTT', hint: 'WebVTT, NOTE title + một cue mỗi trang' },
   { id: 'lrc', label: 'LRC', hint: 'Lời bài hát [mm:ss.xx], một dòng mỗi trang' },
@@ -1468,6 +1470,11 @@ export function Convert() {
       } else if (format === 'xcard') {
         downloadBlob(
           new Blob([toXcard(title, pages)], { type: mimeFor(format) }),
+          swapExtension(doc.name, extensionFor(format)),
+        )
+      } else if (format === 'hcard') {
+        downloadBlob(
+          new Blob([toHcard(title, pages)], { type: mimeFor(format) }),
           swapExtension(doc.name, extensionFor(format)),
         )
       } else if (format === 'docx' || format === 'doc') {

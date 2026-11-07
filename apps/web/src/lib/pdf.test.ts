@@ -203,6 +203,7 @@ import {
   toJcal,
   toJcard,
   toXcard,
+  toHcard,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -401,6 +402,7 @@ import {
   pagesFromJcal,
   pagesFromJcard,
   pagesFromXcard,
+  pagesFromHcard,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -688,6 +690,7 @@ import {
   setOpenAction,
   setViewerPreferences,
   setOptionalContentGroups,
+  setArticleThreads,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -2198,6 +2201,51 @@ describe('pdf edits', () => {
     const againName = againDoc.context.lookup(againOcgs.get(0) as PDFRef, PDFDict).lookup(PDFName.of('Name'))
     expect((againName as PDFHexString | PDFString).decodeText()).toBe('Trang 2')
     await expect(setOptionalContentGroups(bytes, [])).rejects.toThrow(/lớp/)
+  })
+
+  it('sets catalog Threads with beads for selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    const threaded = await setArticleThreads(bytes, [2, 0])
+    expect(await pageCount(threaded)).toBe(3)
+    const doc = await PDFDocument.load(threaded)
+    const threads = doc.catalog.lookup(PDFName.of('Threads'), PDFArray)
+    expect(threads.size()).toBe(1)
+    const threadRef = threads.get(0)
+    expect(threadRef).toBeInstanceOf(PDFRef)
+    const thread = doc.context.lookup(threadRef as PDFRef, PDFDict)
+    const info = thread.lookup(PDFName.of('I'), PDFDict)
+    const title = info.lookup(PDFName.of('Title'))
+    expect((title as PDFHexString | PDFString).decodeText()).toBe('Smart-Read')
+    const firstRef = thread.get(PDFName.of('F'))
+    expect(firstRef).toBeInstanceOf(PDFRef)
+    const first = doc.context.lookup(firstRef as PDFRef, PDFDict)
+    expect(first.get(PDFName.of('P'))).toBe(doc.getPage(0).ref)
+    const rect = first.lookup(PDFName.of('R'), PDFArray)
+    expect(rect.size()).toBe(4)
+    expect(rect.lookup(2, PDFNumber).asNumber()).toBe(200)
+    expect(rect.lookup(3, PDFNumber).asNumber()).toBe(280)
+    expect(doc.getPage(0).node.get(PDFName.of('B'))).toBe(firstRef)
+    const secondRef = first.get(PDFName.of('N'))
+    expect(secondRef).toBeInstanceOf(PDFRef)
+    const second = doc.context.lookup(secondRef as PDFRef, PDFDict)
+    expect(second.get(PDFName.of('P'))).toBe(doc.getPage(2).ref)
+    expect(second.get(PDFName.of('N'))).toBe(firstRef)
+    expect(second.get(PDFName.of('V'))).toBe(firstRef)
+    expect(first.get(PDFName.of('V'))).toBe(secondRef)
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('ViewerPreferences'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    const again = await setArticleThreads(threaded, [1])
+    const againDoc = await PDFDocument.load(again)
+    const againThread = againDoc.context.lookup(
+      againDoc.catalog.lookup(PDFName.of('Threads'), PDFArray).get(0) as PDFRef,
+      PDFDict,
+    )
+    const againFirst = againDoc.context.lookup(againThread.get(PDFName.of('F')) as PDFRef, PDFDict)
+    expect(againFirst.get(PDFName.of('P'))).toBe(againDoc.getPage(1).ref)
+    await expect(setArticleThreads(bytes, [])).rejects.toThrow(/bài/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -7567,6 +7615,32 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromXcard('<vcards></vcards>\n')).toThrow(/xCard/)
     expect(swapExtension('notes.xcard', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.vcf.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toHcard('Demo', ['Một', 'Hai\ndòng'])).toContain('class="vcard"')
+    expect(toHcard('Demo', ['Một'])).toContain('class="fn"')
+    expect(toHcard('Demo', ['Một'])).toContain('class="note"')
+    expect(toHcard('Demo', ['Một'])).toContain('Một')
+    expect(toHcard('Demo', ['Một'])).toContain('Demo')
+    expect(toHcard('Demo', ['Một'])).not.toContain('BEGIN:VCARD')
+    expect(toHcard('Demo', ['Một'])).not.toContain('<vcard>')
+    expect(toHcard('Demo', ['Một'])).not.toContain('["vcard"')
+    expect(pagesFromHcard(toHcard('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('hcard', toHcard('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromHcard('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromHcard('<span class="note">Một</span>\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.hcard', { type: '' }))).toBe('hcard')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.hcard.html', { type: 'text/x-hcard+html' })),
+    ).toBe('hcard')
+    expect(sourceKindFromFile(new File(['x'], 'notes.html', { type: '' }))).toBe('html')
+    expect(sourceKindFromFile(new File(['x'], 'notes.htm', { type: '' }))).toBe('html')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vcf', { type: '' }))).toBe('vcard')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vcard', { type: '' }))).toBe('vcard')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xcard', { type: '' }))).toBe('xcard')
+    expect(sourceKindFromFile(new File(['x'], 'notes.jcard', { type: '' }))).toBe('jcard')
+    expect(() => pagesFromHcard('<div class="hcards"></div>\n')).toThrow(/hCard/)
+    expect(swapExtension('notes.hcard', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.hcard.html', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

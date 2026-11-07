@@ -181,6 +181,7 @@ export type ExportFormat =
   | 'jcal'
   | 'jcard'
   | 'xcard'
+  | 'hcard'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4026,6 +4027,31 @@ ${cards}
 `
 }
 
+export function toHcard(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const cards = pages
+    .map((text, index) => {
+      const note = escapeHtml(text.trim() || '(không có chữ)').replace(/\n/g, '<br>')
+      return `  <div class="vcard">
+    <span class="fn">Trang ${index + 1}</span>
+    <span class="n"><span class="family-name">Trang ${index + 1}</span></span>
+    <span class="note">${note}</span>
+  </div>`
+    })
+    .join('\n')
+  return `<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <title>${heading}</title>
+</head>
+<body>
+${cards}
+</body>
+</html>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5185,6 +5211,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vcard+json;charset=utf-8'
     case 'xcard':
       return 'application/vcard+xml;charset=utf-8'
+    case 'hcard':
+      return 'text/x-hcard+html;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

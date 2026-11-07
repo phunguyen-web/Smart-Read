@@ -5171,6 +5171,55 @@ export async function setOptionalContentGroups(
   return new Uint8Array(await doc.save())
 }
 
+/**
+ * Set catalog `/Threads` with one article thread (`I` Title Smart-Read) whose
+ * beads cover each unique-sorted selected page (`R` the page box, circular
+ * `/N` `/V`, page `/B` the bead on that leaf). Empty indexes throw. Replacing
+ * an existing Threads array is allowed. This is not an annotation, not a
+ * `/Trans` page transition, not flatten, not overlay, not OpenAction, not
+ * ViewerPreferences, not OCProperties, not AcroForm, not XFA, and not
+ * associated files `/AF`.
+ */
+export async function setArticleThreads(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đặt bài.')
+  }
+  const threadDict = doc.context.obj({
+    I: {
+      Title: PDFString.of('Smart-Read'),
+    },
+  })
+  const threadRef = doc.context.register(threadDict)
+  const beadRefs = unique.map((index) => {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    return doc.context.register(
+      doc.context.obj({
+        T: threadRef,
+        P: page.ref,
+        R: [0, 0, width, height],
+      }),
+    )
+  })
+  for (let i = 0; i < beadRefs.length; i += 1) {
+    const bead = doc.context.lookup(beadRefs[i]!, PDFDict)
+    bead.set(PDFName.of('N'), beadRefs[(i + 1) % beadRefs.length]!)
+    bead.set(PDFName.of('V'), beadRefs[(i - 1 + beadRefs.length) % beadRefs.length]!)
+  }
+  threadDict.set(PDFName.of('F'), beadRefs[0]!)
+  doc.catalog.set(PDFName.of('Threads'), doc.context.obj([threadRef]))
+  for (let i = 0; i < unique.length; i += 1) {
+    doc.getPage(unique[i]!).node.set(PDFName.of('B'), beadRefs[i]!)
+  }
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

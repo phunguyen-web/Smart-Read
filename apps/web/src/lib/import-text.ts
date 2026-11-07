@@ -184,6 +184,7 @@ export type ImportedTextKind =
   | 'jcal'
   | 'jcard'
   | 'xcard'
+  | 'hcard'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -922,6 +923,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'xcard') {
     return pagesFromXcard(text)
+  }
+  if (kind === 'hcard') {
+    return pagesFromHcard(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7410,6 +7414,68 @@ export function pagesFromXcard(text: string): string[] {
     return capPages(notes)
   }
   throw new Error('Tệp xCard cần các mục vcard / note.')
+}
+
+function htmlClassText(record: string, className: string): string {
+  const match = record.match(
+    new RegExp(
+      `<[^>]*class=["'][^"']*\\b${className}\\b[^"']*["'][^>]*>([\\s\\S]*?)</[^>]+>`,
+      'i',
+    ),
+  )
+  if (!match) {
+    return ''
+  }
+  return unescapeHtmlEntities(match[1]!.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim()
+}
+
+function textFromHcard(record: string): string {
+  const note = htmlClassText(record, 'note') || htmlClassText(record, 'p-note')
+  if (note) {
+    return note
+  }
+  const fn = htmlClassText(record, 'fn') || htmlClassText(record, 'p-name')
+  if (fn && !/^Trang\s+\d+$/.test(fn)) {
+    return fn
+  }
+  const n =
+    htmlClassText(record, 'family-name') ||
+    htmlClassText(record, 'p-family-name') ||
+    htmlClassText(record, 'n')
+  if (n && !/^Trang\s+\d+$/.test(n)) {
+    return n
+  }
+  return ''
+}
+
+export function pagesFromHcard(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const cards = [
+    ...trimmed.matchAll(
+      /<(?:div|article|section|span)[^>]*class=["'][^"']*\b(?:vcard|h-card)\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|article|section|span)>/gi,
+    ),
+  ]
+    .map((match) => textFromHcard(match[1]!))
+    .filter((page) => page.length > 0)
+  if (cards.length > 0) {
+    return capPages(cards)
+  }
+  const notes = [
+    ...trimmed.matchAll(
+      /<[^>]*class=["'][^"']*\b(?:note|p-note)\b[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/gi,
+    ),
+  ]
+    .map((match) =>
+      unescapeHtmlEntities(match[1]!.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim(),
+    )
+    .filter((page) => page.length > 0)
+  if (notes.length > 0) {
+    return capPages(notes)
+  }
+  throw new Error('Tệp hCard cần các mục vcard / note.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
