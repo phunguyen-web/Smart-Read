@@ -174,6 +174,7 @@ export type ExportFormat =
   | 'vjournal'
   | 'vfreebusy'
   | 'vavailability'
+  | 'vtimezone'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3832,6 +3833,31 @@ export function toVavailability(title: string, pages: string[]): string {
   return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${blocks}\nEND:VCALENDAR\n`
 }
 
+export function toVtimezone(title: string, pages: string[]): string {
+  const heading = escapeIcs((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const zones = pages
+    .map((text, index) => {
+      const body = text.trim() || '(không có chữ)'
+      const start = formatIcsDate(index * CUE_SECONDS)
+      return [
+        'BEGIN:VTIMEZONE',
+        `TZID:page-${index + 1}`,
+        `TZURL:https://smart-read.local/tz/${index + 1}`,
+        `LAST-MODIFIED:19700101T000000Z`,
+        `COMMENT:${escapeIcs(body)}`,
+        'BEGIN:STANDARD',
+        `DTSTART:${start}`,
+        'TZOFFSETFROM:+0000',
+        'TZOFFSETTO:+0000',
+        'TZNAME:UTC',
+        'END:STANDARD',
+        'END:VTIMEZONE',
+      ].join('\n')
+    })
+    .join('\n')
+  return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${zones}\nEND:VCALENDAR\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -4977,6 +5003,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-vfreebusy;charset=utf-8'
     case 'vavailability':
       return 'text/x-vavailability;charset=utf-8'
+    case 'vtimezone':
+      return 'text/x-vtimezone;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

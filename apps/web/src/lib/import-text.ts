@@ -177,6 +177,7 @@ export type ImportedTextKind =
   | 'vjournal'
   | 'vfreebusy'
   | 'vavailability'
+  | 'vtimezone'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -894,6 +895,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'vavailability') {
     return pagesFromVavailability(text)
+  }
+  if (kind === 'vtimezone') {
+    return pagesFromVtimezone(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -6949,6 +6953,50 @@ export function pagesFromVavailability(text: string): string[] {
     return capPages(comments)
   }
   throw new Error('Tệp khoảng rảnh cần các mục VAVAILABILITY / COMMENT.')
+}
+
+function textFromVtimezone(block: string): string {
+  const comment = icsField(block, 'COMMENT')
+  if (comment) {
+    return comment
+  }
+  const description = icsField(block, 'DESCRIPTION')
+  if (description) {
+    return description
+  }
+  const summary = icsField(block, 'SUMMARY')
+  if (summary && !/^Trang\s+\d+$/.test(summary)) {
+    return summary
+  }
+  return ''
+}
+
+export function pagesFromVtimezone(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const unfolded = unfoldIcs(trimmed)
+  if (/BEGIN:VTIMEZONE/i.test(unfolded)) {
+    const pages = unfolded
+      .split(/BEGIN:VTIMEZONE/i)
+      .slice(1)
+      .map((chunk) => {
+        const block = chunk.split(/END:VTIMEZONE/i)[0] ?? ''
+        return textFromVtimezone(block)
+      })
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  const comments = [...unfolded.matchAll(/(?:^|\n)COMMENT[;:]([^\n]*)/gi)]
+    .map((match) => unescapeIcs(match[1]!.trim()))
+    .filter((page) => page.length > 0)
+  if (comments.length > 0) {
+    return capPages(comments)
+  }
+  throw new Error('Tệp múi giờ cần các mục VTIMEZONE / COMMENT.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
