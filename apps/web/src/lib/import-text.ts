@@ -181,6 +181,7 @@ export type ImportedTextKind =
   | 'valarm'
   | 'vevent'
   | 'xcal'
+  | 'jcal'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -910,6 +911,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'xcal') {
     return pagesFromXcal(text)
+  }
+  if (kind === 'jcal') {
+    return pagesFromJcal(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7135,6 +7139,121 @@ export function pagesFromXcal(text: string): string[] {
     return capPages(descriptions)
   }
   throw new Error('Tệp xCal cần các mục vevent / description.')
+}
+
+function jcalText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value.trim()
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value).trim()
+  }
+  return ''
+}
+
+function jcalPropValue(properties: unknown, name: string): string {
+  if (!Array.isArray(properties)) {
+    return ''
+  }
+  for (const entry of properties) {
+    if (!Array.isArray(entry) || typeof entry[0] !== 'string') {
+      continue
+    }
+    if (entry[0].toLowerCase() !== name) {
+      continue
+    }
+    return jcalText(entry[3])
+  }
+  return ''
+}
+
+function textFromJcal(properties: unknown): string {
+  const description = jcalPropValue(properties, 'description')
+  if (description) {
+    return description
+  }
+  const comment = jcalPropValue(properties, 'comment')
+  if (comment) {
+    return comment
+  }
+  const summary = jcalPropValue(properties, 'summary')
+  if (summary && !/^Trang\s+\d+$/.test(summary)) {
+    return summary
+  }
+  return ''
+}
+
+function walkJcalComponents(components: unknown, into: string[]): void {
+  if (!Array.isArray(components)) {
+    return
+  }
+  for (const component of components) {
+    if (!Array.isArray(component) || typeof component[0] !== 'string') {
+      continue
+    }
+    const name = component[0].toLowerCase()
+    if (name === 'vevent') {
+      const page = textFromJcal(component[1])
+      if (page) {
+        into.push(page)
+      }
+      continue
+    }
+    if (name === 'vcalendar' || name === 'icalendar') {
+      continue
+    }
+    walkJcalComponents(component[2], into)
+  }
+}
+
+function collectJcalDescriptions(node: unknown, into: string[]): void {
+  if (!Array.isArray(node)) {
+    return
+  }
+  if (typeof node[0] === 'string' && node[0].toLowerCase() === 'description') {
+    const value = jcalText(node[3])
+    if (value) {
+      into.push(value)
+    }
+    return
+  }
+  for (const child of node) {
+    collectJcalDescriptions(child, into)
+  }
+}
+
+export function pagesFromJcal(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(trimmed)
+  } catch {
+    throw new Error('Tệp jCal cần các mục vevent / description.')
+  }
+  if (Array.isArray(parsed) && typeof parsed[0] === 'string') {
+    const pages: string[] = []
+    const name = parsed[0].toLowerCase()
+    if (name === 'vevent') {
+      const page = textFromJcal(parsed[1])
+      if (page) {
+        pages.push(page)
+      }
+    } else if (name === 'vcalendar') {
+      walkJcalComponents(parsed[2], pages)
+    }
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  const descriptions: string[] = []
+  collectJcalDescriptions(parsed, descriptions)
+  if (descriptions.length > 0) {
+    return capPages(descriptions)
+  }
+  throw new Error('Tệp jCal cần các mục vevent / description.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

@@ -200,6 +200,7 @@ import {
   toValarm,
   toVevent,
   toXcal,
+  toJcal,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -395,6 +396,7 @@ import {
   pagesFromValarm,
   pagesFromVevent,
   pagesFromXcal,
+  pagesFromJcal,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -679,6 +681,7 @@ import {
   PAGE_TRANSITION_DURATION,
   PAGE_TRANSITION_STYLE,
   flattenAnnotations,
+  setOpenAction,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -2110,6 +2113,26 @@ describe('pdf edits', () => {
     const none = await flattenAnnotations(bytes, [0])
     expect(await pageCount(none)).toBe(1)
     await expect(flattenAnnotations(bytes, [])).rejects.toThrow(/làm phẳng/)
+  })
+
+  it('sets catalog OpenAction to GoTo the first selected page', async () => {
+    const bytes = await samplePdf(['Note', 'Two'])
+    const opened = await setOpenAction(bytes, [1, 0])
+    expect(await pageCount(opened)).toBe(2)
+    const doc = await PDFDocument.load(opened)
+    const action = doc.catalog.lookup(PDFName.of('OpenAction'), PDFDict)
+    expect(action.lookup(PDFName.of('Type'), PDFName)).toBe(PDFName.of('Action'))
+    expect(action.lookup(PDFName.of('S'), PDFName)).toBe(PDFName.of('GoTo'))
+    const dest = action.lookup(PDFName.of('D'), PDFArray)
+    expect(dest.get(0)).toBe(doc.getPage(0).ref)
+    expect(dest.get(1)).toBe(PDFName.of('Fit'))
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    const again = await setOpenAction(opened, [1])
+    const againDoc = await PDFDocument.load(again)
+    const againDest = againDoc.catalog.lookup(PDFName.of('OpenAction'), PDFDict).lookup(PDFName.of('D'), PDFArray)
+    expect(againDest.get(0)).toBe(againDoc.getPage(1).ref)
+    await expect(setOpenAction(bytes, [])).rejects.toThrow(/khi mở/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -7401,6 +7424,33 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toThrow(/xCal/)
     expect(swapExtension('notes.xcal', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.ics.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toJcal('Demo', ['Một', 'Hai\ndòng'])).toContain('"vevent"')
+    expect(toJcal('Demo', ['Một'])).toContain('"vcalendar"')
+    expect(toJcal('Demo', ['Một'])).toContain('"x-wr-calname"')
+    expect(toJcal('Demo', ['Một'])).toContain('Demo')
+    expect(toJcal('Demo', ['Một'])).toContain('Một')
+    expect(toJcal('Demo', ['Một'])).toContain('CONFIRMED')
+    expect(toJcal('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toJcal('Demo', ['Một'])).not.toContain('<vevent>')
+    expect(pagesFromJcal(toJcal('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('jcal', toJcal('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromJcal('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromJcal(JSON.stringify(['description', {}, 'text', 'Một'])),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.jcal', { type: '' }))).toBe('jcal')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.ical.json', { type: 'application/calendar+json' })),
+    ).toBe('jcal')
+    expect(sourceKindFromFile(new File(['x'], 'notes.json', { type: '' }))).toBe('json')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ics', { type: '' }))).toBe('ics')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xcal', { type: '' }))).toBe('xcal')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vevent', { type: '' }))).toBe('vevent')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() => pagesFromJcal('["vcalendar",[],[]]\n')).toThrow(/jCal/)
+    expect(swapExtension('notes.jcal', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.ical.json', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
