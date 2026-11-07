@@ -190,6 +190,7 @@ export type ImportedTextKind =
   | 'dtbook'
   | 'ssml'
   | 'mathml'
+  | 'vxml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -946,6 +947,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'mathml') {
     return pagesFromMathml(text)
+  }
+  if (kind === 'vxml') {
+    return pagesFromVxml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7713,6 +7717,40 @@ export function pagesFromMathml(text: string): string[] {
     return capPages(texts)
   }
   throw new Error('Tệp MathML cần các mục mrow / mtext.')
+}
+
+function textFromVxmlForm(record: string): string {
+  const prompts = [...record.matchAll(/<prompt\b[^>]*>([\s\S]*?)<\/prompt>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (prompts.length > 0) {
+    return prompts.join('\n')
+  }
+  const body = unescapeXml(record.replace(/<[^>]+>/g, '')).trim()
+  if (body && !/^Trang\s+\d+$/.test(body)) {
+    return body
+  }
+  return ''
+}
+
+export function pagesFromVxml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const forms = [...trimmed.matchAll(/<form\b[^>]*>([\s\S]*?)<\/form>/gi)]
+    .map((match) => textFromVxmlForm(match[1]!))
+    .filter((page) => page.length > 0)
+  if (forms.length > 0) {
+    return capPages(forms)
+  }
+  const prompts = [...trimmed.matchAll(/<prompt\b[^>]*>([\s\S]*?)<\/prompt>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (prompts.length > 0) {
+    return capPages(prompts)
+  }
+  throw new Error('Tệp VoiceXML cần các mục form / prompt.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
