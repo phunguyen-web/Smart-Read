@@ -210,6 +210,7 @@ import {
   toSsml,
   toMathml,
   toVxml,
+  toPls,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -415,6 +416,7 @@ import {
   pagesFromSsml,
   pagesFromMathml,
   pagesFromVxml,
+  pagesFromPls,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -710,6 +712,7 @@ import {
   setXmpMetadata,
   setOutputIntents,
   setCollection,
+  setAdditionalActions,
   addSignatureFields,
   SIGNATURE_FIELD_PREFIX,
   SIGNATURE_FIELD_FILL,
@@ -2505,6 +2508,7 @@ describe('pdf edits', () => {
     expect(doc.catalog.lookupMaybe(PDFName.of('MarkInfo'), PDFDict)).toBeUndefined()
     expect(doc.catalog.get(PDFName.of('Metadata'))).toBeUndefined()
     expect(doc.catalog.lookupMaybe(PDFName.of('OutputIntents'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
     const again = await setCollection(tagged, [1])
     const againDoc = await PDFDocument.load(again)
     const againCollection = againDoc.catalog.lookup(PDFName.of('Collection'), PDFDict)
@@ -2517,6 +2521,52 @@ describe('pdf edits', () => {
         .lookup(PDFName.of('Type')),
     ).toBe(PDFName.of('CollectionItem'))
     await expect(setCollection(bytes, [])).rejects.toThrow(/hồ sơ/)
+  })
+
+  it('sets catalog additional actions and page AA on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    const tagged = await setAdditionalActions(bytes, [2, 0])
+    expect(await pageCount(tagged)).toBe(3)
+    const doc = await PDFDocument.load(tagged)
+    const aa = doc.catalog.lookup(PDFName.of('AA'), PDFDict)
+    const willPrint = aa.lookup(PDFName.of('WP'), PDFDict)
+    expect(willPrint.lookup(PDFName.of('Type'))).toBe(PDFName.of('Action'))
+    expect(willPrint.lookup(PDFName.of('S'))).toBe(PDFName.of('JavaScript'))
+    expect((willPrint.lookup(PDFName.of('JS')) as PDFString).decodeText()).toContain('Smart-Read')
+    const page0 = doc.getPage(0).node.lookup(PDFName.of('AA'), PDFDict)
+    const opened0 = page0.lookup(PDFName.of('O'), PDFDict)
+    expect(opened0.lookup(PDFName.of('Type'))).toBe(PDFName.of('Action'))
+    expect(opened0.lookup(PDFName.of('S'))).toBe(PDFName.of('JavaScript'))
+    expect((opened0.lookup(PDFName.of('JS')) as PDFString).decodeText()).toContain('page 1')
+    expect(
+      (doc.getPage(2).node.lookup(PDFName.of('AA'), PDFDict).lookup(PDFName.of('O'), PDFDict)
+        .lookup(PDFName.of('JS')) as PDFString).decodeText(),
+    ).toContain('page 3')
+    expect(doc.getPage(1).node.get(PDFName.of('AA'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Group'), PDFDict)).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PieceInfo'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('ViewerPreferences'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Threads'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Lang'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('MarkInfo'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Metadata'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OutputIntents'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Collection'), PDFDict)).toBeUndefined()
+    const again = await setAdditionalActions(tagged, [1])
+    const againDoc = await PDFDocument.load(again)
+    const againAa = againDoc.catalog.lookup(PDFName.of('AA'), PDFDict)
+    expect(againAa.lookup(PDFName.of('WP'), PDFDict).lookup(PDFName.of('S'))).toBe(
+      PDFName.of('JavaScript'),
+    )
+    expect(
+      againDoc.getPage(1).node.lookup(PDFName.of('AA'), PDFDict).lookup(PDFName.of('O'), PDFDict)
+        .lookup(PDFName.of('S')),
+    ).toBe(PDFName.of('JavaScript'))
+    await expect(setAdditionalActions(bytes, [])).rejects.toThrow(/sự kiện/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -8035,6 +8085,8 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toMathml('Demo', ['Một'])).not.toContain('<vxml')
     expect(toMathml('Demo', ['Một'])).not.toContain('<form>')
     expect(toMathml('Demo', ['Một'])).not.toContain('<prompt>')
+    expect(toMathml('Demo', ['Một'])).not.toContain('<lexicon')
+    expect(toMathml('Demo', ['Một'])).not.toContain('<lexeme>')
     expect(pagesFromMathml(toMathml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('mathml', toMathml('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromMathml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -8067,6 +8119,8 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toVxml('Demo', ['Một'])).not.toContain('<level1>')
     expect(toVxml('Demo', ['Một'])).not.toContain('<topic')
     expect(toVxml('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toVxml('Demo', ['Một'])).not.toContain('<lexicon')
+    expect(toVxml('Demo', ['Một'])).not.toContain('<lexeme>')
     expect(pagesFromVxml(toVxml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('vxml', toVxml('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromVxml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -8084,6 +8138,41 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromVxml('<vxml></vxml>\n')).toThrow(/VoiceXML/)
     expect(swapExtension('notes.vxml', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.vxml.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toPls('Demo', ['Một', 'Hai\ndòng'])).toContain('<lexicon')
+    expect(toPls('Demo', ['Một'])).toContain('<lexeme>')
+    expect(toPls('Demo', ['Một'])).toContain('<grapheme>')
+    expect(toPls('Demo', ['Một'])).toContain('<phoneme>')
+    expect(toPls('Demo', ['Một'])).toContain('Một')
+    expect(toPls('Demo', ['Một'])).toContain('Demo')
+    expect(toPls('Demo', ['Một'])).not.toContain('<speak')
+    expect(toPls('Demo', ['Một'])).not.toContain('<vxml')
+    expect(toPls('Demo', ['Một'])).not.toContain('<form>')
+    expect(toPls('Demo', ['Một'])).not.toContain('<prompt>')
+    expect(toPls('Demo', ['Một'])).not.toContain('<math')
+    expect(toPls('Demo', ['Một'])).not.toContain('<mrow>')
+    expect(toPls('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toPls('Demo', ['Một'])).not.toContain('<level1>')
+    expect(toPls('Demo', ['Một'])).not.toContain('<topic')
+    expect(toPls('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(pagesFromPls(toPls('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('pls', toPls('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromPls('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromPls('<lexeme><phoneme>Một</phoneme></lexeme>\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.pls', { type: '' }))).toBe('pls')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.pls.xml', { type: 'application/pls+xml' })),
+    ).toBe('pls')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ssml', { type: '' }))).toBe('ssml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mathml', { type: '' }))).toBe('mathml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vxml', { type: '' }))).toBe('vxml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dtbook', { type: '' }))).toBe('dtbook')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dita', { type: '' }))).toBe('dita')
+    expect(sourceKindFromFile(new File(['x'], 'notes.pls.xml.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromPls('<lexicon></lexicon>\n')).toThrow(/PLS/)
+    expect(swapExtension('notes.pls', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.pls.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

@@ -191,6 +191,7 @@ export type ImportedTextKind =
   | 'ssml'
   | 'mathml'
   | 'vxml'
+  | 'pls'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -950,6 +951,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'vxml') {
     return pagesFromVxml(text)
+  }
+  if (kind === 'pls') {
+    return pagesFromPls(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7751,6 +7755,46 @@ export function pagesFromVxml(text: string): string[] {
     return capPages(prompts)
   }
   throw new Error('Tệp VoiceXML cần các mục form / prompt.')
+}
+
+function textFromPlsLexeme(record: string): string {
+  const phonemes = [...record.matchAll(/<phoneme\b[^>]*>([\s\S]*?)<\/phoneme>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (phonemes.length > 0) {
+    return phonemes.join('\n')
+  }
+  const graphemes = [...record.matchAll(/<grapheme\b[^>]*>([\s\S]*?)<\/grapheme>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (graphemes.length > 0) {
+    return graphemes.join('\n')
+  }
+  const body = unescapeXml(record.replace(/<[^>]+>/g, '')).trim()
+  if (body && !/^Trang\s+\d+$/.test(body)) {
+    return body
+  }
+  return ''
+}
+
+export function pagesFromPls(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const lexemes = [...trimmed.matchAll(/<lexeme\b[^>]*>([\s\S]*?)<\/lexeme>/gi)]
+    .map((match) => textFromPlsLexeme(match[1]!))
+    .filter((page) => page.length > 0)
+  if (lexemes.length > 0) {
+    return capPages(lexemes)
+  }
+  const phonemes = [...trimmed.matchAll(/<phoneme\b[^>]*>([\s\S]*?)<\/phoneme>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (phonemes.length > 0) {
+    return capPages(phonemes)
+  }
+  throw new Error('Tệp PLS cần các mục lexeme / phoneme.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

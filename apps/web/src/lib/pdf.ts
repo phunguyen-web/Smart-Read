@@ -5529,7 +5529,7 @@ export async function setOutputIntents(
  * `/Metadata` XMP, not catalog `/OutputIntents`, not an annotation, not
  * overlay-box markup, not `/Lang`, not `/MarkInfo`, not `/Trans`, not flatten,
  * not OpenAction, not ViewerPreferences, not OCProperties, not article
- * threads, not AcroForm, and not associated files `/AF`.
+ * threads, not AcroForm, not associated files `/AF`, and not catalog `/AA`.
  */
 export async function setCollection(
   bytes: Uint8Array,
@@ -5568,6 +5568,51 @@ export async function setCollection(
             Type: 'CollectionItem',
             Page: index + 1,
           },
+        },
+      }),
+    )
+  }
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Set catalog `/AA` (additional actions: Will Print JavaScript) and page
+ * `/AA` (`O` page-open JavaScript) on unique-sorted selected pages. Empty
+ * indexes throw. Replacing an existing AA dictionary is allowed. This is not
+ * Info dict `setMetadata`, not catalog `/Metadata` XMP, not catalog
+ * `/OutputIntents`, not catalog `/Collection`, not an annotation, not
+ * overlay-box markup, not `/Lang`, not `/MarkInfo`, not `/Trans`, not flatten,
+ * not OpenAction, not ViewerPreferences, not OCProperties, not article
+ * threads, not AcroForm, not PKCS#7, and not associated files `/AF`.
+ */
+export async function setAdditionalActions(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn sự kiện.')
+  }
+  doc.catalog.set(
+    PDFName.of('AA'),
+    doc.context.obj({
+      WP: {
+        Type: 'Action',
+        S: 'JavaScript',
+        JS: PDFString.of('/* Smart-Read */'),
+      },
+    }),
+  )
+  for (const index of unique) {
+    doc.getPage(index).node.set(
+      PDFName.of('AA'),
+      doc.context.obj({
+        O: {
+          Type: 'Action',
+          S: 'JavaScript',
+          JS: PDFString.of(`/* page ${index + 1} */`),
         },
       }),
     )
