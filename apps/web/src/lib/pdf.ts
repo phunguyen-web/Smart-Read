@@ -5130,6 +5130,47 @@ export async function setViewerPreferences(
   return new Uint8Array(await doc.save())
 }
 
+/**
+ * Set catalog `/OCProperties` with one Optional Content Group per unique-sorted
+ * selected page (`Type` `/OCG`, `Name` Trang n). Default config `BaseState` ON
+ * lists those groups in `/ON` and `/Order`. Empty indexes throw. Replacing an
+ * existing OCProperties is allowed. This is not an annotation, not a `/Trans`
+ * page transition, not flatten, not overlay, not OpenAction, not
+ * ViewerPreferences, not AcroForm, not XFA, and not associated files `/AF`.
+ */
+export async function setOptionalContentGroups(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đặt lớp.')
+  }
+  const ocgRefs = unique.map((index) =>
+    doc.context.register(
+      doc.context.obj({
+        Type: 'OCG',
+        Name: PDFString.of(`Trang ${index + 1}`),
+      }),
+    ),
+  )
+  doc.catalog.set(
+    PDFName.of('OCProperties'),
+    doc.context.obj({
+      OCGs: [...ocgRefs],
+      D: {
+        Name: PDFString.of('Smart-Read'),
+        BaseState: 'ON',
+        ON: [...ocgRefs],
+        Order: [...ocgRefs],
+      },
+    }),
+  )
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

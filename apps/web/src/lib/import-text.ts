@@ -183,6 +183,7 @@ export type ImportedTextKind =
   | 'xcal'
   | 'jcal'
   | 'jcard'
+  | 'xcard'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -918,6 +919,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'jcard') {
     return pagesFromJcard(text)
+  }
+  if (kind === 'xcard') {
+    return pagesFromXcard(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7368,6 +7372,44 @@ export function pagesFromJcard(text: string): string[] {
     return capPages(notes)
   }
   throw new Error('Tệp jCard cần các mục vcard / note.')
+}
+
+function textFromXcard(record: string): string {
+  const note = xmlTagText(record, 'note')
+  if (note) {
+    return note
+  }
+  const fn = xmlTagText(record, 'fn')
+  if (fn && !/^Trang\s+\d+$/.test(fn)) {
+    return fn
+  }
+  const n = xmlTagText(record, 'n')
+  if (n && !/^Trang\s+\d+$/.test(n)) {
+    return n
+  }
+  return ''
+}
+
+export function pagesFromXcard(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  if (/<vcard\b/i.test(trimmed)) {
+    const pages = [...trimmed.matchAll(/<vcard\b[^>]*>([\s\S]*?)<\/vcard>/gi)]
+      .map((match) => textFromXcard(match[1]!))
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  const notes = [...trimmed.matchAll(/<note\b[^>]*>([\s\S]*?)<\/note>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0)
+  if (notes.length > 0) {
+    return capPages(notes)
+  }
+  throw new Error('Tệp xCard cần các mục vcard / note.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
