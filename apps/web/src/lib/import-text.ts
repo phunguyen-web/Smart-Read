@@ -178,6 +178,7 @@ export type ImportedTextKind =
   | 'vfreebusy'
   | 'vavailability'
   | 'vtimezone'
+  | 'valarm'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -898,6 +899,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'vtimezone') {
     return pagesFromVtimezone(text)
+  }
+  if (kind === 'valarm') {
+    return pagesFromValarm(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -6997,6 +7001,50 @@ export function pagesFromVtimezone(text: string): string[] {
     return capPages(comments)
   }
   throw new Error('Tệp múi giờ cần các mục VTIMEZONE / COMMENT.')
+}
+
+function textFromValarm(block: string): string {
+  const description = icsField(block, 'DESCRIPTION')
+  if (description) {
+    return description
+  }
+  const comment = icsField(block, 'COMMENT')
+  if (comment) {
+    return comment
+  }
+  const summary = icsField(block, 'SUMMARY')
+  if (summary && !/^Trang\s+\d+$/.test(summary)) {
+    return summary
+  }
+  return ''
+}
+
+export function pagesFromValarm(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const unfolded = unfoldIcs(trimmed)
+  if (/BEGIN:VALARM/i.test(unfolded)) {
+    const pages = unfolded
+      .split(/BEGIN:VALARM/i)
+      .slice(1)
+      .map((chunk) => {
+        const block = chunk.split(/END:VALARM/i)[0] ?? ''
+        return textFromValarm(block)
+      })
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  const descriptions = [...unfolded.matchAll(/(?:^|\n)DESCRIPTION[;:]([^\n]*)/gi)]
+    .map((match) => unescapeIcs(match[1]!.trim()))
+    .filter((page) => page.length > 0)
+  if (descriptions.length > 0) {
+    return capPages(descriptions)
+  }
+  throw new Error('Tệp báo thức cần các mục VALARM / DESCRIPTION.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

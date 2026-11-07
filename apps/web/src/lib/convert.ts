@@ -175,6 +175,7 @@ export type ExportFormat =
   | 'vfreebusy'
   | 'vavailability'
   | 'vtimezone'
+  | 'valarm'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3858,6 +3859,25 @@ export function toVtimezone(title: string, pages: string[]): string {
   return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${zones}\nEND:VCALENDAR\n`
 }
 
+export function toValarm(title: string, pages: string[]): string {
+  const heading = escapeIcs((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const alarms = pages
+    .map((text, index) => {
+      const body = text.trim() || '(không có chữ)'
+      const trigger = formatIcsDate(index * CUE_SECONDS)
+      return [
+        'BEGIN:VALARM',
+        'ACTION:DISPLAY',
+        `TRIGGER;VALUE=DATE-TIME:${trigger}`,
+        `UID:page-${index + 1}@smart-read`,
+        `DESCRIPTION:${escapeIcs(body)}`,
+        'END:VALARM',
+      ].join('\n')
+    })
+    .join('\n')
+  return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Smart-Read//EN\nCALSCALE:GREGORIAN\nX-WR-CALNAME:${heading}\n${alarms}\nEND:VCALENDAR\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5005,6 +5025,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-vavailability;charset=utf-8'
     case 'vtimezone':
       return 'text/x-vtimezone;charset=utf-8'
+    case 'valarm':
+      return 'text/x-valarm;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
