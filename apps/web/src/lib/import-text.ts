@@ -175,6 +175,7 @@ export type ImportedTextKind =
   | 'opds'
   | 'vtodo'
   | 'vjournal'
+  | 'vfreebusy'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -886,6 +887,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'vjournal') {
     return pagesFromVjournal(text)
+  }
+  if (kind === 'vfreebusy') {
+    return pagesFromVfreebusy(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -6853,6 +6857,50 @@ export function pagesFromVjournal(text: string): string[] {
     return capPages(descriptions)
   }
   throw new Error('Tệp nhật ký cần các mục VJOURNAL / DESCRIPTION.')
+}
+
+function textFromVfreebusy(block: string): string {
+  const comment = icsField(block, 'COMMENT')
+  if (comment) {
+    return comment
+  }
+  const description = icsField(block, 'DESCRIPTION')
+  if (description) {
+    return description
+  }
+  const summary = icsField(block, 'SUMMARY')
+  if (summary && !/^Trang\s+\d+$/.test(summary)) {
+    return summary
+  }
+  return ''
+}
+
+export function pagesFromVfreebusy(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const unfolded = unfoldIcs(trimmed)
+  if (/BEGIN:VFREEBUSY/i.test(unfolded)) {
+    const pages = unfolded
+      .split(/BEGIN:VFREEBUSY/i)
+      .slice(1)
+      .map((chunk) => {
+        const block = chunk.split(/END:VFREEBUSY/i)[0] ?? ''
+        return textFromVfreebusy(block)
+      })
+      .filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  const comments = [...unfolded.matchAll(/(?:^|\n)COMMENT[;:]([^\n]*)/gi)]
+    .map((match) => unescapeIcs(match[1]!.trim()))
+    .filter((page) => page.length > 0)
+  if (comments.length > 0) {
+    return capPages(comments)
+  }
+  throw new Error('Tệp bận rỗi cần các mục VFREEBUSY / COMMENT.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

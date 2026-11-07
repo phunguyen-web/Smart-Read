@@ -194,6 +194,7 @@ import {
   toOpds,
   toVtodo,
   toVjournal,
+  toVfreebusy,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -383,6 +384,7 @@ import {
   pagesFromOpds,
   pagesFromVtodo,
   pagesFromVjournal,
+  pagesFromVfreebusy,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -651,6 +653,9 @@ import {
   addRichMediaAnnotations,
   RICH_MEDIA_COLOR,
   richMediaAnnotPathOps,
+  addThreeDAnnotations,
+  THREE_D_COLOR,
+  threeDAnnotPathOps,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -1864,6 +1869,49 @@ describe('pdf edits', () => {
     const again = await addRichMediaAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
     expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
     await expect(addRichMediaAnnotations(bytes, [])).rejects.toThrow(/phương tiện/)
+  })
+
+  it('adds a 3D annotation at the overlay box', async () => {
+    const bytes = await samplePdf(['Note'])
+    expect(THREE_D_COLOR.r).toBeGreaterThan(THREE_D_COLOR.g)
+    const ops = threeDAnnotPathOps(100, 50, 2)
+    expect(ops).toContain(' m ')
+    expect(ops.endsWith(' h')).toBe(true)
+    const filled = await addThreeDAnnotations(bytes, [0], OVERLAY_PRESETS['top-left'], 'block', 'Hello')
+    expect(await pageCount(filled)).toBe(1)
+    const doc = await PDFDocument.load(filled)
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(annots.size()).toBe(1)
+    const annot = doc.context.lookup(annots.get(0), PDFDict)
+    expect(annot.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('3D'))
+    expect(annot.lookup(PDFName.of('3DD'))).toBeTruthy()
+    expect(annot.lookup(PDFName.of('3DA'), PDFDict)).toBeTruthy()
+    expect(annot.lookupMaybe(PDFName.of('Movie'), PDFDict)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('Sound'), PDFRef)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('Name'), PDFName)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('RichMediaContent'), PDFDict)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('QuadPoints'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('Vertices'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('L'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('IC'), PDFArray)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('MK'), PDFDict)).toBeUndefined()
+    expect(annot.lookupMaybe(PDFName.of('FixedPrint'), PDFDict)).toBeUndefined()
+    expect(annot.lookup(PDFName.of('AP'), PDFDict)).toBeTruthy()
+    const contents = annot.lookup(PDFName.of('Contents'))
+    expect(contents instanceof PDFHexString || contents instanceof PDFString).toBe(true)
+    expect((contents as PDFHexString | PDFString).decodeText()).toBe('Hello')
+    const blank = await addThreeDAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'line')
+    const blankAnnot = (await PDFDocument.load(blank)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray)
+    expect(blankAnnot.size()).toBe(1)
+    const blankContents = (await PDFDocument.load(blank)).context
+      .lookup(blankAnnot.get(0), PDFDict)
+      .lookup(PDFName.of('Contents'))
+    expect((blankContents as PDFHexString | PDFString).decodeText()).toBe('')
+    const pageBox = await addThreeDAnnotations(bytes, [0], OVERLAY_PRESETS.center, 'page', 'Page')
+    expect(await pageCount(pageBox)).toBe(1)
+    const again = await addThreeDAnnotations(filled, [0], OVERLAY_PRESETS['bottom-right'], 'line', 'More')
+    expect((await PDFDocument.load(again)).getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(2)
+    await expect(addThreeDAnnotations(bytes, [])).rejects.toThrow(/mô hình/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -7020,6 +7068,27 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.vjournal', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.journal', 'pdf')).toBe('notes.pdf')
+
+    expect(toVfreebusy('Demo', ['Một', 'Hai\ndòng'])).toContain('BEGIN:VFREEBUSY')
+    expect(toVfreebusy('Demo', ['Một'])).toContain('X-WR-CALNAME:Demo')
+    expect(toVfreebusy('Demo', ['Một'])).toContain('COMMENT:Một')
+    expect(toVfreebusy('Demo', ['Một'])).toContain('FREEBUSY:')
+    expect(pagesFromVfreebusy(toVfreebusy('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('vfreebusy', toVfreebusy('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromVfreebusy('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromVfreebusy('COMMENT:Một\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.vfreebusy', { type: '' }))).toBe('vfreebusy')
+    expect(sourceKindFromFile(new File(['x'], 'notes.freebusy', { type: 'text/x-vfreebusy' }))).toBe(
+      'vfreebusy',
+    )
+    expect(sourceKindFromFile(new File(['x'], 'notes.ics', { type: '' }))).toBe('ics')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vjournal', { type: '' }))).toBe('vjournal')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() => pagesFromVfreebusy('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR\n')).toThrow(
+      /VFREEBUSY/,
+    )
+    expect(swapExtension('notes.vfreebusy', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.freebusy', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
