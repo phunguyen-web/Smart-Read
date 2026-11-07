@@ -211,6 +211,7 @@ import {
   toMathml,
   toVxml,
   toPls,
+  toMusicxml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -417,6 +418,7 @@ import {
   pagesFromMathml,
   pagesFromVxml,
   pagesFromPls,
+  pagesFromMusicxml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -717,6 +719,18 @@ import {
   SIGNATURE_FIELD_PREFIX,
   SIGNATURE_FIELD_FILL,
   signatureFieldNameForPage,
+  addSubmitButtons,
+  addResetButtons,
+  SUBMIT_FIELD_PREFIX,
+  RESET_FIELD_PREFIX,
+  SUBMIT_FIELD_FILL,
+  RESET_FIELD_FILL,
+  PUSHBUTTON_FLAG,
+  SUBMIT_FORM_URL,
+  SUBMIT_BUTTON_CAPTION,
+  RESET_BUTTON_CAPTION,
+  submitFieldNameForPage,
+  resetFieldNameForPage,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -1037,6 +1051,99 @@ describe('pdf edits', () => {
       signatureFieldNameForPage(2),
     ])
     await expect(addSignatureFields(bytes, [])).rejects.toThrow(/ký số/)
+  })
+
+  it('adds AcroForm submit and reset pushbuttons on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(submitFieldNameForPage(0)).toBe(`${SUBMIT_FIELD_PREFIX}.p1`)
+    expect(submitFieldNameForPage(0, 2)).toBe(`${SUBMIT_FIELD_PREFIX}.p1s2`)
+    expect(resetFieldNameForPage(0)).toBe(`${RESET_FIELD_PREFIX}.p1`)
+    expect(resetFieldNameForPage(0, 2)).toBe(`${RESET_FIELD_PREFIX}.p1s2`)
+    expect(SUBMIT_FIELD_FILL.g).toBeGreaterThan(SUBMIT_FIELD_FILL.r)
+    expect(RESET_FIELD_FILL.r).toBeGreaterThan(RESET_FIELD_FILL.b)
+    expect(PUSHBUTTON_FLAG).toBe(65536)
+    expect(SUBMIT_BUTTON_CAPTION).toBe('Gui')
+    expect(RESET_BUTTON_CAPTION).toBe('Xoa')
+    const submitted = await addSubmitButtons(bytes, [2, 0], OVERLAY_PRESETS['top-left'], 'block')
+    expect(await pageCount(submitted)).toBe(3)
+    const doc = await PDFDocument.load(submitted)
+    const acro = doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict)
+    const fields = acro.lookup(PDFName.of('Fields'), PDFArray)
+    expect(fields.size()).toBe(2)
+    const firstRef = fields.get(0)
+    expect(firstRef).toBeInstanceOf(PDFRef)
+    const first = doc.context.lookup(firstRef as PDFRef, PDFDict)
+    expect(first.lookup(PDFName.of('Type'), PDFName)).toBe(PDFName.of('Annot'))
+    expect(first.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of('Widget'))
+    expect(first.lookup(PDFName.of('FT'), PDFName)).toBe(PDFName.of('Btn'))
+    expect(first.lookup(PDFName.of('Ff'), PDFNumber).asNumber()).toBe(PUSHBUTTON_FLAG)
+    const title = first.lookup(PDFName.of('T'))
+    expect((title as PDFHexString | PDFString).decodeText()).toBe(submitFieldNameForPage(0))
+    const action = first.lookup(PDFName.of('A'), PDFDict)
+    expect(action.lookup(PDFName.of('Type'), PDFName)).toBe(PDFName.of('Action'))
+    expect(action.lookup(PDFName.of('S'), PDFName)).toBe(PDFName.of('SubmitForm'))
+    expect((action.lookup(PDFName.of('F')) as PDFString).decodeText()).toBe(SUBMIT_FORM_URL)
+    const mk = first.lookup(PDFName.of('MK'), PDFDict)
+    expect((mk.lookup(PDFName.of('CA')) as PDFString).decodeText()).toBe(SUBMIT_BUTTON_CAPTION)
+    expect(first.get(PDFName.of('P'))).toBe(doc.getPage(0).ref)
+    expect(first.lookup(PDFName.of('Rect'), PDFArray).size()).toBe(4)
+    expect(doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(1)
+    expect(doc.getPage(1).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(2).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(1)
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Collection'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Lang'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    const again = await addSubmitButtons(submitted, [0], OVERLAY_PRESETS['bottom-right'], 'line')
+    const againDoc = await PDFDocument.load(again)
+    const againFields = againDoc.catalog
+      .lookup(PDFName.of('AcroForm'), PDFDict)
+      .lookup(PDFName.of('Fields'), PDFArray)
+    expect(againFields.size()).toBe(3)
+    const names = [0, 1, 2].map((i) => {
+      const dict = againDoc.context.lookup(againFields.get(i) as PDFRef, PDFDict)
+      return (dict.lookup(PDFName.of('T')) as PDFHexString | PDFString).decodeText()
+    })
+    expect(names.sort()).toEqual([
+      submitFieldNameForPage(0),
+      submitFieldNameForPage(0, 2),
+      submitFieldNameForPage(2),
+    ])
+    await expect(addSubmitButtons(bytes, [])).rejects.toThrow(/gửi/)
+
+    const reset = await addResetButtons(bytes, [1], OVERLAY_PRESETS.center, 'block')
+    const resetDoc = await PDFDocument.load(reset)
+    const resetFields = resetDoc.catalog
+      .lookup(PDFName.of('AcroForm'), PDFDict)
+      .lookup(PDFName.of('Fields'), PDFArray)
+    expect(resetFields.size()).toBe(1)
+    const resetWidget = resetDoc.context.lookup(resetFields.get(0) as PDFRef, PDFDict)
+    expect(resetWidget.lookup(PDFName.of('FT'), PDFName)).toBe(PDFName.of('Btn'))
+    expect(resetWidget.lookup(PDFName.of('Ff'), PDFNumber).asNumber()).toBe(PUSHBUTTON_FLAG)
+    expect((resetWidget.lookup(PDFName.of('T')) as PDFString).decodeText()).toBe(
+      resetFieldNameForPage(1),
+    )
+    const resetAction = resetWidget.lookup(PDFName.of('A'), PDFDict)
+    expect(resetAction.lookup(PDFName.of('S'), PDFName)).toBe(PDFName.of('ResetForm'))
+    expect(resetAction.get(PDFName.of('F'))).toBeUndefined()
+    expect(
+      (resetWidget.lookup(PDFName.of('MK'), PDFDict).lookup(PDFName.of('CA')) as PDFString)
+        .decodeText(),
+    ).toBe(RESET_BUTTON_CAPTION)
+    expect(resetDoc.getPage(1).node.lookup(PDFName.of('Annots'), PDFArray).size()).toBe(1)
+    expect(resetDoc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(resetDoc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(resetDoc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    const resetAgain = await addResetButtons(reset, [1], OVERLAY_PRESETS['top-right'], 'line')
+    const resetAgainDoc = await PDFDocument.load(resetAgain)
+    expect(
+      resetAgainDoc.catalog
+        .lookup(PDFName.of('AcroForm'), PDFDict)
+        .lookup(PDFName.of('Fields'), PDFArray)
+        .size(),
+    ).toBe(2)
+    await expect(addResetButtons(bytes, [])).rejects.toThrow(/xóa/)
   })
 
   it('adds a sticky-note annotation at the overlay box', async () => {
@@ -8155,6 +8262,9 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toPls('Demo', ['Một'])).not.toContain('<level1>')
     expect(toPls('Demo', ['Một'])).not.toContain('<topic')
     expect(toPls('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toPls('Demo', ['Một'])).not.toContain('<score-partwise')
+    expect(toPls('Demo', ['Một'])).not.toContain('<measure')
+    expect(toPls('Demo', ['Một'])).not.toContain('<words>')
     expect(pagesFromPls(toPls('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('pls', toPls('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromPls('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -8173,6 +8283,47 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromPls('<lexicon></lexicon>\n')).toThrow(/PLS/)
     expect(swapExtension('notes.pls', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.pls.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toMusicxml('Demo', ['Một', 'Hai\ndòng'])).toContain('<score-partwise')
+    expect(toMusicxml('Demo', ['Một'])).toContain('<measure')
+    expect(toMusicxml('Demo', ['Một'])).toContain('<words>')
+    expect(toMusicxml('Demo', ['Một'])).toContain('<part-list>')
+    expect(toMusicxml('Demo', ['Một'])).toContain('Một')
+    expect(toMusicxml('Demo', ['Một'])).toContain('Demo')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<lexicon')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<lexeme>')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<phoneme>')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<vxml')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<form>')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<prompt>')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<speak')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<math')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<mrow>')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<level1>')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('<topic')
+    expect(toMusicxml('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(pagesFromMusicxml(toMusicxml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('musicxml', toMusicxml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromMusicxml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromMusicxml('<measure><words>Một</words></measure>\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.musicxml', { type: '' }))).toBe('musicxml')
+    expect(
+      sourceKindFromFile(
+        new File(['x'], 'notes.musicxml.xml', { type: 'application/vnd.recordare.musicxml+xml' }),
+      ),
+    ).toBe('musicxml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.pls', { type: '' }))).toBe('pls')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vxml', { type: '' }))).toBe('vxml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ssml', { type: '' }))).toBe('ssml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mathml', { type: '' }))).toBe('mathml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dtbook', { type: '' }))).toBe('dtbook')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dita', { type: '' }))).toBe('dita')
+    expect(sourceKindFromFile(new File(['x'], 'notes.musicxml.xml.xml', { type: '' }))).toBe('xml')
+    expect(() => pagesFromMusicxml('<score-partwise></score-partwise>\n')).toThrow(/MusicXML/)
+    expect(swapExtension('notes.musicxml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.musicxml.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

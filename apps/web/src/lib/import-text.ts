@@ -192,6 +192,7 @@ export type ImportedTextKind =
   | 'mathml'
   | 'vxml'
   | 'pls'
+  | 'musicxml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -954,6 +955,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'pls') {
     return pagesFromPls(text)
+  }
+  if (kind === 'musicxml') {
+    return pagesFromMusicxml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7795,6 +7799,46 @@ export function pagesFromPls(text: string): string[] {
     return capPages(phonemes)
   }
   throw new Error('Tệp PLS cần các mục lexeme / phoneme.')
+}
+
+function textFromMusicxmlMeasure(record: string): string {
+  const words = [...record.matchAll(/<words\b[^>]*>([\s\S]*?)<\/words>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (words.length > 0) {
+    return words.join('\n')
+  }
+  const lyrics = [...record.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (lyrics.length > 0) {
+    return lyrics.join('\n')
+  }
+  const body = unescapeXml(record.replace(/<[^>]+>/g, '')).trim()
+  if (body && !/^Trang\s+\d+$/.test(body)) {
+    return body
+  }
+  return ''
+}
+
+export function pagesFromMusicxml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const measures = [...trimmed.matchAll(/<measure\b[^>]*>([\s\S]*?)<\/measure>/gi)]
+    .map((match) => textFromMusicxmlMeasure(match[1]!))
+    .filter((page) => page.length > 0)
+  if (measures.length > 0) {
+    return capPages(measures)
+  }
+  const words = [...trimmed.matchAll(/<words\b[^>]*>([\s\S]*?)<\/words>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (words.length > 0) {
+    return capPages(words)
+  }
+  throw new Error('Tệp MusicXML cần các mục measure / words.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

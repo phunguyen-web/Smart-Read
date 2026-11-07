@@ -189,6 +189,7 @@ export type ExportFormat =
   | 'mathml'
   | 'vxml'
   | 'pls'
+  | 'musicxml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4228,6 +4229,43 @@ ${lexemes}
 `
 }
 
+export function toMusicxml(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const measures = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `      <direction>
+        <direction-type>
+          <words>${escapeHtml(line)}</words>
+        </direction-type>
+      </direction>`)
+        .join('\n')
+      return `    <measure number="${index + 1}">
+      <direction>
+        <direction-type>
+          <words>Trang ${index + 1}</words>
+        </direction-type>
+      </direction>
+${lines}
+    </measure>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <!-- ${heading} -->
+  <part-list>
+    <score-part id="P1">
+      <part-name>Smart-Read</part-name>
+    </score-part>
+  </part-list>
+  <part id="P1">
+${measures}
+  </part>
+</score-partwise>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5403,6 +5441,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/voicexml+xml;charset=utf-8'
     case 'pls':
       return 'application/pls+xml;charset=utf-8'
+    case 'musicxml':
+      return 'application/vnd.recordare.musicxml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
