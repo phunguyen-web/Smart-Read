@@ -179,6 +179,7 @@ export type ExportFormat =
   | 'vevent'
   | 'xcal'
   | 'jcal'
+  | 'jcard'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -3979,6 +3980,24 @@ export function toJcal(title: string, pages: string[]): string {
   ])}\n`
 }
 
+export function toJcard(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const cards = pages.map((text, index) => {
+    const note = text.trim() || '(không có chữ)'
+    return [
+      'vcard',
+      [
+        ['version', {}, 'text', '4.0'],
+        ['prodid', {}, 'text', `-//Smart-Read//${heading}//EN`],
+        ['fn', {}, 'text', `Trang ${index + 1}`],
+        ['n', {}, 'text', [`Trang ${index + 1}`, '', '', '', '']],
+        ['note', {}, 'text', note],
+      ],
+    ]
+  })
+  return `${JSON.stringify(cards)}\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5134,6 +5153,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/calendar+xml;charset=utf-8'
     case 'jcal':
       return 'application/calendar+json;charset=utf-8'
+    case 'jcard':
+      return 'application/vcard+json;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

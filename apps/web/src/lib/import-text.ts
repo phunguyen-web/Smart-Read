@@ -182,6 +182,7 @@ export type ImportedTextKind =
   | 'vevent'
   | 'xcal'
   | 'jcal'
+  | 'jcard'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -914,6 +915,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'jcal') {
     return pagesFromJcal(text)
+  }
+  if (kind === 'jcard') {
+    return pagesFromJcard(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7254,6 +7258,116 @@ export function pagesFromJcal(text: string): string[] {
     return capPages(descriptions)
   }
   throw new Error('Tệp jCal cần các mục vevent / description.')
+}
+
+function jcardText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value.trim()
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value).trim()
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((part) => jcardText(part))
+      .filter((part) => part.length > 0)
+      .join(' ')
+      .trim()
+  }
+  return ''
+}
+
+function jcardPropValue(properties: unknown, name: string): string {
+  if (!Array.isArray(properties)) {
+    return ''
+  }
+  for (const entry of properties) {
+    if (!Array.isArray(entry) || typeof entry[0] !== 'string') {
+      continue
+    }
+    if (entry[0].toLowerCase() !== name) {
+      continue
+    }
+    return jcardText(entry[3])
+  }
+  return ''
+}
+
+function textFromJcard(properties: unknown): string {
+  const note = jcardPropValue(properties, 'note')
+  if (note) {
+    return note
+  }
+  const fn = jcardPropValue(properties, 'fn')
+  if (fn && !/^Trang\s+\d+$/.test(fn)) {
+    return fn
+  }
+  const n = jcardPropValue(properties, 'n')
+  if (n && !/^Trang\s+\d+$/.test(n)) {
+    return n
+  }
+  return ''
+}
+
+function walkJcardComponents(node: unknown, into: string[]): void {
+  if (!Array.isArray(node)) {
+    return
+  }
+  if (typeof node[0] === 'string' && node[0].toLowerCase() === 'vcard') {
+    const page = textFromJcard(node[1])
+    if (page) {
+      into.push(page)
+    }
+    return
+  }
+  for (const child of node) {
+    if (Array.isArray(child) && typeof child[0] === 'string' && child[0].toLowerCase() === 'vcard') {
+      const page = textFromJcard(child[1])
+      if (page) {
+        into.push(page)
+      }
+    }
+  }
+}
+
+function collectJcardNotes(node: unknown, into: string[]): void {
+  if (!Array.isArray(node)) {
+    return
+  }
+  if (typeof node[0] === 'string' && node[0].toLowerCase() === 'note') {
+    const value = jcardText(node[3])
+    if (value) {
+      into.push(value)
+    }
+    return
+  }
+  for (const child of node) {
+    collectJcardNotes(child, into)
+  }
+}
+
+export function pagesFromJcard(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(trimmed)
+  } catch {
+    throw new Error('Tệp jCard cần các mục vcard / note.')
+  }
+  const pages: string[] = []
+  walkJcardComponents(parsed, pages)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const notes: string[] = []
+  collectJcardNotes(parsed, notes)
+  if (notes.length > 0) {
+    return capPages(notes)
+  }
+  throw new Error('Tệp jCard cần các mục vcard / note.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

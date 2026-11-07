@@ -5083,6 +5083,53 @@ export async function setOpenAction(
   return new Uint8Array(await doc.save())
 }
 
+function printPageRange(indexes: number[]): number[] {
+  const range: number[] = []
+  let start = indexes[0]!
+  let prev = indexes[0]!
+  for (let i = 1; i < indexes.length; i += 1) {
+    const index = indexes[i]!
+    if (index === prev + 1) {
+      prev = index
+      continue
+    }
+    range.push(start + 1, prev + 1)
+    start = index
+    prev = index
+  }
+  range.push(start + 1, prev + 1)
+  return range
+}
+
+/**
+ * Set catalog `/ViewerPreferences` with `DisplayDocTitle`, `FitWindow`, and
+ * `PrintPageRange` of the unique-sorted selected pages (1-based pairs).
+ * Empty indexes throw. Replacing an existing ViewerPreferences is allowed.
+ * This is not an annotation, not a `/Trans` page transition, not flatten,
+ * not overlay, not OpenAction, not AcroForm, not XFA, and not associated
+ * files `/AF`.
+ */
+export async function setViewerPreferences(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để đặt tùy xem.')
+  }
+  doc.catalog.set(
+    PDFName.of('ViewerPreferences'),
+    doc.context.obj({
+      DisplayDocTitle: true,
+      FitWindow: true,
+      PrintPageRange: printPageRange(unique),
+    }),
+  )
+  return new Uint8Array(await doc.save())
+}
+
 async function embedOverlayFont(doc: PDFDocument) {
   try {
     const fontkit = (await import('@pdf-lib/fontkit')).default

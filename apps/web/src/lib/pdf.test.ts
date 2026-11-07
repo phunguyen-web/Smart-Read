@@ -1,4 +1,4 @@
-import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRef, PDFString, degrees } from 'pdf-lib'
+import { PDFArray, PDFBool, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRef, PDFString, degrees } from 'pdf-lib'
 import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import {
@@ -201,6 +201,7 @@ import {
   toVevent,
   toXcal,
   toJcal,
+  toJcard,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -397,6 +398,7 @@ import {
   pagesFromVevent,
   pagesFromXcal,
   pagesFromJcal,
+  pagesFromJcard,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -682,6 +684,7 @@ import {
   PAGE_TRANSITION_STYLE,
   flattenAnnotations,
   setOpenAction,
+  setViewerPreferences,
   addStickyNotes,
   STICKY_NOTE_COLOR,
   strikeoutPages,
@@ -2133,6 +2136,34 @@ describe('pdf edits', () => {
     const againDest = againDoc.catalog.lookup(PDFName.of('OpenAction'), PDFDict).lookup(PDFName.of('D'), PDFArray)
     expect(againDest.get(0)).toBe(againDoc.getPage(1).ref)
     await expect(setOpenAction(bytes, [])).rejects.toThrow(/khi mở/)
+  })
+
+  it('sets catalog ViewerPreferences PrintPageRange of selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    const prefs = await setViewerPreferences(bytes, [2, 0])
+    expect(await pageCount(prefs)).toBe(3)
+    const doc = await PDFDocument.load(prefs)
+    const viewer = doc.catalog.lookup(PDFName.of('ViewerPreferences'), PDFDict)
+    expect(viewer.lookup(PDFName.of('DisplayDocTitle'))).toBe(PDFBool.True)
+    expect(viewer.lookup(PDFName.of('FitWindow'))).toBe(PDFBool.True)
+    const range = viewer.lookup(PDFName.of('PrintPageRange'), PDFArray)
+    expect(range.size()).toBe(4)
+    expect(range.lookup(0, PDFNumber).asNumber()).toBe(1)
+    expect(range.lookup(1, PDFNumber).asNumber()).toBe(1)
+    expect(range.lookup(2, PDFNumber).asNumber()).toBe(3)
+    expect(range.lookup(3, PDFNumber).asNumber()).toBe(3)
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    const again = await setViewerPreferences(prefs, [1])
+    const againDoc = await PDFDocument.load(again)
+    const againRange = againDoc.catalog
+      .lookup(PDFName.of('ViewerPreferences'), PDFDict)
+      .lookup(PDFName.of('PrintPageRange'), PDFArray)
+    expect(againRange.size()).toBe(2)
+    expect(againRange.lookup(0, PDFNumber).asNumber()).toBe(2)
+    expect(againRange.lookup(1, PDFNumber).asNumber()).toBe(2)
+    await expect(setViewerPreferences(bytes, [])).rejects.toThrow(/tùy xem/)
   })
 
   it('duplicates selected pages after the last selected index', async () => {
@@ -7451,6 +7482,32 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromJcal('["vcalendar",[],[]]\n')).toThrow(/jCal/)
     expect(swapExtension('notes.jcal', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.ical.json', 'pdf')).toBe('notes.pdf')
+
+    expect(toJcard('Demo', ['Một', 'Hai\ndòng'])).toContain('"vcard"')
+    expect(toJcard('Demo', ['Một'])).toContain('"note"')
+    expect(toJcard('Demo', ['Một'])).toContain('"prodid"')
+    expect(toJcard('Demo', ['Một'])).toContain('Demo')
+    expect(toJcard('Demo', ['Một'])).toContain('Một')
+    expect(toJcard('Demo', ['Một'])).toContain('4.0')
+    expect(toJcard('Demo', ['Một'])).not.toContain('BEGIN:VCARD')
+    expect(toJcard('Demo', ['Một'])).not.toContain('"vevent"')
+    expect(pagesFromJcard(toJcard('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('jcard', toJcard('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromJcard('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromJcard(JSON.stringify(['note', {}, 'text', 'Một'])),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.jcard', { type: '' }))).toBe('jcard')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.vcard.json', { type: 'application/vcard+json' })),
+    ).toBe('jcard')
+    expect(sourceKindFromFile(new File(['x'], 'notes.json', { type: '' }))).toBe('json')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vcf', { type: '' }))).toBe('vcard')
+    expect(sourceKindFromFile(new File(['x'], 'notes.vcard', { type: '' }))).toBe('vcard')
+    expect(sourceKindFromFile(new File(['x'], 'notes.jcal', { type: '' }))).toBe('jcal')
+    expect(() => pagesFromJcard('["vcard",[]]\n')).toThrow(/jCard/)
+    expect(swapExtension('notes.jcard', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.vcard.json', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
