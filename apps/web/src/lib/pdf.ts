@@ -5200,6 +5200,8 @@ export const CATALOG_REQUIREMENT_S = 'EnableJavaScript'
 export const CATALOG_REQUIREMENT_V = true
 /** ISO 32000 AcroForm `/NeedAppearances`. Distinct from catalog `/Requirements` **Yêu cầu**. */
 export const ACROFORM_NEED_APPEARANCES = true
+/** ISO 32000 AcroForm `/DA` default appearance. WinAnsi-safe Helvetica. Distinct from **Hiện sẵn**. */
+export const ACROFORM_DA = 'Helv 10 Tf 0 g'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5647,6 +5649,33 @@ export async function setNeedAppearances(
   ensureAcroFormFields(doc)
   const acroForm = doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict)
   acroForm.set(PDFName.of('NeedAppearances'), doc.context.obj(ACROFORM_NEED_APPEARANCES))
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Set AcroForm `/DA` (`ACROFORM_DA` Helv 10 Tf 0 g) when at least one page is
+ * selected. Empty indexes throw. Replacing an existing DA string is allowed.
+ * This is an AcroForm dictionary default-appearance string, not AcroForm
+ * `/NeedAppearances` **Hiện sẵn**, not catalog `/Requirements` **Yêu cầu**, not
+ * catalog `/Extensions` **Mở rộng**, not catalog `/Version` **Phiên bản**, not
+ * catalog `/Names` JavaScript **Lệnh**, not catalog `/AA` **Sự kiện**, not
+ * overlay submit **Gửi** or reset **Xóa mẫu**, not FreeText `/DA` **Chữ tự do**,
+ * not ink **Nét mực**, not `/NeedsRendering`, not `/Perms`, not `/DSS`, not
+ * PKCS#7, not XFA, and not `/AF`. Unselected pages keep no page-level `/DA`.
+ */
+export async function setDefaultAppearance(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn nét mẫu.')
+  }
+  ensureAcroFormFields(doc)
+  const acroForm = doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict)
+  acroForm.set(PDFName.of('DA'), PDFString.of(ACROFORM_DA))
   return new Uint8Array(await doc.save())
 }
 
