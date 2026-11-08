@@ -203,6 +203,7 @@ export type ExportFormat =
   | 'jspf'
   | 'wpl'
   | 'asx'
+  | 'b4s'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4582,6 +4583,29 @@ ${entries}
 `
 }
 
+export function toB4s(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const entries = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `      <annotation>${escapeHtml(line)}</annotation>`)
+        .join('\n')
+      return `    <entry Playstring="file:page-${index + 1}.txt">
+      <Name>Trang ${index + 1}</Name>
+${lines}
+    </entry>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<WinampXML>
+  <playlist num_entries="${pages.length}" label="${heading}">
+${entries}
+  </playlist>
+</WinampXML>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5785,6 +5809,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.ms-wpl;charset=utf-8'
     case 'asx':
       return 'video/x-ms-asx;charset=utf-8'
+    case 'b4s':
+      return 'audio/x-ms-b4s;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

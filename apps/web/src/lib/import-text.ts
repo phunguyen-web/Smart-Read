@@ -206,6 +206,7 @@ export type ImportedTextKind =
   | 'jspf'
   | 'wpl'
   | 'asx'
+  | 'b4s'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1010,6 +1011,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'asx') {
     return pagesFromAsx(text)
+  }
+  if (kind === 'b4s') {
+    return pagesFromB4s(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8364,6 +8368,46 @@ export function pagesFromAsx(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp ASX cần các mục entry.')
+}
+
+function b4sAttr(tag: string, name: 'title'): string {
+  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, 'i'))
+  return match ? unescapeXml(match[1]!).trim() : ''
+}
+
+function textFromB4sEntry(tag: string, inner: string): string {
+  const annotations = [...inner.matchAll(/<annotation\b[^>]*>([\s\S]*?)<\/annotation>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (annotations.length > 0) {
+    return annotations.join('\n')
+  }
+  const innerName = inner.match(/<Name\b[^>]*>([\s\S]*?)<\/Name>/i)
+  if (innerName) {
+    const name = unescapeXml(innerName[1]!.replace(/<[^>]+>/g, '')).trim()
+    if (name.length > 0 && !/^Trang\s+\d+$/.test(name)) {
+      return name
+    }
+  }
+  const title = b4sAttr(tag, 'title')
+  if (title.length > 0 && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+export function pagesFromB4s(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = [...trimmed.matchAll(/<entry\b([^>]*?)(?:\/>|>([\s\S]*?)<\/entry>)/gi)]
+    .map((match) => textFromB4sEntry(match[1]!, match[2] ?? ''))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp B4S cần các mục entry.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

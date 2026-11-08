@@ -5192,6 +5192,12 @@ export const CATALOG_EXTENSION_TYPE = 'DeveloperExtensions'
 export const CATALOG_EXTENSION_BASE = '1.7'
 /** ISO 32000 DeveloperExtensions `/ExtensionLevel`. */
 export const CATALOG_EXTENSION_LEVEL = 1
+/** ISO 32000 catalog `/Requirements` dictionary `/Type`. Distinct from catalog `/Extensions` **Mở rộng**. */
+export const CATALOG_REQUIREMENT_TYPE = 'Requirements'
+/** ISO 32000 catalog `/Requirements` `/S` EnableJavaScript. WinAnsi-safe PDF name. */
+export const CATALOG_REQUIREMENT_S = 'EnableJavaScript'
+/** ISO 32000 catalog `/Requirements` `/V` enabled flag. */
+export const CATALOG_REQUIREMENT_V = true
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5578,6 +5584,41 @@ export async function setCatalogExtensions(
   const extensions = doc.context.obj({})
   extensions.set(PDFName.of(CATALOG_EXTENSION_PREFIX), developer)
   doc.catalog.set(PDFName.of('Extensions'), extensions)
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write catalog `/Requirements` (one dictionary `Type` `CATALOG_REQUIREMENT_TYPE`,
+ * `S` `CATALOG_REQUIREMENT_S` EnableJavaScript, `V` `CATALOG_REQUIREMENT_V` true)
+ * when at least one page is selected. Empty indexes throw. Replacing an existing
+ * Requirements array is allowed. This is a catalog document-level requirements
+ * array, not catalog `/Extensions` **Mở rộng**, not catalog `/Version`
+ * **Phiên bản**, not the file header `%PDF-`, not page `/Group` **Nhóm**, not
+ * catalog `/PageMode` **Hình nhỏ**, not catalog `/PageLayout` **Bố cục**, not
+ * catalog `/Names` JavaScript **Lệnh**, not catalog `/AA` **Sự kiện**, not
+ * overlay-box markup, not AcroForm, not PKCS#7, not XFA, and not `/AF`.
+ * Unselected pages keep no page-level `/Requirements`.
+ */
+export async function setCatalogRequirements(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn yêu cầu.')
+  }
+  doc.catalog.set(
+    PDFName.of('Requirements'),
+    doc.context.obj([
+      {
+        Type: CATALOG_REQUIREMENT_TYPE,
+        S: CATALOG_REQUIREMENT_S,
+        V: CATALOG_REQUIREMENT_V,
+      },
+    ]),
+  )
   return new Uint8Array(await doc.save())
 }
 
