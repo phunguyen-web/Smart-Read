@@ -221,6 +221,7 @@ import {
   toLilypond,
   toHumdrum,
   toXspf,
+  toM3u,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -437,6 +438,7 @@ import {
   pagesFromLilypond,
   pagesFromHumdrum,
   pagesFromXspf,
+  pagesFromM3u,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -738,6 +740,8 @@ import {
   PIECE_INFO_MODIFIED,
   setPageLayout,
   PAGE_LAYOUT,
+  setPageMode,
+  PAGE_MODE,
   setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
@@ -2616,6 +2620,43 @@ describe('pdf edits', () => {
     const againDoc = await PDFDocument.load(again)
     expect(againDoc.catalog.lookup(PDFName.of('PageLayout'), PDFName)).toBe(PDFName.of(PAGE_LAYOUT))
     await expect(setPageLayout(bytes, [])).rejects.toThrow(/bố cục/)
+  })
+
+  it('sets catalog PageMode UseThumbs when pages are selected', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(PAGE_MODE).toBe('UseThumbs')
+    const filled = await setPageMode(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    expect(doc.catalog.lookup(PDFName.of('PageMode'), PDFName)).toBe(PDFName.of(PAGE_MODE))
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageLayout'), PDFName)).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PageMode'))).toBeUndefined()
+    expect(doc.getPage(1).node.get(PDFName.of('PageMode'))).toBeUndefined()
+    expect(doc.getPage(2).node.get(PDFName.of('PageMode'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PageLayout'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PieceInfo'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('SpiderInfo'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Legal'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('URI'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Tabs'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('UserUnit'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Dur'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.get(PDFName.of('AA'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('PieceInfo'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('SpiderInfo'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Legal'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('URI'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Collection'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Lang'))).toBeUndefined()
+    const again = await setPageMode(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    expect(againDoc.catalog.lookup(PDFName.of('PageMode'), PDFName)).toBe(PDFName.of(PAGE_MODE))
+    await expect(setPageMode(bytes, [])).rejects.toThrow(/hình nhỏ/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -8980,6 +9021,8 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toLilypond('Demo', ['Một'])).not.toContain('**kern')
     expect(toLilypond('Demo', ['Một'])).not.toContain('<playlist')
     expect(toLilypond('Demo', ['Một'])).not.toContain('http://xspf.org/ns/0/')
+    expect(toLilypond('Demo', ['Một'])).not.toContain('#EXTM3U')
+    expect(toLilypond('Demo', ['Một'])).not.toContain('#EXTINF:')
     expect(pagesFromLilypond(toLilypond('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('ly', toLilypond('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromLilypond('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -9031,6 +9074,8 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toHumdrum('Demo', ['Một'])).not.toContain('\\markup \\column')
     expect(toHumdrum('Demo', ['Một'])).not.toContain('<playlist')
     expect(toHumdrum('Demo', ['Một'])).not.toContain('http://xspf.org/ns/0/')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('#EXTM3U')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('#EXTINF:')
     expect(pagesFromHumdrum(toHumdrum('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('krn', toHumdrum('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromHumdrum('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -9080,6 +9125,8 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toXspf('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
     expect(toXspf('Demo', ['Một'])).not.toContain('\\version')
     expect(toXspf('Demo', ['Một'])).not.toContain('\\markup \\column')
+    expect(toXspf('Demo', ['Một'])).not.toContain('#EXTM3U')
+    expect(toXspf('Demo', ['Một'])).not.toContain('#EXTINF:')
     expect(pagesFromXspf(toXspf('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('xspf', toXspf('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromXspf('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -9103,6 +9150,56 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toThrow(/XSPF/)
     expect(swapExtension('notes.xspf', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.xspf.xml', 'pdf')).toBe('notes.pdf')
+    expect(toM3u('Demo', ['Một', 'Hai\ndòng'])).toContain('#EXTM3U')
+    expect(toM3u('Demo', ['Một'])).toContain('#PLAYLIST:Demo')
+    expect(toM3u('Demo', ['Một'])).toContain('#EXTINF:-1,Trang 1')
+    expect(toM3u('Demo', ['Một'])).toContain('# Một')
+    expect(toM3u('Demo', ['Một'])).not.toContain('<playlist')
+    expect(toM3u('Demo', ['Một'])).not.toContain('http://xspf.org/ns/0/')
+    expect(toM3u('Demo', ['Một'])).not.toContain('**kern')
+    expect(toM3u('Demo', ['Một'])).not.toContain('MFile')
+    expect(toM3u('Demo', ['Một'])).not.toContain('MTrk')
+    expect(toM3u('Demo', ['Một'])).not.toContain('digraph G')
+    expect(toM3u('Demo', ['Một'])).not.toContain('xlabel="Trang')
+    expect(toM3u('Demo', ['Một'])).not.toContain('<graphml')
+    expect(toM3u('Demo', ['Một'])).not.toContain('<node id="n1">')
+    expect(toM3u('Demo', ['Một'])).not.toContain('<smil')
+    expect(toM3u('Demo', ['Một'])).not.toContain('<par>')
+    expect(toM3u('Demo', ['Một'])).not.toContain('%abc-2.1')
+    expect(toM3u('Demo', ['Một'])).not.toContain('\nW:')
+    expect(toM3u('Demo', ['Một'])).not.toContain('<mei')
+    expect(toM3u('Demo', ['Một'])).not.toContain('<measure')
+    expect(toM3u('Demo', ['Một'])).not.toContain('<dir>')
+    expect(toM3u('Demo', ['Một'])).not.toContain('<score-partwise')
+    expect(toM3u('Demo', ['Một'])).not.toContain('<SAMI')
+    expect(toM3u('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/ttml"')
+    expect(toM3u('Demo', ['Một'])).not.toContain('<speak')
+    expect(toM3u('Demo', ['Một'])).not.toContain('<math')
+    expect(toM3u('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toM3u('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toM3u('Demo', ['Một'])).not.toContain('\\version')
+    expect(toM3u('Demo', ['Một'])).not.toContain('\\markup \\column')
+    expect(toM3u('Demo', ['Một'])).not.toContain('TRACK 01 AUDIO')
+    expect(pagesFromM3u(toM3u('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('m3u', toM3u('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromM3u('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromM3u('#EXTINF:-1,Một\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.m3u', { type: '' }))).toBe('m3u')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.m3u8', { type: 'application/vnd.apple.mpegurl' })),
+    ).toBe('m3u')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xspf', { type: '' }))).toBe('xspf')
+    expect(sourceKindFromFile(new File(['x'], 'notes.krn', { type: '' }))).toBe('krn')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.m3u.m3u', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.m', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() =>
+      pagesFromM3u('#EXTM3U\n#PLAYLIST:Demo\n'),
+    ).toThrow(/M3U/)
+    expect(swapExtension('notes.m3u', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.m3u8', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

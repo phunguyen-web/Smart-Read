@@ -202,6 +202,7 @@ export type ImportedTextKind =
   | 'ly'
   | 'krn'
   | 'xspf'
+  | 'm3u'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -994,6 +995,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'xspf') {
     return pagesFromXspf(text)
+  }
+  if (kind === 'm3u') {
+    return pagesFromM3u(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8179,6 +8183,44 @@ export function pagesFromXspf(text: string): string[] {
     return capPages(tracks)
   }
   throw new Error('Tệp XSPF cần các mục track.')
+}
+
+function textFromM3uTrack(extinfTitle: string, body: string): string {
+  const comments = body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('#') && !/^#EXT/i.test(line) && !/^#PLAYLIST:/i.test(line))
+    .map((line) => line.replace(/^#\s?/, '').trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (comments.length > 0) {
+    return comments.join('\n')
+  }
+  const title = extinfTitle.trim()
+  if (title.length > 0 && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+export function pagesFromM3u(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const parts = trimmed.split(/^\s*#EXTINF:[^,\n]*,([^\n]*)\s*$/im)
+  if (parts.length >= 3) {
+    const pages: string[] = []
+    for (let i = 1; i < parts.length; i += 2) {
+      const page = textFromM3uTrack(parts[i] ?? '', parts[i + 1] ?? '')
+      if (page.length > 0) {
+        pages.push(page)
+      }
+    }
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  throw new Error('Tệp M3U cần các mục EXTINF.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

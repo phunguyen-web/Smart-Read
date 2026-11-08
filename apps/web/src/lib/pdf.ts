@@ -5178,6 +5178,8 @@ export const PIECE_INFO_DATA = 'Smart-Read'
 export const PIECE_INFO_MODIFIED = 'D:20260101000000Z'
 /** ISO 32000 catalog `/PageLayout`. Distinct from ViewerPreferences and `/PieceInfo`. */
 export const PAGE_LAYOUT = 'TwoColumnLeft'
+/** ISO 32000 catalog `/PageMode`. Distinct from `/PageLayout` and outline UseOutlines. */
+export const PAGE_MODE = 'UseThumbs'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5444,6 +5446,35 @@ export async function setPageLayout(
     throw new Error('Chọn ít nhất một trang để gắn bố cục.')
   }
   doc.catalog.set(PDFName.of('PageLayout'), PDFName.of(PAGE_LAYOUT))
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write catalog `/PageMode` (`PAGE_MODE` UseThumbs) when at least one page is
+ * selected. Empty indexes throw. Replacing an existing PageMode name is
+ * allowed. This is a catalog document-level page mode, not catalog
+ * `/PageLayout` **Bố cục**, not catalog `/PieceInfo` **Mảnh**, not catalog
+ * `/SpiderInfo` **Nhện**, not catalog `/Legal` **Pháp lý**, not catalog `/URI`
+ * **Cơ sở**, not a URI link annotation **Liên kết**, not page `/Tabs`
+ * **Thứ tự**, not MarkInfo `/S` **Thẻ**, not `/UserUnit` **Đơn vị**, not
+ * `/Dur` **Thời lượng**, not `/Trans` **Hiệu ứng**, not catalog `/Names`
+ * JavaScript **Lệnh**, not OpenAction **Khi mở**, not catalog `/AA`
+ * **Sự kiện**, not ViewerPreferences **Tùy xem**, not overlay-box markup, not
+ * AcroForm, not PKCS#7, not XFA, and not `/AF`. Outline code may still write
+ * `UseOutlines` when adding outlines; this button writes `UseThumbs` and does
+ * not set `/PageLayout`. Unselected pages keep no page-level `/PageMode`.
+ */
+export async function setPageMode(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn hình nhỏ.')
+  }
+  doc.catalog.set(PDFName.of('PageMode'), PDFName.of(PAGE_MODE))
   return new Uint8Array(await doc.save())
 }
 

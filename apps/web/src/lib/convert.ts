@@ -199,6 +199,7 @@ export type ExportFormat =
   | 'ly'
   | 'krn'
   | 'xspf'
+  | 'm3u'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4500,6 +4501,25 @@ ${tracks}
 `
 }
 
+export function toM3u(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const tracks = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `# ${line}`)
+        .join('\n')
+      return `#EXTINF:-1,Trang ${index + 1}
+${lines}
+page-${index + 1}.txt`
+    })
+    .join('\n')
+  return `#EXTM3U
+#PLAYLIST:${heading}
+${tracks}
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5695,6 +5715,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-humdrum;charset=utf-8'
     case 'xspf':
       return 'application/xspf+xml;charset=utf-8'
+    case 'm3u':
+      return 'audio/x-mpegurl;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
