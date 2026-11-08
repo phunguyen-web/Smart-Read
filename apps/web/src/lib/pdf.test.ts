@@ -219,6 +219,7 @@ import {
   toDot,
   toMf2t,
   toLilypond,
+  toHumdrum,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -433,6 +434,7 @@ import {
   pagesFromDot,
   pagesFromMf2t,
   pagesFromLilypond,
+  pagesFromHumdrum,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -728,6 +730,10 @@ import {
   CATALOG_LEGAL_ATTESTATION,
   setSpiderInfo,
   SPIDER_INFO_VERSION,
+  setPieceInfo,
+  PIECE_INFO_APP,
+  PIECE_INFO_DATA,
+  PIECE_INFO_MODIFIED,
   setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
@@ -2524,6 +2530,53 @@ describe('pdf edits', () => {
       (againDoc.catalog.lookup(PDFName.of('SpiderInfo'), PDFDict).lookup(PDFName.of('V')) as PDFNumber).asNumber(),
     ).toBe(SPIDER_INFO_VERSION)
     await expect(setSpiderInfo(bytes, [])).rejects.toThrow(/nhện/)
+  })
+
+  it('sets catalog PieceInfo application data when pages are selected', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(PIECE_INFO_APP).toBe('SmartRead')
+    expect(PIECE_INFO_DATA).toBe('Smart-Read')
+    const filled = await setPieceInfo(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    const piece = doc.catalog.lookup(PDFName.of('PieceInfo'), PDFDict)
+    const app = piece.lookup(PDFName.of(PIECE_INFO_APP), PDFDict)
+    expect((app.lookup(PDFName.of('LastModified')) as PDFString).decodeText()).toBe(PIECE_INFO_MODIFIED)
+    expect((app.lookup(PDFName.of('Private'), PDFDict).lookup(PDFName.of('Data')) as PDFString).decodeText()).toBe(
+      PIECE_INFO_DATA,
+    )
+    expect(app.lookupMaybe(PDFName.of('Collection'), PDFDict)).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PieceInfo'))).toBeUndefined()
+    expect(doc.getPage(1).node.get(PDFName.of('PieceInfo'))).toBeUndefined()
+    expect(doc.getPage(2).node.get(PDFName.of('PieceInfo'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Legal'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('URI'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Tabs'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('UserUnit'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Dur'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.get(PDFName.of('AA'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('SpiderInfo'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Legal'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('URI'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Collection'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Lang'))).toBeUndefined()
+    const again = await setPieceInfo(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    expect(
+      (
+        againDoc.catalog
+          .lookup(PDFName.of('PieceInfo'), PDFDict)
+          .lookup(PDFName.of(PIECE_INFO_APP), PDFDict)
+          .lookup(PDFName.of('Private'), PDFDict)
+          .lookup(PDFName.of('Data')) as PDFString
+      ).decodeText(),
+    ).toBe(PIECE_INFO_DATA)
+    await expect(setPieceInfo(bytes, [])).rejects.toThrow(/mảnh/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -8840,6 +8893,7 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toMf2t('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
     expect(toMf2t('Demo', ['Một'])).not.toContain('\\version')
     expect(toMf2t('Demo', ['Một'])).not.toContain('\\markup \\column')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('**kern')
     expect(pagesFromMf2t(toMf2t('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('mf2t', toMf2t('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromMf2t('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -8884,6 +8938,7 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toLilypond('Demo', ['Một'])).not.toContain('<math')
     expect(toLilypond('Demo', ['Một'])).not.toContain('<dtbook')
     expect(toLilypond('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toLilypond('Demo', ['Một'])).not.toContain('**kern')
     expect(pagesFromLilypond(toLilypond('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('ly', toLilypond('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromLilypond('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -8907,6 +8962,53 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.ly', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.ily', 'pdf')).toBe('notes.pdf')
+    expect(toHumdrum('Demo', ['Một', 'Hai\ndòng'])).toContain('**kern')
+    expect(toHumdrum('Demo', ['Một'])).toContain('!! Trang 1')
+    expect(toHumdrum('Demo', ['Một'])).toContain('!! Một')
+    expect(toHumdrum('Demo', ['Một'])).toContain('!!!OTL: Demo')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('MFile')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('MTrk')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('digraph G')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('xlabel="Trang')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('<graphml')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('<node id="n1">')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('<smil')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('<par>')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('%abc-2.1')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('\nW:')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('<mei')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('<measure')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('<dir>')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('<score-partwise')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('<SAMI')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/ttml"')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('<speak')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('<math')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('\\version')
+    expect(toHumdrum('Demo', ['Một'])).not.toContain('\\markup \\column')
+    expect(pagesFromHumdrum(toHumdrum('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('krn', toHumdrum('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromHumdrum('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromHumdrum('**kern\n!! Một\n*-\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.krn', { type: '' }))).toBe('krn')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.hum', { type: 'text/x-humdrum' })),
+    ).toBe('krn')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ly', { type: '' }))).toBe('ly')
+    expect(sourceKindFromFile(new File(['x'], 'notes.abc', { type: '' }))).toBe('abc')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.krn.krn', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.hum.hum', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.k', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() => pagesFromHumdrum('**kern\n!!!OTL: Demo\n*-\n')).toThrow(/Humdrum/)
+    expect(swapExtension('notes.krn', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.hum', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

@@ -197,6 +197,7 @@ export type ExportFormat =
   | 'dot'
   | 'mf2t'
   | 'ly'
+  | 'krn'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4451,6 +4452,29 @@ ${parts}
 `
 }
 
+function escapeHumdrumText(value: string): string {
+  return value.replace(/\r?\n/g, ' ')
+}
+
+export function toHumdrum(title: string, pages: string[]): string {
+  const heading = escapeHumdrumText(title.trim() || 'Tài liệu')
+  return (
+    pages
+      .map((text, index) => {
+        const lines = (text.trim() || '(không có chữ)')
+          .split(/\n+/)
+          .map((line) => `!! ${line}`)
+          .join('\n')
+        const header = index === 0 ? `!!!OTL: ${heading}\n` : ''
+        return `**kern
+${header}!! Trang ${index + 1}
+${lines}
+*-`
+      })
+      .join('\n') + '\n'
+  )
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5642,6 +5666,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-mf2t;charset=utf-8'
     case 'ly':
       return 'text/x-lilypond;charset=utf-8'
+    case 'krn':
+      return 'text/x-humdrum;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
