@@ -5168,6 +5168,8 @@ export const PAGE_TAB_ORDER = 'R'
 export const CATALOG_URI_BASE = 'https://smart-read.local/'
 /** ISO 32000 catalog `/Legal` `/Attestation`. Distinct from catalog `/URI`. */
 export const CATALOG_LEGAL_ATTESTATION = 'Smart-Read'
+/** ISO 32000 catalog `/SpiderInfo` `/V`. Distinct from catalog `/Legal`. */
+export const SPIDER_INFO_VERSION = 1
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5336,6 +5338,37 @@ export async function setCatalogLegal(
     PDFName.of('Legal'),
     doc.context.obj({
       Attestation: PDFString.of(CATALOG_LEGAL_ATTESTATION),
+    }),
+  )
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write catalog `/SpiderInfo` (`V` SPIDER_INFO_VERSION) when at least one page
+ * is selected. Empty indexes throw. Replacing an existing SpiderInfo dictionary
+ * is allowed. This is a catalog document-level web-capture info dictionary, not
+ * catalog `/Legal` **Pháp lý**, not catalog `/URI` **Cơ sở**, not a URI link
+ * annotation **Liên kết**, not page `/Tabs` **Thứ tự**, not MarkInfo `/S`
+ * **Thẻ**, not `/UserUnit` **Đơn vị**, not `/Dur` **Thời lượng**, not `/Trans`
+ * **Hiệu ứng**, not catalog `/Names` JavaScript **Lệnh**, not OpenAction
+ * **Khi mở**, not catalog `/AA` **Sự kiện**, not overlay-box markup, not
+ * AcroForm, not PKCS#7, not XFA, and not `/AF`. Unselected pages keep no
+ * page-level `/SpiderInfo`.
+ */
+export async function setSpiderInfo(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn nhện.')
+  }
+  doc.catalog.set(
+    PDFName.of('SpiderInfo'),
+    doc.context.obj({
+      V: SPIDER_INFO_VERSION,
     }),
   )
   return new Uint8Array(await doc.save())

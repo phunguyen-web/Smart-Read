@@ -199,6 +199,7 @@ export type ImportedTextKind =
   | 'graphml'
   | 'dot'
   | 'mf2t'
+  | 'ly'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -982,6 +983,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'mf2t') {
     return pagesFromMf2t(text)
+  }
+  if (kind === 'ly') {
+    return pagesFromLilypond(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8076,6 +8080,34 @@ export function pagesFromMf2t(text: string): string[] {
     return capPages(texts)
   }
   throw new Error('Tệp MIDI cần các mục MTrk / Meta Text.')
+}
+
+function unescapeLilypondText(value: string): string {
+  return value.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+}
+
+function textFromLilypondColumn(record: string): string {
+  const texts = [...record.matchAll(/"((?:\\.|[^"\\])*)"/g)]
+    .map((match) => unescapeLilypondText(match[1]!).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (texts.length > 0) {
+    return texts.join('\n')
+  }
+  return ''
+}
+
+export function pagesFromLilypond(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const columns = [...trimmed.matchAll(/\\markup\s+\\column\s*\{([^}]*)\}/g)]
+    .map((match) => textFromLilypondColumn(match[1]!))
+    .filter((page) => page.length > 0)
+  if (columns.length > 0) {
+    return capPages(columns)
+  }
+  throw new Error('Tệp LilyPond cần các mục markup / column.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

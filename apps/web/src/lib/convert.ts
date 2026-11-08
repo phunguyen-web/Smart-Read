@@ -196,6 +196,7 @@ export type ExportFormat =
   | 'graphml'
   | 'dot'
   | 'mf2t'
+  | 'ly'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4427,6 +4428,29 @@ ${tracks}
 `
 }
 
+function escapeLilypondText(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+export function toLilypond(title: string, pages: string[]): string {
+  const heading = escapeLilypondText((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const parts = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `"${escapeLilypondText(line)}"`)
+        .join(' ')
+      return `% Trang ${index + 1}
+\\markup \\column { ${lines} }`
+    })
+    .join('\n\n')
+  return `\\version "2.24.0"
+\\header { title = "${heading}" }
+
+${parts}
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5616,6 +5640,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/vnd.graphviz;charset=utf-8'
     case 'mf2t':
       return 'text/x-mf2t;charset=utf-8'
+    case 'ly':
+      return 'text/x-lilypond;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
