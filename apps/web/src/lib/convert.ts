@@ -198,6 +198,7 @@ export type ExportFormat =
   | 'mf2t'
   | 'ly'
   | 'krn'
+  | 'xspf'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4475,6 +4476,30 @@ ${lines}
   )
 }
 
+export function toXspf(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const tracks = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `      <annotation>${escapeHtml(line)}</annotation>`)
+        .join('\n')
+      return `    <track>
+      <title>Trang ${index + 1}</title>
+${lines}
+    </track>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<playlist version="1" xmlns="http://xspf.org/ns/0/">
+  <title>${heading}</title>
+  <trackList>
+${tracks}
+  </trackList>
+</playlist>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5668,6 +5693,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/x-lilypond;charset=utf-8'
     case 'krn':
       return 'text/x-humdrum;charset=utf-8'
+    case 'xspf':
+      return 'application/xspf+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

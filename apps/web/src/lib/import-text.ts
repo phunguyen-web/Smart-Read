@@ -201,6 +201,7 @@ export type ImportedTextKind =
   | 'mf2t'
   | 'ly'
   | 'krn'
+  | 'xspf'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -990,6 +991,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'krn') {
     return pagesFromHumdrum(text)
+  }
+  if (kind === 'xspf') {
+    return pagesFromXspf(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8139,6 +8143,42 @@ export function pagesFromHumdrum(text: string): string[] {
     return capPages(records)
   }
   throw new Error('Tệp Humdrum cần các mục kern.')
+}
+
+function textFromXspfTrack(record: string): string {
+  const texts = [...record.matchAll(/<annotation\b[^>]*>([\s\S]*?)<\/annotation>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (texts.length > 0) {
+    return texts.join('\n')
+  }
+  const locations = [...record.matchAll(/<location\b[^>]*>([\s\S]*?)<\/location>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (locations.length > 0) {
+    return locations.join('\n')
+  }
+  const titles = [...record.matchAll(/<title\b[^>]*>([\s\S]*?)<\/title>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (titles.length > 0) {
+    return titles.join('\n')
+  }
+  return ''
+}
+
+export function pagesFromXspf(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const tracks = [...trimmed.matchAll(/<track\b[^>]*>([\s\S]*?)<\/track>/gi)]
+    .map((match) => textFromXspfTrack(match[1]!))
+    .filter((page) => page.length > 0)
+  if (tracks.length > 0) {
+    return capPages(tracks)
+  }
+  throw new Error('Tệp XSPF cần các mục track.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
