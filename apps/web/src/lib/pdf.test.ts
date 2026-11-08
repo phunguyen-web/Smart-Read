@@ -228,6 +228,7 @@ import {
   toB4s,
   toMpcpl,
   toDpl,
+  toFpl,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -451,6 +452,7 @@ import {
   pagesFromB4s,
   pagesFromMpcpl,
   pagesFromDpl,
+  pagesFromFpl,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -771,6 +773,11 @@ import {
   ACROFORM_NEED_APPEARANCES,
   setDefaultAppearance,
   ACROFORM_DA,
+  setDefaultResources,
+  ACROFORM_DR_FONT,
+  ACROFORM_DR_BASE_FONT,
+  ACROFORM_DR_SUBTYPE,
+  ACROFORM_DR_ENCODING,
   setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
@@ -2978,6 +2985,64 @@ describe('pdf edits', () => {
     expect(againDoc.catalog.get(PDFName.of('NeedAppearances'))).toBeUndefined()
     expect(againDoc.catalog.get(PDFName.of('Requirements'))).toBeUndefined()
     await expect(setDefaultAppearance(bytes, [])).rejects.toThrow(/nét mẫu/)
+  })
+
+  it('sets AcroForm default resources when pages are selected', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(ACROFORM_DR_FONT).toBe('Helv')
+    expect(ACROFORM_DR_BASE_FONT).toBe('Helvetica')
+    expect(ACROFORM_DR_SUBTYPE).toBe('Type1')
+    expect(ACROFORM_DR_ENCODING).toBe('WinAnsiEncoding')
+    const filled = await setDefaultResources(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    const acroForm = doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict)
+    const dr = acroForm.lookup(PDFName.of('DR'), PDFDict)
+    const font = dr.lookup(PDFName.of('Font'), PDFDict)
+    const helv = font.lookup(PDFName.of(ACROFORM_DR_FONT), PDFDict)
+    expect(helv.lookup(PDFName.of('Type'), PDFName)).toBe(PDFName.of('Font'))
+    expect(helv.lookup(PDFName.of('Subtype'), PDFName)).toBe(PDFName.of(ACROFORM_DR_SUBTYPE))
+    expect(helv.lookup(PDFName.of('BaseFont'), PDFName)).toBe(PDFName.of(ACROFORM_DR_BASE_FONT))
+    expect(helv.lookup(PDFName.of('Encoding'), PDFName)).toBe(PDFName.of(ACROFORM_DR_ENCODING))
+    expect(acroForm.lookupMaybe(PDFName.of('Fields'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(acroForm.get(PDFName.of('DA'))).toBeUndefined()
+    expect(acroForm.get(PDFName.of('NeedAppearances'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('DR'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('DA'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('NeedAppearances'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Requirements'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Extensions'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Version'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('DR'))).toBeUndefined()
+    expect(doc.getPage(1).node.get(PDFName.of('DR'))).toBeUndefined()
+    expect(doc.getPage(2).node.get(PDFName.of('DR'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('DA'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('NeedAppearances'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Requirements'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Extensions'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Version'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Group'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PageMode'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PageLayout'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageMode'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageLayout'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OutputIntents'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeUndefined()
+    const again = await setDefaultResources(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    const againHelv = againDoc.catalog
+      .lookup(PDFName.of('AcroForm'), PDFDict)
+      .lookup(PDFName.of('DR'), PDFDict)
+      .lookup(PDFName.of('Font'), PDFDict)
+      .lookup(PDFName.of(ACROFORM_DR_FONT), PDFDict)
+    expect(againHelv.lookup(PDFName.of('BaseFont'), PDFName)).toBe(PDFName.of(ACROFORM_DR_BASE_FONT))
+    expect(againDoc.catalog.get(PDFName.of('DA'))).toBeUndefined()
+    expect(againDoc.catalog.get(PDFName.of('NeedAppearances'))).toBeUndefined()
+    expect(againDoc.catalog.get(PDFName.of('Requirements'))).toBeUndefined()
+    await expect(setDefaultResources(bytes, [])).rejects.toThrow(/tài nguyên/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -9822,6 +9887,9 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toMpcpl('Demo', ['Một'])).not.toContain('DAUMPLAYLIST')
     expect(toMpcpl('Demo', ['Một'])).not.toContain('playname=')
     expect(toMpcpl('Demo', ['Một'])).not.toContain('*title*')
+    expect(toMpcpl('Demo', ['Một'])).not.toContain('foobar2000')
+    expect(toMpcpl('Demo', ['Một'])).not.toContain('playlist=')
+    expect(toMpcpl('Demo', ['Một'])).not.toContain('|title|')
     expect(pagesFromMpcpl(toMpcpl('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('mpcpl', toMpcpl('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromMpcpl('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -9885,6 +9953,9 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toDpl('Demo', ['Một'])).not.toContain('\\version')
     expect(toDpl('Demo', ['Một'])).not.toContain('\\markup \\column')
     expect(toDpl('Demo', ['Một'])).not.toContain('TRACK 01 AUDIO')
+    expect(toDpl('Demo', ['Một'])).not.toContain('foobar2000')
+    expect(toDpl('Demo', ['Một'])).not.toContain('playlist=')
+    expect(toDpl('Demo', ['Một'])).not.toContain('|title|')
     expect(pagesFromDpl(toDpl('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('dpl', toDpl('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromDpl('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -9906,6 +9977,73 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromDpl('DAUMPLAYLIST\n')).toThrow(/DPL/)
     expect(swapExtension('notes.dpl', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.dpl.txt', 'pdf')).toBe('notes.pdf')
+    expect(toFpl('Demo', ['Một', 'Hai\ndòng'])).toContain('foobar2000')
+    expect(toFpl('Demo', ['Một'])).toContain('playlist=Demo')
+    expect(toFpl('Demo', ['Một'])).toContain('1|file|file:page-1.txt')
+    expect(toFpl('Demo', ['Một'])).toContain('1|title|Một')
+    expect(toFpl('Demo', ['Một'])).not.toContain('DAUMPLAYLIST')
+    expect(toFpl('Demo', ['Một'])).not.toContain('playname=')
+    expect(toFpl('Demo', ['Một'])).not.toContain('*title*')
+    expect(toFpl('Demo', ['Một'])).not.toContain('MPCPLAYLIST')
+    expect(toFpl('Demo', ['Một'])).not.toContain(',subtitle,')
+    expect(toFpl('Demo', ['Một'])).not.toContain('#EXTM3U')
+    expect(toFpl('Demo', ['Một'])).not.toContain('#EXTINF:')
+    expect(toFpl('Demo', ['Một'])).not.toContain('http://xspf.org/ns/0/')
+    expect(toFpl('Demo', ['Một'])).not.toContain('"playlist"')
+    expect(toFpl('Demo', ['Một'])).not.toContain('"annotation":')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<?wpl')
+    expect(toFpl('Demo', ['Một'])).not.toContain('albumTitle')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<asx')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<abstract')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<WinampXML')
+    expect(toFpl('Demo', ['Một'])).not.toContain('Playstring')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<Name>')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<par>')
+    expect(toFpl('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/SMIL"')
+    expect(toFpl('Demo', ['Một'])).not.toContain('**kern')
+    expect(toFpl('Demo', ['Một'])).not.toContain('MFile')
+    expect(toFpl('Demo', ['Một'])).not.toContain('MTrk')
+    expect(toFpl('Demo', ['Một'])).not.toContain('digraph G')
+    expect(toFpl('Demo', ['Một'])).not.toContain('xlabel="Trang')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<graphml')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<node id="n1">')
+    expect(toFpl('Demo', ['Một'])).not.toContain('%abc-2.1')
+    expect(toFpl('Demo', ['Một'])).not.toContain('\nW:')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<mei')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<measure')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<dir>')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<score-partwise')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<SAMI')
+    expect(toFpl('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/ttml"')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<speak')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<math')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toFpl('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toFpl('Demo', ['Một'])).not.toContain('\\version')
+    expect(toFpl('Demo', ['Một'])).not.toContain('\\markup \\column')
+    expect(toFpl('Demo', ['Một'])).not.toContain('TRACK 01 AUDIO')
+    expect(pagesFromFpl(toFpl('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('fpl', toFpl('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromFpl('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromFpl('1|title|Một')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.fpl', { type: '' }))).toBe('fpl')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.fpl.txt', { type: 'application/x-fpl' })),
+    ).toBe('fpl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dpl', { type: '' }))).toBe('dpl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mpcpl', { type: '' }))).toBe('mpcpl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.b4s', { type: '' }))).toBe('b4s')
+    expect(sourceKindFromFile(new File(['x'], 'notes.asx', { type: '' }))).toBe('asx')
+    expect(sourceKindFromFile(new File(['x'], 'notes.m3u', { type: '' }))).toBe('m3u')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mpl', { type: '' }))).toBe('mpl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.fpl.fpl', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.fp', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() => pagesFromFpl('foobar2000\n')).toThrow(/FPL/)
+    expect(swapExtension('notes.fpl', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.fpl.txt', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

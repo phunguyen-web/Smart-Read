@@ -209,6 +209,7 @@ export type ImportedTextKind =
   | 'b4s'
   | 'mpcpl'
   | 'dpl'
+  | 'fpl'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1022,6 +1023,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'dpl') {
     return pagesFromDpl(text)
+  }
+  if (kind === 'fpl') {
+    return pagesFromFpl(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8526,6 +8530,61 @@ export function pagesFromDpl(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp DPL cần các mục entry.')
+}
+
+function isFplPlaceholderFilename(value: string): boolean {
+  return /^(file:)?page-\d+\.txt$/i.test(value.trim())
+}
+
+function textFromFplEntry(fields: { file: string[]; title: string[] }): string {
+  const titles = fields.title
+    .map((line) => line.trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (titles.length > 0) {
+    return titles.join('\n')
+  }
+  const files = fields.file
+    .map((line) => line.trim())
+    .filter(
+      (page) =>
+        page.length > 0 &&
+        !/^Trang\s+\d+$/.test(page) &&
+        !isFplPlaceholderFilename(page),
+    )
+  if (files.length > 0) {
+    return files.join('\n')
+  }
+  return ''
+}
+
+export function pagesFromFpl(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const grouped = new Map<number, { file: string[]; title: string[] }>()
+  for (const raw of trimmed.split(/\r?\n/)) {
+    const match = raw.match(/^\s*(\d+)\s*\|\s*(file|title)\s*\|(.*)$/i)
+    if (!match) {
+      continue
+    }
+    const index = Number(match[1])
+    if (!Number.isInteger(index) || index <= 0) {
+      continue
+    }
+    const key = match[2]!.toLowerCase() === 'title' ? 'title' : 'file'
+    const record = grouped.get(index) ?? { file: [], title: [] }
+    record[key].push(match[3] ?? '')
+    grouped.set(index, record)
+  }
+  const pages = [...grouped.keys()]
+    .sort((a, b) => a - b)
+    .map((index) => textFromFplEntry(grouped.get(index)!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp FPL cần các mục entry.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

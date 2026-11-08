@@ -206,6 +206,7 @@ export type ExportFormat =
   | 'b4s'
   | 'mpcpl'
   | 'dpl'
+  | 'fpl'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4647,6 +4648,25 @@ ${entries}
 `
 }
 
+export function toFpl(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const entries = pages
+    .map((text, index) => {
+      const n = index + 1
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `${n}|title|${line.replace(/\r/g, '')}`)
+        .join('\n')
+      return `${n}|file|file:page-${n}.txt
+${lines}`
+    })
+    .join('\n')
+  return `foobar2000
+playlist=${heading}
+${entries}
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5856,6 +5876,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-mpcpl;charset=utf-8'
     case 'dpl':
       return 'application/x-dpl;charset=utf-8'
+    case 'fpl':
+      return 'application/x-fpl;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

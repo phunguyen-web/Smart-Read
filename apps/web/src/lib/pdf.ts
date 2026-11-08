@@ -5202,6 +5202,14 @@ export const CATALOG_REQUIREMENT_V = true
 export const ACROFORM_NEED_APPEARANCES = true
 /** ISO 32000 AcroForm `/DA` default appearance. WinAnsi-safe Helvetica. Distinct from **Hiện sẵn**. */
 export const ACROFORM_DA = 'Helv 10 Tf 0 g'
+/** ISO 32000 AcroForm `/DR` `/Font` name. WinAnsi-safe Helvetica. Distinct from **Nét mẫu**. */
+export const ACROFORM_DR_FONT = 'Helv'
+/** ISO 32000 AcroForm `/DR` Type1 `/BaseFont`. */
+export const ACROFORM_DR_BASE_FONT = 'Helvetica'
+/** ISO 32000 AcroForm `/DR` font `/Subtype`. */
+export const ACROFORM_DR_SUBTYPE = 'Type1'
+/** ISO 32000 AcroForm `/DR` font `/Encoding`. */
+export const ACROFORM_DR_ENCODING = 'WinAnsiEncoding'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5676,6 +5684,46 @@ export async function setDefaultAppearance(
   ensureAcroFormFields(doc)
   const acroForm = doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict)
   acroForm.set(PDFName.of('DA'), PDFString.of(ACROFORM_DA))
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Set AcroForm `/DR` default resources (`ACROFORM_DR_FONT` Helv Type1 Helvetica)
+ * when at least one page is selected. Empty indexes throw. Replacing an existing
+ * DR dictionary is allowed. This is an AcroForm `/DR` `/Font` dictionary, not
+ * AcroForm `/DA` **Nét mẫu**, not AcroForm `/NeedAppearances` **Hiện sẵn**, not
+ * catalog `/Requirements` **Yêu cầu**, not catalog `/Extensions` **Mở rộng**, not
+ * catalog `/Version` **Phiên bản**, not catalog `/Names` JavaScript **Lệnh**, not
+ * catalog `/AA` **Sự kiện**, not overlay submit **Gửi** or reset **Xóa mẫu**, not
+ * FreeText `/DA` **Chữ tự do**, not ink **Nét mực**, not `/NeedsRendering`, not
+ * `/Perms`, not `/DSS`, not PKCS#7, not XFA, and not `/AF`. Unselected pages keep
+ * no page-level `/DR`.
+ */
+export async function setDefaultResources(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn tài nguyên.')
+  }
+  ensureAcroFormFields(doc)
+  const acroForm = doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict)
+  acroForm.set(
+    PDFName.of('DR'),
+    doc.context.obj({
+      Font: {
+        [ACROFORM_DR_FONT]: {
+          Type: 'Font',
+          Subtype: ACROFORM_DR_SUBTYPE,
+          BaseFont: ACROFORM_DR_BASE_FONT,
+          Encoding: ACROFORM_DR_ENCODING,
+        },
+      },
+    }),
+  )
   return new Uint8Array(await doc.save())
 }
 
