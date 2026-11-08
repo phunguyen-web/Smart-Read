@@ -193,6 +193,7 @@ export type ExportFormat =
   | 'mei'
   | 'abc'
   | 'smil'
+  | 'graphml'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4356,6 +4357,32 @@ ${pars}
 `
 }
 
+export function toGraphml(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const nodes = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `      <data key="text">${escapeHtml(line)}</data>`)
+        .join('\n')
+      return `    <node id="n${index + 1}">
+      <data key="label">Trang ${index + 1}</data>
+${lines}
+    </node>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns">
+  <key id="label" for="node" attr.name="label" attr.type="string"/>
+  <key id="text" for="node" attr.name="text" attr.type="string"/>
+  <graph id="G" edgedefault="directed">
+    <!-- ${heading} -->
+${nodes}
+  </graph>
+</graphml>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5539,6 +5566,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/vnd.abc;charset=utf-8'
     case 'smil':
       return 'application/smil+xml;charset=utf-8'
+    case 'graphml':
+      return 'application/graphml+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

@@ -215,6 +215,7 @@ import {
   toMei,
   toAbc,
   toSmil,
+  toGraphml,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -425,6 +426,7 @@ import {
   pagesFromMei,
   pagesFromAbc,
   pagesFromSmil,
+  pagesFromGraphml,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -712,6 +714,8 @@ import {
   PAGE_DURATION,
   setPageUserUnits,
   PAGE_USER_UNIT,
+  setPageTabs,
+  PAGE_TAB_ORDER,
   setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
@@ -2382,6 +2386,32 @@ describe('pdf edits', () => {
       (againArr.lookup(1, PDFDict).lookup(PDFName.of('JS')) as PDFString).decodeText(),
     ).toContain('page 2')
     await expect(setJavaScriptNames(bytes, [])).rejects.toThrow(/lệnh/)
+  })
+
+  it('sets page Tabs annotation order on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(PAGE_TAB_ORDER).toBe('R')
+    const filled = await setPageTabs(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    expect(doc.getPage(0).node.lookup(PDFName.of('Tabs'), PDFName)).toBe(PDFName.of(PAGE_TAB_ORDER))
+    expect(doc.getPage(2).node.lookup(PDFName.of('Tabs'), PDFName)).toBe(PDFName.of(PAGE_TAB_ORDER))
+    expect(doc.getPage(1).node.get(PDFName.of('Tabs'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('UserUnit'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Dur'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.get(PDFName.of('AA'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Collection'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Lang'))).toBeUndefined()
+    const again = await setPageTabs(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    expect(againDoc.getPage(1).node.lookup(PDFName.of('Tabs'), PDFName)).toBe(PDFName.of(PAGE_TAB_ORDER))
+    expect(againDoc.getPage(0).node.lookup(PDFName.of('Tabs'), PDFName)).toBe(PDFName.of(PAGE_TAB_ORDER))
+    await expect(setPageTabs(bytes, [])).rejects.toThrow(/thứ tự/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -8516,6 +8546,9 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toAbc('Demo', ['Một'])).not.toContain('<smil')
     expect(toAbc('Demo', ['Một'])).not.toContain('<par>')
     expect(toAbc('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/SMIL"')
+    expect(toAbc('Demo', ['Một'])).not.toContain('<graphml')
+    expect(toAbc('Demo', ['Một'])).not.toContain('<node id="n1">')
+    expect(toAbc('Demo', ['Một'])).not.toContain('xmlns="http://graphml.graphdrawing.org/xmlns"')
     expect(pagesFromAbc(toAbc('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('abc', toAbc('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromAbc('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -8554,6 +8587,9 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toSmil('Demo', ['Một'])).not.toContain('<math')
     expect(toSmil('Demo', ['Một'])).not.toContain('<dtbook')
     expect(toSmil('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toSmil('Demo', ['Một'])).not.toContain('<graphml')
+    expect(toSmil('Demo', ['Một'])).not.toContain('<node id="n1">')
+    expect(toSmil('Demo', ['Một'])).not.toContain('xmlns="http://graphml.graphdrawing.org/xmlns"')
     expect(pagesFromSmil(toSmil('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('smil', toSmil('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromSmil('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -8574,6 +8610,45 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromSmil('<smil></smil>\n')).toThrow(/SMIL/)
     expect(swapExtension('notes.smil', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.smil.xml', 'pdf')).toBe('notes.pdf')
+    expect(toGraphml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://graphml.graphdrawing.org/xmlns"')
+    expect(toGraphml('Demo', ['Một'])).toContain('<graphml')
+    expect(toGraphml('Demo', ['Một'])).toContain('<node id="n1">')
+    expect(toGraphml('Demo', ['Một'])).toContain('<data key="label">Trang 1</data>')
+    expect(toGraphml('Demo', ['Một'])).toContain('<data key="text">Một</data>')
+    expect(toGraphml('Demo', ['Một'])).toContain('<!-- Demo -->')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('<smil')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('<par>')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('%abc-2.1')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('\nW:')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('<mei')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('<measure')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('<dir>')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('<score-partwise')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('<SAMI')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/ttml"')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('<speak')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('<math')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(pagesFromGraphml(toGraphml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('graphml', toGraphml('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromGraphml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromGraphml('<node><data key="text">Một</data></node>\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.graphml', { type: '' }))).toBe('graphml')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.graphml.xml', { type: 'application/graphml+xml' })),
+    ).toBe('graphml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.gml', { type: '' }))).toBe('gml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.smil', { type: '' }))).toBe('smil')
+    expect(sourceKindFromFile(new File(['x'], 'notes.abc', { type: '' }))).toBe('abc')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.graphml.graphml', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.graph', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() => pagesFromGraphml('<graphml></graphml>\n')).toThrow(/GraphML/)
+    expect(swapExtension('notes.graphml', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.graphml.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

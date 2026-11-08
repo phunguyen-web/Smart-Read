@@ -196,6 +196,7 @@ export type ImportedTextKind =
   | 'mei'
   | 'abc'
   | 'smil'
+  | 'graphml'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -970,6 +971,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'smil') {
     return pagesFromSmil(text)
+  }
+  if (kind === 'graphml') {
+    return pagesFromGraphml(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7956,6 +7960,46 @@ export function pagesFromSmil(text: string): string[] {
     return capPages(texts)
   }
   throw new Error('Tệp SMIL cần các mục par / text.')
+}
+
+function textFromGraphmlNode(record: string): string {
+  const texts = [...record.matchAll(/<data\b[^>]*\bkey\s*=\s*["']text["'][^>]*>([\s\S]*?)<\/data>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (texts.length > 0) {
+    return texts.join('\n')
+  }
+  const labels = [...record.matchAll(/<data\b[^>]*\bkey\s*=\s*["']label["'][^>]*>([\s\S]*?)<\/data>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (labels.length > 0) {
+    return labels.join('\n')
+  }
+  const body = unescapeXml(record.replace(/<[^>]+>/g, '')).trim()
+  if (body && !/^Trang\s+\d+$/.test(body)) {
+    return body
+  }
+  return ''
+}
+
+export function pagesFromGraphml(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const nodes = [...trimmed.matchAll(/<node\b[^>]*>([\s\S]*?)<\/node>/gi)]
+    .map((match) => textFromGraphmlNode(match[1]!))
+    .filter((page) => page.length > 0)
+  if (nodes.length > 0) {
+    return capPages(nodes)
+  }
+  const texts = [...trimmed.matchAll(/<data\b[^>]*\bkey\s*=\s*["']text["'][^>]*>([\s\S]*?)<\/data>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (texts.length > 0) {
+    return capPages(texts)
+  }
+  throw new Error('Tệp GraphML cần các mục node / data.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

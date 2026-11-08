@@ -5162,6 +5162,8 @@ export const PAGE_TRANSITION_DURATION = 1
 export const PAGE_DURATION = 4
 /** ISO 32000 page `/UserUnit` default user-space multiplier. Distinct from `/Dur`. */
 export const PAGE_USER_UNIT = 2
+/** ISO 32000 page `/Tabs` annotation tab order. Distinct from MarkInfo `/S`. */
+export const PAGE_TAB_ORDER = 'R'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5246,6 +5248,31 @@ export async function setPageUserUnits(
   }
   for (const index of unique) {
     doc.getPage(index).node.set(PDFName.of('UserUnit'), PDFNumber.of(PAGE_USER_UNIT))
+  }
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write a PDF page `/Tabs` name (annotation tab order, ISO 32000 Table 30) on
+ * unique-sorted selected pages. Empty indexes throw. Replacing an existing
+ * `/Tabs` is allowed. This is a page dictionary tab order, not MarkInfo `/S`
+ * **Thẻ**, not a `/Dur` presentation duration, not a `/Trans` transition, not
+ * catalog `/Names` JavaScript **Lệnh**, not OpenAction **Khi mở**, not catalog
+ * `/AA` **Sự kiện**, not overlay-box markup, not AcroForm, not PKCS#7, not XFA,
+ * and not `/AF`. Unselected pages keep no `/Tabs`.
+ */
+export async function setPageTabs(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn thứ tự.')
+  }
+  for (const index of unique) {
+    doc.getPage(index).node.set(PDFName.of('Tabs'), PDFName.of(PAGE_TAB_ORDER))
   }
   return new Uint8Array(await doc.save())
 }
