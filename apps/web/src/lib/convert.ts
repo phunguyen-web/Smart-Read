@@ -200,6 +200,7 @@ export type ExportFormat =
   | 'krn'
   | 'xspf'
   | 'm3u'
+  | 'jspf'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4520,6 +4521,15 @@ ${tracks}
 `
 }
 
+export function toJspf(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const track = pages.map((text, index) => ({
+    title: `Trang ${index + 1}`,
+    annotation: text.trim() || '(không có chữ)',
+  }))
+  return `${JSON.stringify({ playlist: { title: heading, track } })}\n`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5717,6 +5727,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/xspf+xml;charset=utf-8'
     case 'm3u':
       return 'audio/x-mpegurl;charset=utf-8'
+    case 'jspf':
+      return 'application/x-jspf+json;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

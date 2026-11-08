@@ -5180,6 +5180,8 @@ export const PIECE_INFO_MODIFIED = 'D:20260101000000Z'
 export const PAGE_LAYOUT = 'TwoColumnLeft'
 /** ISO 32000 catalog `/PageMode`. Distinct from `/PageLayout` and outline UseOutlines. */
 export const PAGE_MODE = 'UseThumbs'
+/** ISO 32000 page `/Group` subtype. Distinct from catalog OutputIntents **Màu in** and OCG **Lớp**. */
+export const PAGE_GROUP_SUBTYPE = 'Transparency'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5475,6 +5477,38 @@ export async function setPageMode(
     throw new Error('Chọn ít nhất một trang để gắn hình nhỏ.')
   }
   doc.catalog.set(PDFName.of('PageMode'), PDFName.of(PAGE_MODE))
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write a PDF page `/Group` transparency dictionary (`Type` Group, `S`
+ * Transparency) on unique-sorted selected pages. Empty indexes throw.
+ * Replacing an existing `/Group` is allowed. This is a page dictionary
+ * transparency group, not catalog `/OutputIntents` **Màu in** (that also
+ * writes `CS` DeviceRGB), not catalog `/OCProperties` **Lớp**, not catalog
+ * `/Collection` **Hồ sơ**, not catalog `/PageMode` **Hình nhỏ**, not catalog
+ * `/PageLayout` **Bố cục**, not overlay-box markup, not AcroForm, not PKCS#7,
+ * not XFA, and not `/AF`. Unselected pages keep no `/Group`.
+ */
+export async function setPageGroups(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn nhóm.')
+  }
+  for (const index of unique) {
+    doc.getPage(index).node.set(
+      PDFName.of('Group'),
+      doc.context.obj({
+        Type: 'Group',
+        S: PAGE_GROUP_SUBTYPE,
+      }),
+    )
+  }
   return new Uint8Array(await doc.save())
 }
 

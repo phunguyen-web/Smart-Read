@@ -203,6 +203,7 @@ export type ImportedTextKind =
   | 'krn'
   | 'xspf'
   | 'm3u'
+  | 'jspf'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -998,6 +999,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'm3u') {
     return pagesFromM3u(text)
+  }
+  if (kind === 'jspf') {
+    return pagesFromJspf(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8221,6 +8225,57 @@ export function pagesFromM3u(text: string): string[] {
     }
   }
   throw new Error('Tệp M3U cần các mục EXTINF.')
+}
+
+function jspfFieldText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value
+  }
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string').join('\n')
+  }
+  return ''
+}
+
+function textFromJspfTrack(track: unknown): string {
+  if (!track || typeof track !== 'object') {
+    return ''
+  }
+  const record = track as { annotation?: unknown; location?: unknown; title?: unknown }
+  const annotation = jspfFieldText(record.annotation).trim()
+  if (annotation.length > 0 && !/^Trang\s+\d+$/.test(annotation)) {
+    return annotation
+  }
+  const location = jspfFieldText(record.location).trim()
+  if (location.length > 0 && !/^Trang\s+\d+$/.test(location)) {
+    return location
+  }
+  const title = jspfFieldText(record.title).trim()
+  if (title.length > 0 && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+export function pagesFromJspf(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  let data: unknown
+  try {
+    data = JSON.parse(trimmed)
+  } catch {
+    throw new Error('Tệp JSPF cần các mục track.')
+  }
+  if (data && typeof data === 'object' && Array.isArray((data as { pages?: unknown }).pages)) {
+    return pagesFromJson(trimmed)
+  }
+  const tracks = (data as { playlist?: { track?: unknown } } | null)?.playlist?.track
+  if (Array.isArray(tracks)) {
+    const pages = tracks.map(textFromJspfTrack).filter((page) => page.length > 0)
+    if (pages.length > 0) {
+      return capPages(pages)
+    }
+  }
+  throw new Error('Tệp JSPF cần các mục track.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
