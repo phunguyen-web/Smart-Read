@@ -5214,6 +5214,10 @@ export const ACROFORM_DR_ENCODING = 'WinAnsiEncoding'
 export const ACROFORM_SIG_FLAGS = 1
 /** ISO 32000 AcroForm `/CO` calculation-order array size. Distinct from page `/Tabs` **Thứ tự**. */
 export const ACROFORM_CO_SIZE = 0
+/** ISO 32000 page `/VP` viewport Type. Distinct from AcroForm `/CO` **Tính toán** and page border **Đóng khung**. */
+export const PAGE_VIEWPORT_TYPE = 'Viewport'
+/** ISO 32000 page `/VP` viewport Name. WinAnsi-safe. Distinct from crop boxes. */
+export const PAGE_VIEWPORT_NAME = 'Smart-Read'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5786,6 +5790,41 @@ export async function setCalculationOrder(
   ensureAcroFormFields(doc)
   const acroForm = doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict)
   acroForm.set(PDFName.of('CO'), doc.context.obj([]))
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write a PDF page `/VP` viewport array (`Type` Viewport, `BBox` the page
+ * media box, `Name` `PAGE_VIEWPORT_NAME`) on unique-sorted selected pages.
+ * Empty indexes throw. Replacing an existing `/VP` is allowed. This is a page
+ * dictionary viewport array, not crop / media boxes, not page border **Đóng
+ * khung**, not AcroForm `/CO` **Tính toán**, not page `/Tabs` **Thứ tự**, not
+ * overlay-box markup, not `/NeedsRendering`, not `/Perms`, not `/DSS`, not
+ * PKCS#7, not XFA, and not `/AF`. Unselected pages keep no `/VP`. Catalog
+ * `/VP` stays unset.
+ */
+export async function setPageViewports(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn khung nhìn.')
+  }
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    const viewport = doc.context.obj({
+      Type: PAGE_VIEWPORT_TYPE,
+      BBox: [0, 0, width, height],
+    })
+    viewport.set(PDFName.of('Name'), PDFString.of(PAGE_VIEWPORT_NAME))
+    const vpArray = doc.context.obj([])
+    vpArray.push(viewport)
+    page.node.set(PDFName.of('VP'), vpArray)
+  }
   return new Uint8Array(await doc.save())
 }
 

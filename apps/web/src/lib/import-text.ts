@@ -212,6 +212,7 @@ export type ImportedTextKind =
   | 'fpl'
   | 'zpl'
   | 'itl'
+  | 'xbel'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1034,6 +1035,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'itl') {
     return pagesFromItl(text)
+  }
+  if (kind === 'xbel') {
+    return pagesFromXbel(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8669,6 +8673,36 @@ export function pagesFromItl(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp ITL cần các mục Name.')
+}
+
+function textFromXbelTitle(value: string): string {
+  const page = unescapeXml(value.replace(/<[^>]+>/g, '')).trim()
+  if (page.length === 0 || /^Trang\s+\d+$/.test(page)) {
+    return ''
+  }
+  return page
+}
+
+export function pagesFromXbel(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const fromBookmarks = [
+    ...trimmed.matchAll(/<bookmark\b[^>]*>\s*<title\b[^>]*>([\s\S]*?)<\/title>/gi),
+  ]
+    .map((match) => textFromXbelTitle(match[1]!))
+    .filter((page) => page.length > 0)
+  if (fromBookmarks.length > 0) {
+    return capPages(fromBookmarks)
+  }
+  const pages = [...trimmed.matchAll(/<title\b[^>]*>([\s\S]*?)<\/title>/gi)]
+    .map((match) => textFromXbelTitle(match[1]!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp XBEL cần các mục title.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

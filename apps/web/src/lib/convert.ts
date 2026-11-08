@@ -209,6 +209,7 @@ export type ExportFormat =
   | 'fpl'
   | 'zpl'
   | 'itl'
+  | 'xbel'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4744,6 +4745,25 @@ ${items}
 `
 }
 
+export function toXbel(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const bookmarks = pages
+    .map((text, index) => {
+      const name = escapeHtml(text.trim() || '(không có chữ)')
+      return `  <bookmark href="file://page-${index + 1}.txt">
+    <title>${name}</title>
+  </bookmark>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE xbel PUBLIC "+//IDN python.org//DTD XML Bookmark Exchange Language 1.0//EN//XML" "http://pyxml.sourceforge.net/topics/dtds/xbel-1.0.dtd">
+<xbel version="1.0">
+  <title>${heading}</title>
+${bookmarks}
+</xbel>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5959,6 +5979,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-zpl;charset=utf-8'
     case 'itl':
       return 'application/x-itl;charset=utf-8'
+    case 'xbel':
+      return 'application/x-xbel;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
