@@ -5222,6 +5222,14 @@ export const PAGE_VIEWPORT_NAME = 'Smart-Read'
 export const PAGE_PRES_STEPS_TYPE = 'NavNode'
 /** ISO 32000 page `/PresSteps` Name. WinAnsi-safe. Distinct from overlay **Chiếu**. */
 export const PAGE_PRES_STEPS_NAME = 'Smart-Read'
+/** ISO 32000 page `/BoxColorInfo` ArtBox style RGB. Distinct from catalog `/OutputIntents` **Màu in**. */
+export const BOX_COLOR_INFO_R = 1
+export const BOX_COLOR_INFO_G = 0
+export const BOX_COLOR_INFO_B = 0
+/** ISO 32000 BoxStyle `/W` guideline width. */
+export const BOX_COLOR_INFO_WIDTH = 1
+/** ISO 32000 BoxStyle `/S` solid stroke. */
+export const BOX_COLOR_INFO_STYLE = 'S' as const
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5942,6 +5950,42 @@ export async function setPageArtBoxes(
     const page = doc.getPage(index)
     const { width, height } = page.getSize()
     page.setArtBox(0, 0, width, height)
+  }
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write a PDF page `/BoxColorInfo` dictionary (ArtBox BoxStyle RGB stroke) on
+ * unique-sorted selected pages. Empty indexes throw. Replacing an existing
+ * `/BoxColorInfo` is allowed. This is a page dictionary box-colour information
+ * dictionary, not crop / media boxes **Cắt lề**, not pad **Thêm lề**, not page
+ * `/ArtBox` **Vùng vẽ**, not page `/BleedBox` **Lề in**, not page `/TrimBox`
+ * **Cắt thành**, not catalog `/OutputIntents` **Màu in**, not page `/VP`
+ * **Khung nhìn**, not page border **Đóng khung**, not overlay-box markup, not
+ * `/NeedsRendering`, not `/Perms`, not `/DSS`, not PKCS#7, not XFA, and not
+ * `/AF`. Unselected pages keep no `/BoxColorInfo`. Catalog `/BoxColorInfo`
+ * stays unset.
+ */
+export async function setPageBoxColorInfo(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn màu hộp.')
+  }
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const style = doc.context.obj({
+      C: [BOX_COLOR_INFO_R, BOX_COLOR_INFO_G, BOX_COLOR_INFO_B],
+      W: BOX_COLOR_INFO_WIDTH,
+      S: BOX_COLOR_INFO_STYLE,
+    })
+    const info = doc.context.obj({})
+    info.set(PDFName.of('ArtBox'), style)
+    page.node.set(PDFName.of('BoxColorInfo'), info)
   }
   return new Uint8Array(await doc.save())
 }

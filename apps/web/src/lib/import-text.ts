@@ -217,6 +217,7 @@ export type ImportedTextKind =
   | 'rss'
   | 'foaf'
   | 'ttl'
+  | 'nt'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1054,6 +1055,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'ttl') {
     return pagesFromTurtle(text)
+  }
+  if (kind === 'nt') {
+    return pagesFromNtriples(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8847,6 +8851,32 @@ export function pagesFromTurtle(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp Turtle cần các mục description.')
+}
+
+function textFromNtriplesDescription(value: string): string {
+  const page = unescapeTurtleString(value).trim()
+  if (page.length === 0 || /^Trang\s+\d+$/.test(page)) {
+    return ''
+  }
+  return page
+}
+
+export function pagesFromNtriples(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = [
+    ...trimmed.matchAll(
+      /<http:\/\/purl\.org\/dc\/terms\/description>\s+"((?:[^"\\]|\\.)*)"/g,
+    ),
+  ]
+    .map((match) => textFromNtriplesDescription(match[1]!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp N-Triples cần các mục description.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

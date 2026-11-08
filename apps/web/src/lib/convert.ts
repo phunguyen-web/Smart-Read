@@ -214,6 +214,7 @@ export type ExportFormat =
   | 'rss'
   | 'foaf'
   | 'ttl'
+  | 'nt'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4865,6 +4866,19 @@ ${triples}
 `
 }
 
+export function toNtriples(title: string, pages: string[]): string {
+  const heading = escapeTurtle((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const triples = pages
+    .map((text, index) => {
+      const name = escapeTurtle(text.trim() || '(không có chữ)')
+      return `<urn:smart-read:page:${index + 1}> <http://purl.org/dc/terms/description> "${name}" .`
+    })
+    .join('\n')
+  return `<urn:smart-read:doc> <http://purl.org/dc/terms/title> "${heading}" .
+${triples}
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -6090,6 +6104,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/foaf+xml;charset=utf-8'
     case 'ttl':
       return 'text/turtle;charset=utf-8'
+    case 'nt':
+      return 'application/n-triples;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
