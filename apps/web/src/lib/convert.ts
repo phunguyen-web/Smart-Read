@@ -211,6 +211,7 @@ export type ExportFormat =
   | 'itl'
   | 'xbel'
   | 'nzb'
+  | 'rss'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4792,6 +4793,30 @@ ${files}
 `
 }
 
+export function toRss(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const items = pages
+    .map((text, index) => {
+      const name = escapeHtml(text.trim() || '(không có chữ)')
+      return `    <item>
+      <title>Trang ${index + 1}</title>
+      <description>${name}</description>
+      <guid isPermaLink="false">page-${index + 1}</guid>
+    </item>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>${heading}</title>
+    <link>https://smart-read.local/</link>
+    <description>${heading}</description>
+${items}
+  </channel>
+</rss>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -6011,6 +6036,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-xbel;charset=utf-8'
     case 'nzb':
       return 'application/x-nzb;charset=utf-8'
+    case 'rss':
+      return 'application/rss+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

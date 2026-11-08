@@ -5862,6 +5862,33 @@ export async function setPagePresSteps(
   return new Uint8Array(await doc.save())
 }
 
+/**
+ * Write a PDF page `/TrimBox` rectangle (the page media size) on unique-sorted
+ * selected pages. Empty indexes throw. Replacing an existing `/TrimBox` is
+ * allowed. This is a page dictionary finished-trim rectangle, not crop /
+ * media boxes **Cắt lề**, not page `/VP` **Khung nhìn**, not page `/PresSteps`
+ * **Trình chiếu**, not page border **Đóng khung**, not overlay-box markup, not
+ * `/NeedsRendering`, not `/Perms`, not `/DSS`, not PKCS#7, not XFA, and not
+ * `/AF`. Unselected pages keep no `/TrimBox`. Catalog `/TrimBox` stays unset.
+ */
+export async function setPageTrimBoxes(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn cắt thành.')
+  }
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const { width, height } = page.getSize()
+    page.setTrimBox(0, 0, width, height)
+  }
+  return new Uint8Array(await doc.save())
+}
+
 function javascriptNameForPage(pageIndex: number): string {
   return `Page${pageIndex + 1}`
 }
