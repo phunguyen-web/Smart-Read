@@ -232,6 +232,7 @@ import {
   toZpl,
   toItl,
   toXbel,
+  toNzb,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -459,6 +460,7 @@ import {
   pagesFromZpl,
   pagesFromItl,
   pagesFromXbel,
+  pagesFromNzb,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -791,6 +793,9 @@ import {
   setPageViewports,
   PAGE_VIEWPORT_TYPE,
   PAGE_VIEWPORT_NAME,
+  setPagePresSteps,
+  PAGE_PRES_STEPS_TYPE,
+  PAGE_PRES_STEPS_NAME,
   setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
@@ -3217,6 +3222,52 @@ describe('pdf edits', () => {
     expect(againDoc.getPage(0).node.lookup(PDFName.of('VP'), PDFArray).size()).toBe(1)
     expect(againDoc.catalog.get(PDFName.of('VP'))).toBeUndefined()
     await expect(setPageViewports(bytes, [])).rejects.toThrow(/khung nhìn/)
+  })
+
+  it('sets page presentation steps on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(PAGE_PRES_STEPS_TYPE).toBe('NavNode')
+    expect(PAGE_PRES_STEPS_NAME).toBe('Smart-Read')
+    const filled = await setPagePresSteps(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    const steps0 = doc.getPage(0).node.lookup(PDFName.of('PresSteps'), PDFDict)
+    const steps2 = doc.getPage(2).node.lookup(PDFName.of('PresSteps'), PDFDict)
+    expect(steps0.lookup(PDFName.of('Type'), PDFName)).toBe(PDFName.of(PAGE_PRES_STEPS_TYPE))
+    expect(steps2.lookup(PDFName.of('Type'), PDFName)).toBe(PDFName.of(PAGE_PRES_STEPS_TYPE))
+    expect((steps0.lookup(PDFName.of('Name')) as PDFString).decodeText()).toBe(PAGE_PRES_STEPS_NAME)
+    expect(doc.getPage(1).node.get(PDFName.of('PresSteps'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('PresSteps'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('VP'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('CO'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('SigFlags'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('DR'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('DA'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('NeedAppearances'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Requirements'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('VP'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('CO'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('SigFlags'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Group'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('CropBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageMode'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageLayout'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OutputIntents'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeUndefined()
+    const again = await setPagePresSteps(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    expect(
+      againDoc.getPage(1).node.lookup(PDFName.of('PresSteps'), PDFDict).lookup(PDFName.of('Type'), PDFName),
+    ).toBe(PDFName.of(PAGE_PRES_STEPS_TYPE))
+    expect(
+      (againDoc.getPage(0).node.lookup(PDFName.of('PresSteps'), PDFDict).lookup(PDFName.of('Name')) as PDFString).decodeText(),
+    ).toBe(PAGE_PRES_STEPS_NAME)
+    expect(againDoc.catalog.get(PDFName.of('PresSteps'))).toBeUndefined()
+    await expect(setPagePresSteps(bytes, [])).rejects.toThrow(/trình chiếu/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -10352,6 +10403,8 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toItl('Demo', ['Một'])).not.toContain('TRACK 01 AUDIO')
     expect(toItl('Demo', ['Một'])).not.toContain('<!DOCTYPE xbel')
     expect(toItl('Demo', ['Một'])).not.toContain('<bookmark')
+    expect(toItl('Demo', ['Một'])).not.toContain('<!DOCTYPE nzb')
+    expect(toItl('Demo', ['Một'])).not.toContain('<nzb')
     expect(pagesFromItl(toItl('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('itl', toItl('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromItl('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -10435,6 +10488,8 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toXbel('Demo', ['Một'])).not.toContain('\\version')
     expect(toXbel('Demo', ['Một'])).not.toContain('\\markup \\column')
     expect(toXbel('Demo', ['Một'])).not.toContain('TRACK 01 AUDIO')
+    expect(toXbel('Demo', ['Một'])).not.toContain('<!DOCTYPE nzb')
+    expect(toXbel('Demo', ['Một'])).not.toContain('<nzb')
     expect(pagesFromXbel(toXbel('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('xbel', toXbel('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromXbel('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -10454,6 +10509,84 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromXbel('<!DOCTYPE xbel\n')).toThrow(/XBEL/)
     expect(swapExtension('notes.xbel', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.xbel.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toNzb('Demo', ['Một', 'Hai\ndòng'])).toContain('<!DOCTYPE nzb')
+    expect(toNzb('Demo', ['Một'])).toContain('<file')
+    expect(toNzb('Demo', ['Một'])).toContain('<meta type="title">Demo</meta>')
+    expect(toNzb('Demo', ['Một'])).toContain('<subject>Một</subject>')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<!DOCTYPE xbel')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<bookmark')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<plist')
+    expect(toNzb('Demo', ['Một'])).not.toContain('Track ID')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<key>Name</key>')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<?zpl')
+    expect(toNzb('Demo', ['Một'])).not.toContain('trackTitle')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<media')
+    expect(toNzb('Demo', ['Một'])).not.toContain('foobar2000')
+    expect(toNzb('Demo', ['Một'])).not.toContain('playlist=')
+    expect(toNzb('Demo', ['Một'])).not.toContain('|title|')
+    expect(toNzb('Demo', ['Một'])).not.toContain('DAUMPLAYLIST')
+    expect(toNzb('Demo', ['Một'])).not.toContain('playname=')
+    expect(toNzb('Demo', ['Một'])).not.toContain('*title*')
+    expect(toNzb('Demo', ['Một'])).not.toContain('MPCPLAYLIST')
+    expect(toNzb('Demo', ['Một'])).not.toContain(',subtitle,')
+    expect(toNzb('Demo', ['Một'])).not.toContain('#EXTM3U')
+    expect(toNzb('Demo', ['Một'])).not.toContain('#EXTINF:')
+    expect(toNzb('Demo', ['Một'])).not.toContain('http://xspf.org/ns/0/')
+    expect(toNzb('Demo', ['Một'])).not.toContain('"playlist"')
+    expect(toNzb('Demo', ['Một'])).not.toContain('"annotation":')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<?wpl')
+    expect(toNzb('Demo', ['Một'])).not.toContain('albumTitle')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<desc>')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<asx')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<abstract')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<WinampXML')
+    expect(toNzb('Demo', ['Một'])).not.toContain('Playstring')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<Name>')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<par>')
+    expect(toNzb('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/SMIL"')
+    expect(toNzb('Demo', ['Một'])).not.toContain('**kern')
+    expect(toNzb('Demo', ['Một'])).not.toContain('MFile')
+    expect(toNzb('Demo', ['Một'])).not.toContain('MTrk')
+    expect(toNzb('Demo', ['Một'])).not.toContain('digraph G')
+    expect(toNzb('Demo', ['Một'])).not.toContain('xlabel="Trang')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<graphml')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<node id="n1">')
+    expect(toNzb('Demo', ['Một'])).not.toContain('%abc-2.1')
+    expect(toNzb('Demo', ['Một'])).not.toContain('\nW:')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<mei')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<measure')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<dir>')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<score-partwise')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<SAMI')
+    expect(toNzb('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/ttml"')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<speak')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<math')
+    expect(toNzb('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toNzb('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toNzb('Demo', ['Một'])).not.toContain('\\version')
+    expect(toNzb('Demo', ['Một'])).not.toContain('\\markup \\column')
+    expect(toNzb('Demo', ['Một'])).not.toContain('TRACK 01 AUDIO')
+    expect(pagesFromNzb(toNzb('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('nzb', toNzb('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromNzb('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromNzb('<subject>Một</subject>')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.nzb', { type: '' }))).toBe('nzb')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.nzb.xml', { type: 'application/x-nzb' })),
+    ).toBe('nzb')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xbel', { type: '' }))).toBe('xbel')
+    expect(sourceKindFromFile(new File(['x'], 'notes.itl', { type: '' }))).toBe('itl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.zpl', { type: '' }))).toBe('zpl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.nzb.nzb', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.nz', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() => pagesFromNzb('<!DOCTYPE nzb\n')).toThrow(/NZB/)
+    expect(swapExtension('notes.nzb', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.nzb.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

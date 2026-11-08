@@ -5218,6 +5218,10 @@ export const ACROFORM_CO_SIZE = 0
 export const PAGE_VIEWPORT_TYPE = 'Viewport'
 /** ISO 32000 page `/VP` viewport Name. WinAnsi-safe. Distinct from crop boxes. */
 export const PAGE_VIEWPORT_NAME = 'Smart-Read'
+/** ISO 32000 page `/PresSteps` Type. Distinct from overlay **Chiếu** and page `/VP` **Khung nhìn**. */
+export const PAGE_PRES_STEPS_TYPE = 'NavNode'
+/** ISO 32000 page `/PresSteps` Name. WinAnsi-safe. Distinct from overlay **Chiếu**. */
+export const PAGE_PRES_STEPS_NAME = 'Smart-Read'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5824,6 +5828,36 @@ export async function setPageViewports(
     const vpArray = doc.context.obj([])
     vpArray.push(viewport)
     page.node.set(PDFName.of('VP'), vpArray)
+  }
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write a PDF page `/PresSteps` navigation node (`Type` NavNode, `Name`
+ * `PAGE_PRES_STEPS_NAME`) on unique-sorted selected pages. Empty indexes throw.
+ * Replacing an existing `/PresSteps` is allowed. This is a page dictionary
+ * presentation-step node, not overlay **Chiếu**, not page `/VP` **Khung nhìn**,
+ * not `/Trans` **Hiệu ứng**, not `/Dur` **Thời lượng**, not overlay-box markup,
+ * not `/NeedsRendering`, not `/Perms`, not `/DSS`, not PKCS#7, not XFA, and not
+ * `/AF`. Unselected pages keep no `/PresSteps`. Catalog `/PresSteps` stays unset.
+ */
+export async function setPagePresSteps(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn trình chiếu.')
+  }
+  for (const index of unique) {
+    const page = doc.getPage(index)
+    const steps = doc.context.obj({
+      Type: PAGE_PRES_STEPS_TYPE,
+    })
+    steps.set(PDFName.of('Name'), PDFString.of(PAGE_PRES_STEPS_NAME))
+    page.node.set(PDFName.of('PresSteps'), steps)
   }
   return new Uint8Array(await doc.save())
 }

@@ -210,6 +210,7 @@ export type ExportFormat =
   | 'zpl'
   | 'itl'
   | 'xbel'
+  | 'nzb'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4764,6 +4765,33 @@ ${bookmarks}
 `
 }
 
+export function toNzb(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const files = pages
+    .map((text, index) => {
+      const name = escapeHtml(text.trim() || '(không có chữ)')
+      return `  <file poster="smart-read@local" date="0">
+    <subject>${name}</subject>
+    <groups>
+      <group>alt.binaries.smart-read</group>
+    </groups>
+    <segments>
+      <segment bytes="1" number="1">page-${index + 1}@smart-read.local</segment>
+    </segments>
+  </file>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nzb PUBLIC "-//newzBin//DTD NZB 1.1//EN" "http://www.newzbin.com/DTD/nzb/nzb-1.1.dtd">
+<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
+  <head>
+    <meta type="title">${heading}</meta>
+  </head>
+${files}
+</nzb>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5981,6 +6009,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-itl;charset=utf-8'
     case 'xbel':
       return 'application/x-xbel;charset=utf-8'
+    case 'nzb':
+      return 'application/x-nzb;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
