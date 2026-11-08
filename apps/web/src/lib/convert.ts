@@ -207,6 +207,7 @@ export type ExportFormat =
   | 'mpcpl'
   | 'dpl'
   | 'fpl'
+  | 'zpl'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4667,6 +4668,34 @@ ${entries}
 `
 }
 
+export function toZpl(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const media = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `        <title>${escapeHtml(line)}</title>`)
+        .join('\n')
+      return `      <media src="page-${index + 1}.txt" trackTitle="Trang ${index + 1}">
+${lines}
+      </media>`
+    })
+    .join('\n')
+  return `<?zpl version="2.0"?>
+<smil>
+  <head>
+    <meta name="Generator" content="Smart-Read"/>
+    <title>${heading}</title>
+  </head>
+  <body>
+    <seq>
+${media}
+    </seq>
+  </body>
+</smil>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5878,6 +5907,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-dpl;charset=utf-8'
     case 'fpl':
       return 'application/x-fpl;charset=utf-8'
+    case 'zpl':
+      return 'application/x-zpl;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

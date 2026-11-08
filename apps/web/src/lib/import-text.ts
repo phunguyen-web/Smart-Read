@@ -210,6 +210,7 @@ export type ImportedTextKind =
   | 'mpcpl'
   | 'dpl'
   | 'fpl'
+  | 'zpl'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1026,6 +1027,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'fpl') {
     return pagesFromFpl(text)
+  }
+  if (kind === 'zpl') {
+    return pagesFromZpl(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8585,6 +8589,46 @@ export function pagesFromFpl(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp FPL cần các mục entry.')
+}
+
+function zplAttr(tag: string, name: 'title' | 'trackTitle'): string {
+  const match =
+    name === 'title'
+      ? tag.match(/\btitle\s*=\s*"([^"]*)"/i)
+      : tag.match(/\btrackTitle\s*=\s*"([^"]*)"/i)
+  return match ? unescapeXml(match[1]!).trim() : ''
+}
+
+function textFromZplMedia(tag: string, inner: string): string {
+  const titles = [...inner.matchAll(/<title\b[^>]*>([\s\S]*?)<\/title>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (titles.length > 0) {
+    return titles.join('\n')
+  }
+  const trackTitle = zplAttr(tag, 'trackTitle')
+  if (trackTitle.length > 0 && !/^Trang\s+\d+$/.test(trackTitle)) {
+    return trackTitle
+  }
+  const title = zplAttr(tag, 'title')
+  if (title.length > 0 && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+export function pagesFromZpl(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = [...trimmed.matchAll(/<media\b([^>]*?)(?:\/>|>([\s\S]*?)<\/media>)/gi)]
+    .map((match) => textFromZplMedia(match[1]!, match[2] ?? ''))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp ZPL cần các mục media.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

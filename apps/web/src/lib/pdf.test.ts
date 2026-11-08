@@ -229,6 +229,7 @@ import {
   toMpcpl,
   toDpl,
   toFpl,
+  toZpl,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -453,6 +454,7 @@ import {
   pagesFromMpcpl,
   pagesFromDpl,
   pagesFromFpl,
+  pagesFromZpl,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -778,6 +780,8 @@ import {
   ACROFORM_DR_BASE_FONT,
   ACROFORM_DR_SUBTYPE,
   ACROFORM_DR_ENCODING,
+  setSignatureFlags,
+  ACROFORM_SIG_FLAGS,
   setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
@@ -3043,6 +3047,59 @@ describe('pdf edits', () => {
     expect(againDoc.catalog.get(PDFName.of('NeedAppearances'))).toBeUndefined()
     expect(againDoc.catalog.get(PDFName.of('Requirements'))).toBeUndefined()
     await expect(setDefaultResources(bytes, [])).rejects.toThrow(/tài nguyên/)
+  })
+
+  it('sets AcroForm signature flags when pages are selected', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(ACROFORM_SIG_FLAGS).toBe(1)
+    const filled = await setSignatureFlags(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    const acroForm = doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict)
+    expect(acroForm.lookup(PDFName.of('SigFlags'), PDFNumber).asNumber()).toBe(ACROFORM_SIG_FLAGS)
+    expect(acroForm.lookupMaybe(PDFName.of('Fields'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(acroForm.get(PDFName.of('DR'))).toBeUndefined()
+    expect(acroForm.get(PDFName.of('DA'))).toBeUndefined()
+    expect(acroForm.get(PDFName.of('NeedAppearances'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('SigFlags'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('DR'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('DA'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('NeedAppearances'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Requirements'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Extensions'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Version'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('SigFlags'))).toBeUndefined()
+    expect(doc.getPage(1).node.get(PDFName.of('SigFlags'))).toBeUndefined()
+    expect(doc.getPage(2).node.get(PDFName.of('SigFlags'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('DR'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('DA'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('NeedAppearances'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Requirements'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Extensions'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Version'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Group'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PageMode'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PageLayout'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageMode'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageLayout'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OutputIntents'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeUndefined()
+    const again = await setSignatureFlags(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    expect(
+      againDoc.catalog
+        .lookup(PDFName.of('AcroForm'), PDFDict)
+        .lookup(PDFName.of('SigFlags'), PDFNumber)
+        .asNumber(),
+    ).toBe(ACROFORM_SIG_FLAGS)
+    expect(againDoc.catalog.get(PDFName.of('DR'))).toBeUndefined()
+    expect(againDoc.catalog.get(PDFName.of('DA'))).toBeUndefined()
+    expect(againDoc.catalog.get(PDFName.of('NeedAppearances'))).toBeUndefined()
+    expect(againDoc.catalog.get(PDFName.of('Requirements'))).toBeUndefined()
+    await expect(setSignatureFlags(bytes, [])).rejects.toThrow(/cờ ký/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -10022,6 +10079,8 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toFpl('Demo', ['Một'])).not.toContain('\\version')
     expect(toFpl('Demo', ['Một'])).not.toContain('\\markup \\column')
     expect(toFpl('Demo', ['Một'])).not.toContain('TRACK 01 AUDIO')
+    expect(toFpl('Demo', ['Một'])).not.toContain('<?zpl')
+    expect(toFpl('Demo', ['Một'])).not.toContain('trackTitle')
     expect(pagesFromFpl(toFpl('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('fpl', toFpl('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromFpl('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -10044,6 +10103,81 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromFpl('foobar2000\n')).toThrow(/FPL/)
     expect(swapExtension('notes.fpl', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.fpl.txt', 'pdf')).toBe('notes.pdf')
+    expect(toZpl('Demo', ['Một', 'Hai\ndòng'])).toContain('<?zpl version="2.0"?>')
+    expect(toZpl('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toZpl('Demo', ['Một'])).toContain('trackTitle="Trang 1"')
+    expect(toZpl('Demo', ['Một'])).toContain('<title>Một</title>')
+    expect(toZpl('Demo', ['Một'])).toContain('<seq>')
+    expect(toZpl('Demo', ['Một'])).toContain('<media')
+    expect(toZpl('Demo', ['Một'])).not.toContain('foobar2000')
+    expect(toZpl('Demo', ['Một'])).not.toContain('playlist=')
+    expect(toZpl('Demo', ['Một'])).not.toContain('|title|')
+    expect(toZpl('Demo', ['Một'])).not.toContain('DAUMPLAYLIST')
+    expect(toZpl('Demo', ['Một'])).not.toContain('playname=')
+    expect(toZpl('Demo', ['Một'])).not.toContain('*title*')
+    expect(toZpl('Demo', ['Một'])).not.toContain('MPCPLAYLIST')
+    expect(toZpl('Demo', ['Một'])).not.toContain(',subtitle,')
+    expect(toZpl('Demo', ['Một'])).not.toContain('#EXTM3U')
+    expect(toZpl('Demo', ['Một'])).not.toContain('#EXTINF:')
+    expect(toZpl('Demo', ['Một'])).not.toContain('http://xspf.org/ns/0/')
+    expect(toZpl('Demo', ['Một'])).not.toContain('"playlist"')
+    expect(toZpl('Demo', ['Một'])).not.toContain('"annotation":')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<?wpl')
+    expect(toZpl('Demo', ['Một'])).not.toContain('albumTitle')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<desc>')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<asx')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<abstract')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<WinampXML')
+    expect(toZpl('Demo', ['Một'])).not.toContain('Playstring')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<Name>')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<par>')
+    expect(toZpl('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/SMIL"')
+    expect(toZpl('Demo', ['Một'])).not.toContain('**kern')
+    expect(toZpl('Demo', ['Một'])).not.toContain('MFile')
+    expect(toZpl('Demo', ['Một'])).not.toContain('MTrk')
+    expect(toZpl('Demo', ['Một'])).not.toContain('digraph G')
+    expect(toZpl('Demo', ['Một'])).not.toContain('xlabel="Trang')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<graphml')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<node id="n1">')
+    expect(toZpl('Demo', ['Một'])).not.toContain('%abc-2.1')
+    expect(toZpl('Demo', ['Một'])).not.toContain('\nW:')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<mei')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<measure')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<dir>')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<score-partwise')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<SAMI')
+    expect(toZpl('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/ttml"')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<speak')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<math')
+    expect(toZpl('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toZpl('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toZpl('Demo', ['Một'])).not.toContain('\\version')
+    expect(toZpl('Demo', ['Một'])).not.toContain('\\markup \\column')
+    expect(toZpl('Demo', ['Một'])).not.toContain('TRACK 01 AUDIO')
+    expect(pagesFromZpl(toZpl('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('zpl', toZpl('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromZpl('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromZpl('<media trackTitle="Một"/>')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.zpl', { type: '' }))).toBe('zpl')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.zpl.xml', { type: 'application/x-zpl' })),
+    ).toBe('zpl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.fpl', { type: '' }))).toBe('fpl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dpl', { type: '' }))).toBe('dpl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mpcpl', { type: '' }))).toBe('mpcpl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.b4s', { type: '' }))).toBe('b4s')
+    expect(sourceKindFromFile(new File(['x'], 'notes.asx', { type: '' }))).toBe('asx')
+    expect(sourceKindFromFile(new File(['x'], 'notes.wpl', { type: '' }))).toBe('wpl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.m3u', { type: '' }))).toBe('m3u')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mpl', { type: '' }))).toBe('mpl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.zpl.zpl', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.zp', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() => pagesFromZpl('<?zpl version="2.0"?>\n')).toThrow(/ZPL/)
+    expect(swapExtension('notes.zpl', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.zpl.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
