@@ -5164,6 +5164,8 @@ export const PAGE_DURATION = 4
 export const PAGE_USER_UNIT = 2
 /** ISO 32000 page `/Tabs` annotation tab order. Distinct from MarkInfo `/S`. */
 export const PAGE_TAB_ORDER = 'R'
+/** ISO 32000 catalog `/URI` `/Base`. Distinct from URI link annotations. */
+export const CATALOG_URI_BASE = 'https://smart-read.local/'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5274,6 +5276,36 @@ export async function setPageTabs(
   for (const index of unique) {
     doc.getPage(index).node.set(PDFName.of('Tabs'), PDFName.of(PAGE_TAB_ORDER))
   }
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write catalog `/URI` (`Base` CATALOG_URI_BASE) when at least one page is
+ * selected. Empty indexes throw. Replacing an existing URI dictionary is
+ * allowed. This is a catalog document-level base URI, not a URI link
+ * annotation **Liên kết**, not page `/Tabs` **Thứ tự**, not MarkInfo `/S`
+ * **Thẻ**, not `/UserUnit` **Đơn vị**, not `/Dur` **Thời lượng**, not `/Trans`
+ * **Hiệu ứng**, not catalog `/Names` JavaScript **Lệnh**, not OpenAction
+ * **Khi mở**, not catalog `/AA` **Sự kiện**, not overlay-box markup, not
+ * AcroForm, not PKCS#7, not XFA, and not `/AF`. Unselected pages keep no
+ * page-level `/URI`.
+ */
+export async function setCatalogUri(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn cơ sở.')
+  }
+  doc.catalog.set(
+    PDFName.of('URI'),
+    doc.context.obj({
+      Base: PDFString.of(CATALOG_URI_BASE),
+    }),
+  )
   return new Uint8Array(await doc.save())
 }
 

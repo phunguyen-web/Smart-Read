@@ -194,6 +194,7 @@ export type ExportFormat =
   | 'abc'
   | 'smil'
   | 'graphml'
+  | 'dot'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4383,6 +4384,27 @@ ${nodes}
 `
 }
 
+function escapeDotLabel(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n')
+}
+
+export function toDot(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ').replace(/\*\//g, '')
+  const nodes = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => escapeDotLabel(line))
+      return `  n${index + 1} [xlabel="Trang ${index + 1}", label="${lines.join('\\n')}"];`
+    })
+    .join('\n')
+  return `// ${heading}
+digraph G {
+${nodes}
+}
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5568,6 +5590,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/smil+xml;charset=utf-8'
     case 'graphml':
       return 'application/graphml+xml;charset=utf-8'
+    case 'dot':
+      return 'text/vnd.graphviz;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

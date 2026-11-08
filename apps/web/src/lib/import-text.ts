@@ -197,6 +197,7 @@ export type ImportedTextKind =
   | 'abc'
   | 'smil'
   | 'graphml'
+  | 'dot'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -974,6 +975,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'graphml') {
     return pagesFromGraphml(text)
+  }
+  if (kind === 'dot') {
+    return pagesFromDot(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8000,6 +8004,40 @@ export function pagesFromGraphml(text: string): string[] {
     return capPages(texts)
   }
   throw new Error('Tệp GraphML cần các mục node / data.')
+}
+
+function unescapeDotLabel(value: string): string {
+  return value.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+}
+
+function textFromDotAttrs(record: string): string {
+  const labels = [...record.matchAll(/(?:^|[\s,]|\[)label\s*=\s*"((?:\\.|[^"\\])*)"/g)]
+    .map((match) => unescapeDotLabel(match[1]!).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (labels.length > 0) {
+    return labels.join('\n')
+  }
+  return ''
+}
+
+export function pagesFromDot(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const nodes = [...trimmed.matchAll(/\bn\d+\s*\[([^\]]*)\]/g)]
+    .map((match) => textFromDotAttrs(match[1]!))
+    .filter((page) => page.length > 0)
+  if (nodes.length > 0) {
+    return capPages(nodes)
+  }
+  const labels = [...trimmed.matchAll(/(?:^|[\s,]|\[)label\s*=\s*"((?:\\.|[^"\\])*)"/g)]
+    .map((match) => unescapeDotLabel(match[1]!).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (labels.length > 0) {
+    return capPages(labels)
+  }
+  throw new Error('Tệp Graphviz cần các mục node / label.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
