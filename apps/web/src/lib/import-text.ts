@@ -205,6 +205,7 @@ export type ImportedTextKind =
   | 'm3u'
   | 'jspf'
   | 'wpl'
+  | 'asx'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1006,6 +1007,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'wpl') {
     return pagesFromWpl(text)
+  }
+  if (kind === 'asx') {
+    return pagesFromAsx(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8320,6 +8324,46 @@ export function pagesFromWpl(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp WPL cần các mục media.')
+}
+
+function asxAttr(tag: string, name: 'title'): string {
+  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, 'i'))
+  return match ? unescapeXml(match[1]!).trim() : ''
+}
+
+function textFromAsxEntry(tag: string, inner: string): string {
+  const abstracts = [...inner.matchAll(/<abstract\b[^>]*>([\s\S]*?)<\/abstract>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (abstracts.length > 0) {
+    return abstracts.join('\n')
+  }
+  const innerTitle = inner.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)
+  if (innerTitle) {
+    const title = unescapeXml(innerTitle[1]!.replace(/<[^>]+>/g, '')).trim()
+    if (title.length > 0 && !/^Trang\s+\d+$/.test(title)) {
+      return title
+    }
+  }
+  const title = asxAttr(tag, 'title')
+  if (title.length > 0 && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  return ''
+}
+
+export function pagesFromAsx(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = [...trimmed.matchAll(/<entry\b([^>]*?)(?:\/>|>([\s\S]*?)<\/entry>)/gi)]
+    .map((match) => textFromAsxEntry(match[1]!, match[2] ?? ''))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp ASX cần các mục entry.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

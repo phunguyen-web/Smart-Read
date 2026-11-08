@@ -224,6 +224,7 @@ import {
   toM3u,
   toJspf,
   toWpl,
+  toAsx,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -443,6 +444,7 @@ import {
   pagesFromM3u,
   pagesFromJspf,
   pagesFromWpl,
+  pagesFromAsx,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -750,6 +752,11 @@ import {
   PAGE_GROUP_SUBTYPE,
   setCatalogVersion,
   CATALOG_VERSION,
+  setCatalogExtensions,
+  CATALOG_EXTENSION_PREFIX,
+  CATALOG_EXTENSION_TYPE,
+  CATALOG_EXTENSION_BASE,
+  CATALOG_EXTENSION_LEVEL,
   setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
@@ -2757,6 +2764,66 @@ describe('pdf edits', () => {
     const againDoc = await PDFDocument.load(again)
     expect(againDoc.catalog.lookup(PDFName.of('Version'), PDFName)).toBe(PDFName.of(CATALOG_VERSION))
     await expect(setCatalogVersion(bytes, [])).rejects.toThrow(/phiên bản/)
+  })
+
+  it('sets catalog Extensions DeveloperExtensions when pages are selected', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(CATALOG_EXTENSION_PREFIX).toBe('SRD')
+    expect(CATALOG_EXTENSION_TYPE).toBe('DeveloperExtensions')
+    expect(CATALOG_EXTENSION_BASE).toBe('1.7')
+    expect(CATALOG_EXTENSION_LEVEL).toBe(1)
+    const filled = await setCatalogExtensions(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    const developer = doc.catalog
+      .lookup(PDFName.of('Extensions'), PDFDict)
+      .lookup(PDFName.of(CATALOG_EXTENSION_PREFIX), PDFDict)
+    expect(developer.lookup(PDFName.of('Type'), PDFName)).toBe(PDFName.of(CATALOG_EXTENSION_TYPE))
+    expect(developer.lookup(PDFName.of('BaseVersion'), PDFName)).toBe(PDFName.of(CATALOG_EXTENSION_BASE))
+    expect((developer.lookup(PDFName.of('ExtensionLevel')) as PDFNumber).asNumber()).toBe(
+      CATALOG_EXTENSION_LEVEL,
+    )
+    expect(doc.catalog.get(PDFName.of('Version'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Extensions'))).toBeUndefined()
+    expect(doc.getPage(1).node.get(PDFName.of('Extensions'))).toBeUndefined()
+    expect(doc.getPage(2).node.get(PDFName.of('Extensions'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Version'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Group'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PageMode'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PageLayout'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PieceInfo'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('SpiderInfo'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Legal'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('URI'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Tabs'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('UserUnit'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Dur'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.get(PDFName.of('AA'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageMode'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageLayout'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OutputIntents'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('PieceInfo'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('SpiderInfo'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Legal'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('URI'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Collection'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Lang'))).toBeUndefined()
+    const again = await setCatalogExtensions(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    expect(
+      againDoc.catalog
+        .lookup(PDFName.of('Extensions'), PDFDict)
+        .lookup(PDFName.of(CATALOG_EXTENSION_PREFIX), PDFDict)
+        .lookup(PDFName.of('Type'), PDFName),
+    ).toBe(PDFName.of(CATALOG_EXTENSION_TYPE))
+    expect(againDoc.catalog.get(PDFName.of('Version'))).toBeUndefined()
+    await expect(setCatalogExtensions(bytes, [])).rejects.toThrow(/mở rộng/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -9398,6 +9465,9 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toWpl('Demo', ['Một'])).not.toContain('\\version')
     expect(toWpl('Demo', ['Một'])).not.toContain('\\markup \\column')
     expect(toWpl('Demo', ['Một'])).not.toContain('TRACK 01 AUDIO')
+    expect(toWpl('Demo', ['Một'])).not.toContain('<asx')
+    expect(toWpl('Demo', ['Một'])).not.toContain('<entry')
+    expect(toWpl('Demo', ['Một'])).not.toContain('<abstract')
     expect(pagesFromWpl(toWpl('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('wpl', toWpl('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromWpl('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -9421,6 +9491,66 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     ).toThrow(/WPL/)
     expect(swapExtension('notes.wpl', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.wpl.xml', 'pdf')).toBe('notes.pdf')
+    expect(toAsx('Demo', ['Một', 'Hai\ndòng'])).toContain('<asx version="3.0">')
+    expect(toAsx('Demo', ['Một'])).toContain('<title>Demo</title>')
+    expect(toAsx('Demo', ['Một'])).toContain('<title>Trang 1</title>')
+    expect(toAsx('Demo', ['Một'])).toContain('<abstract>Một</abstract>')
+    expect(toAsx('Demo', ['Một'])).toContain('<entry')
+    expect(toAsx('Demo', ['Một'])).toContain('href="page-1.txt"')
+    expect(toAsx('Demo', ['Một'])).not.toContain('#EXTM3U')
+    expect(toAsx('Demo', ['Một'])).not.toContain('#EXTINF:')
+    expect(toAsx('Demo', ['Một'])).not.toContain('<playlist')
+    expect(toAsx('Demo', ['Một'])).not.toContain('http://xspf.org/ns/0/')
+    expect(toAsx('Demo', ['Một'])).not.toContain('"playlist"')
+    expect(toAsx('Demo', ['Một'])).not.toContain('"annotation":')
+    expect(toAsx('Demo', ['Một'])).not.toContain('<?wpl')
+    expect(toAsx('Demo', ['Một'])).not.toContain('albumTitle')
+    expect(toAsx('Demo', ['Một'])).not.toContain('<par>')
+    expect(toAsx('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/SMIL"')
+    expect(toAsx('Demo', ['Một'])).not.toContain('**kern')
+    expect(toAsx('Demo', ['Một'])).not.toContain('MFile')
+    expect(toAsx('Demo', ['Một'])).not.toContain('MTrk')
+    expect(toAsx('Demo', ['Một'])).not.toContain('digraph G')
+    expect(toAsx('Demo', ['Một'])).not.toContain('xlabel="Trang')
+    expect(toAsx('Demo', ['Một'])).not.toContain('<graphml')
+    expect(toAsx('Demo', ['Một'])).not.toContain('<node id="n1">')
+    expect(toAsx('Demo', ['Một'])).not.toContain('%abc-2.1')
+    expect(toAsx('Demo', ['Một'])).not.toContain('\nW:')
+    expect(toAsx('Demo', ['Một'])).not.toContain('<mei')
+    expect(toAsx('Demo', ['Một'])).not.toContain('<measure')
+    expect(toAsx('Demo', ['Một'])).not.toContain('<dir>')
+    expect(toAsx('Demo', ['Một'])).not.toContain('<score-partwise')
+    expect(toAsx('Demo', ['Một'])).not.toContain('<SAMI')
+    expect(toAsx('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/ttml"')
+    expect(toAsx('Demo', ['Một'])).not.toContain('<speak')
+    expect(toAsx('Demo', ['Một'])).not.toContain('<math')
+    expect(toAsx('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toAsx('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toAsx('Demo', ['Một'])).not.toContain('\\version')
+    expect(toAsx('Demo', ['Một'])).not.toContain('\\markup \\column')
+    expect(toAsx('Demo', ['Một'])).not.toContain('TRACK 01 AUDIO')
+    expect(pagesFromAsx(toAsx('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('asx', toAsx('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromAsx('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromAsx('<entry title="Một"/>')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.asx', { type: '' }))).toBe('asx')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.asx.xml', { type: 'video/x-ms-asx' })),
+    ).toBe('asx')
+    expect(sourceKindFromFile(new File(['x'], 'notes.wpl', { type: '' }))).toBe('wpl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.jspf', { type: '' }))).toBe('jspf')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xspf', { type: '' }))).toBe('xspf')
+    expect(sourceKindFromFile(new File(['x'], 'notes.smil', { type: '' }))).toBe('smil')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.asx.asx', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.a', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() =>
+      pagesFromAsx('<asx version="3.0"><title>Demo</title></asx>'),
+    ).toThrow(/ASX/)
+    expect(swapExtension('notes.asx', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.asx.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

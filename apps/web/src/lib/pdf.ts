@@ -5184,6 +5184,14 @@ export const PAGE_MODE = 'UseThumbs'
 export const PAGE_GROUP_SUBTYPE = 'Transparency'
 /** ISO 32000 catalog `/Version`. Distinct from page `/Group` **Nhóm** and header `%PDF-`. */
 export const CATALOG_VERSION = '1.7'
+/** ISO 32000 catalog `/Extensions` developer prefix. Distinct from catalog `/Version` **Phiên bản**. */
+export const CATALOG_EXTENSION_PREFIX = 'SRD'
+/** ISO 32000 DeveloperExtensions `/Type`. */
+export const CATALOG_EXTENSION_TYPE = 'DeveloperExtensions'
+/** ISO 32000 DeveloperExtensions `/BaseVersion`. WinAnsi-safe PDF name. */
+export const CATALOG_EXTENSION_BASE = '1.7'
+/** ISO 32000 DeveloperExtensions `/ExtensionLevel`. */
+export const CATALOG_EXTENSION_LEVEL = 1
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5536,6 +5544,40 @@ export async function setCatalogVersion(
     throw new Error('Chọn ít nhất một trang để gắn phiên bản.')
   }
   doc.catalog.set(PDFName.of('Version'), PDFName.of(CATALOG_VERSION))
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write catalog `/Extensions` (`CATALOG_EXTENSION_PREFIX` SRD → DeveloperExtensions
+ * `Type` `CATALOG_EXTENSION_TYPE`, `BaseVersion` `CATALOG_EXTENSION_BASE` 1.7,
+ * `ExtensionLevel` `CATALOG_EXTENSION_LEVEL` 1) when at least one page is
+ * selected. Empty indexes throw. Replacing an existing Extensions dictionary
+ * is allowed. This is a catalog developer-extensions dictionary, not catalog
+ * `/Version` **Phiên bản**, not the file header `%PDF-`, not page `/Group`
+ * **Nhóm**, not catalog `/PageMode` **Hình nhỏ**, not catalog `/PageLayout`
+ * **Bố cục**, not catalog `/OutputIntents` **Màu in**, not catalog
+ * `/OCProperties` **Lớp**, not catalog `/Collection` **Hồ sơ**, not overlay-box
+ * markup, not AcroForm, not PKCS#7, not XFA, and not `/AF`. Unselected pages
+ * keep no page-level `/Extensions`.
+ */
+export async function setCatalogExtensions(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn mở rộng.')
+  }
+  const developer = doc.context.obj({
+    Type: CATALOG_EXTENSION_TYPE,
+    BaseVersion: CATALOG_EXTENSION_BASE,
+    ExtensionLevel: CATALOG_EXTENSION_LEVEL,
+  })
+  const extensions = doc.context.obj({})
+  extensions.set(PDFName.of(CATALOG_EXTENSION_PREFIX), developer)
+  doc.catalog.set(PDFName.of('Extensions'), extensions)
   return new Uint8Array(await doc.save())
 }
 

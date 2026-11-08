@@ -202,6 +202,7 @@ export type ExportFormat =
   | 'm3u'
   | 'jspf'
   | 'wpl'
+  | 'asx'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4559,6 +4560,28 @@ ${media}
 `
 }
 
+export function toAsx(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const entries = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `    <abstract>${escapeHtml(line)}</abstract>`)
+        .join('\n')
+      return `  <entry>
+    <title>Trang ${index + 1}</title>
+${lines}
+    <ref href="page-${index + 1}.txt"/>
+  </entry>`
+    })
+    .join('\n')
+  return `<asx version="3.0">
+  <title>${heading}</title>
+${entries}
+</asx>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5760,6 +5783,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-jspf+json;charset=utf-8'
     case 'wpl':
       return 'application/vnd.ms-wpl;charset=utf-8'
+    case 'asx':
+      return 'video/x-ms-asx;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
