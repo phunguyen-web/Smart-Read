@@ -5170,6 +5170,12 @@ export const CATALOG_URI_BASE = 'https://smart-read.local/'
 export const CATALOG_LEGAL_ATTESTATION = 'Smart-Read'
 /** ISO 32000 catalog `/SpiderInfo` `/V`. Distinct from catalog `/Legal`. */
 export const SPIDER_INFO_VERSION = 1
+/** ISO 32000 catalog `/PieceInfo` application name. Distinct from catalog `/Collection`. */
+export const PIECE_INFO_APP = 'SmartRead'
+/** ISO 32000 catalog `/PieceInfo` `/Private` `/Data`. WinAnsi-safe. */
+export const PIECE_INFO_DATA = 'Smart-Read'
+/** ISO 32000 catalog `/PieceInfo` `/LastModified`. */
+export const PIECE_INFO_MODIFIED = 'D:20260101000000Z'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5369,6 +5375,44 @@ export async function setSpiderInfo(
     PDFName.of('SpiderInfo'),
     doc.context.obj({
       V: SPIDER_INFO_VERSION,
+    }),
+  )
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write catalog `/PieceInfo` (`SmartRead` LastModified + Private Data) when at
+ * least one page is selected. Empty indexes throw. Replacing an existing
+ * PieceInfo dictionary is allowed. This is a catalog document-level page-piece
+ * dictionary, not catalog `/Collection` **Hồ sơ**, not page `/PieceInfo`
+ * `/Collection`, not catalog `/SpiderInfo` **Nhện**, not catalog `/Legal`
+ * **Pháp lý**, not catalog `/URI` **Cơ sở**, not a URI link annotation
+ * **Liên kết**, not page `/Tabs` **Thứ tự**, not MarkInfo `/S` **Thẻ**, not
+ * `/UserUnit` **Đơn vị**, not `/Dur` **Thời lượng**, not `/Trans`
+ * **Hiệu ứng**, not catalog `/Names` JavaScript **Lệnh**, not OpenAction
+ * **Khi mở**, not catalog `/AA` **Sự kiện**, not overlay-box markup, not
+ * AcroForm, not PKCS#7, not XFA, and not `/AF`. Unselected pages keep no
+ * page-level `/PieceInfo`.
+ */
+export async function setPieceInfo(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn mảnh.')
+  }
+  doc.catalog.set(
+    PDFName.of('PieceInfo'),
+    doc.context.obj({
+      SmartRead: {
+        LastModified: PDFString.of(PIECE_INFO_MODIFIED),
+        Private: {
+          Data: PDFString.of(PIECE_INFO_DATA),
+        },
+      },
     }),
   )
   return new Uint8Array(await doc.save())

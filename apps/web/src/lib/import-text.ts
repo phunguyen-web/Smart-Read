@@ -200,6 +200,7 @@ export type ImportedTextKind =
   | 'dot'
   | 'mf2t'
   | 'ly'
+  | 'krn'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -986,6 +987,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'ly') {
     return pagesFromLilypond(text)
+  }
+  if (kind === 'krn') {
+    return pagesFromHumdrum(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8108,6 +8112,33 @@ export function pagesFromLilypond(text: string): string[] {
     return capPages(columns)
   }
   throw new Error('Tệp LilyPond cần các mục markup / column.')
+}
+
+function textFromHumdrumRecord(record: string): string {
+  const texts = record
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('!!') && !line.startsWith('!!!'))
+    .map((line) => line.replace(/^!!\s?/, '').trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (texts.length > 0) {
+    return texts.join('\n')
+  }
+  return ''
+}
+
+export function pagesFromHumdrum(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const records = [...trimmed.matchAll(/\*\*kern\b([\s\S]*?)^\*-/gm)]
+    .map((match) => textFromHumdrumRecord(match[1]!))
+    .filter((page) => page.length > 0)
+  if (records.length > 0) {
+    return capPages(records)
+  }
+  throw new Error('Tệp Humdrum cần các mục kern.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
