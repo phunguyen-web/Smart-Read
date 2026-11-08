@@ -215,6 +215,7 @@ export type ImportedTextKind =
   | 'xbel'
   | 'nzb'
   | 'rss'
+  | 'foaf'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1046,6 +1047,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'rss') {
     return pagesFromRss(text)
+  }
+  if (kind === 'foaf') {
+    return pagesFromFoaf(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8771,6 +8775,37 @@ export function pagesFromRss(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp RSS cần các mục description.')
+}
+
+
+function textFromFoafName(value: string): string {
+  const page = unescapeXml(value.replace(/<[^>]+>/g, '')).trim()
+  if (page.length === 0 || /^Trang\s+\d+$/.test(page)) {
+    return ''
+  }
+  return page
+}
+
+export function pagesFromFoaf(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const fromPeople = [
+    ...trimmed.matchAll(/<foaf:Person\b[^>]*>\s*[\s\S]*?<foaf:name\b[^>]*>([\s\S]*?)<\/foaf:name>/gi),
+  ]
+    .map((match) => textFromFoafName(match[1]!))
+    .filter((page) => page.length > 0)
+  if (fromPeople.length > 0) {
+    return capPages(fromPeople)
+  }
+  const pages = [...trimmed.matchAll(/<foaf:name\b[^>]*>([\s\S]*?)<\/foaf:name>/gi)]
+    .map((match) => textFromFoafName(match[1]!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp FOAF cần các mục name.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

@@ -212,6 +212,7 @@ export type ExportFormat =
   | 'xbel'
   | 'nzb'
   | 'rss'
+  | 'foaf'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4817,6 +4818,28 @@ ${items}
 `
 }
 
+
+export function toFoaf(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const people = pages
+    .map((text, index) => {
+      const name = escapeHtml(text.trim() || '(không có chữ)')
+      return `  <foaf:Person rdf:about="file://page-${index + 1}.txt">
+    <foaf:name>${name}</foaf:name>
+  </foaf:Person>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:foaf="http://xmlns.com/foaf/0.1/">
+  <foaf:Group>
+    <foaf:name>${heading}</foaf:name>
+${people}
+  </foaf:Group>
+</rdf:RDF>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -6038,6 +6061,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-nzb;charset=utf-8'
     case 'rss':
       return 'application/rss+xml;charset=utf-8'
+    case 'foaf':
+      return 'application/foaf+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
