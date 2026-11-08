@@ -198,6 +198,7 @@ export type ImportedTextKind =
   | 'smil'
   | 'graphml'
   | 'dot'
+  | 'mf2t'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -978,6 +979,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'dot') {
     return pagesFromDot(text)
+  }
+  if (kind === 'mf2t') {
+    return pagesFromMf2t(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8038,6 +8042,40 @@ export function pagesFromDot(text: string): string[] {
     return capPages(labels)
   }
   throw new Error('Tệp Graphviz cần các mục node / label.')
+}
+
+function unescapeMf2tText(value: string): string {
+  return value.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+}
+
+function textFromMf2tTrack(record: string): string {
+  const texts = [...record.matchAll(/^\s*\d+\s+Meta\s+Text\s+"((?:\\.|[^"\\])*)"/gm)]
+    .map((match) => unescapeMf2tText(match[1]!).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (texts.length > 0) {
+    return texts.join('\n')
+  }
+  return ''
+}
+
+export function pagesFromMf2t(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const tracks = [...trimmed.matchAll(/\bMTrk\b([\s\S]*?)(?:0\s+Meta\s+TrkEnd)/gi)]
+    .map((match) => textFromMf2tTrack(match[1]!))
+    .filter((page) => page.length > 0)
+  if (tracks.length > 0) {
+    return capPages(tracks)
+  }
+  const texts = [...trimmed.matchAll(/^\s*\d+\s+Meta\s+Text\s+"((?:\\.|[^"\\])*)"/gm)]
+    .map((match) => unescapeMf2tText(match[1]!).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (texts.length > 0) {
+    return capPages(texts)
+  }
+  throw new Error('Tệp MIDI cần các mục MTrk / Meta Text.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

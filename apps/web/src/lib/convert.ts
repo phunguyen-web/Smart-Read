@@ -195,6 +195,7 @@ export type ExportFormat =
   | 'smil'
   | 'graphml'
   | 'dot'
+  | 'mf2t'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4405,6 +4406,27 @@ ${nodes}
 `
 }
 
+function escapeMf2tText(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n')
+}
+
+export function toMf2t(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const tracks = pages
+    .map((text, index) => {
+      const body = escapeMf2tText(text.trim() || '(không có chữ)')
+      return `MTrk
+0 Meta TrkName "Trang ${index + 1}"
+0 Meta Text "${body}"
+0 Meta TrkEnd`
+    })
+    .join('\n')
+  return `# ${heading}
+MFile 1 ${pages.length} 480
+${tracks}
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5592,6 +5614,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/graphml+xml;charset=utf-8'
     case 'dot':
       return 'text/vnd.graphviz;charset=utf-8'
+    case 'mf2t':
+      return 'text/x-mf2t;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

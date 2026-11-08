@@ -217,6 +217,7 @@ import {
   toSmil,
   toGraphml,
   toDot,
+  toMf2t,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -429,6 +430,7 @@ import {
   pagesFromSmil,
   pagesFromGraphml,
   pagesFromDot,
+  pagesFromMf2t,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -720,6 +722,8 @@ import {
   PAGE_TAB_ORDER,
   setCatalogUri,
   CATALOG_URI_BASE,
+  setCatalogLegal,
+  CATALOG_LEGAL_ATTESTATION,
   setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
@@ -2446,6 +2450,42 @@ describe('pdf edits', () => {
       (againDoc.catalog.lookup(PDFName.of('URI'), PDFDict).lookup(PDFName.of('Base')) as PDFString).decodeText(),
     ).toBe(CATALOG_URI_BASE)
     await expect(setCatalogUri(bytes, [])).rejects.toThrow(/cơ sở/)
+  })
+
+  it('sets catalog Legal Attestation when pages are selected', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(CATALOG_LEGAL_ATTESTATION).toBe('Smart-Read')
+    const filled = await setCatalogLegal(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    const legal = doc.catalog.lookup(PDFName.of('Legal'), PDFDict)
+    expect((legal.lookup(PDFName.of('Attestation')) as PDFString).decodeText()).toBe(
+      CATALOG_LEGAL_ATTESTATION,
+    )
+    expect(doc.getPage(0).node.get(PDFName.of('Legal'))).toBeUndefined()
+    expect(doc.getPage(1).node.get(PDFName.of('Legal'))).toBeUndefined()
+    expect(doc.getPage(2).node.get(PDFName.of('Legal'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('URI'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Tabs'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('UserUnit'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Dur'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.get(PDFName.of('AA'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('URI'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Collection'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Lang'))).toBeUndefined()
+    const again = await setCatalogLegal(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    expect(
+      (
+        againDoc.catalog.lookup(PDFName.of('Legal'), PDFDict).lookup(PDFName.of('Attestation')) as PDFString
+      ).decodeText(),
+    ).toBe(CATALOG_LEGAL_ATTESTATION)
+    await expect(setCatalogLegal(bytes, [])).rejects.toThrow(/pháp lý/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -8670,6 +8710,8 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toGraphml('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
     expect(toGraphml('Demo', ['Một'])).not.toContain('digraph G')
     expect(toGraphml('Demo', ['Một'])).not.toContain('xlabel="Trang')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('MFile')
+    expect(toGraphml('Demo', ['Một'])).not.toContain('MTrk')
     expect(pagesFromGraphml(toGraphml('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('graphml', toGraphml('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromGraphml('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -8709,6 +8751,8 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toDot('Demo', ['Một'])).not.toContain('<math')
     expect(toDot('Demo', ['Một'])).not.toContain('<dtbook')
     expect(toDot('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toDot('Demo', ['Một'])).not.toContain('MFile')
+    expect(toDot('Demo', ['Một'])).not.toContain('MTrk')
     expect(pagesFromDot(toDot('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('dot', toDot('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromDot('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -8729,6 +8773,49 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromDot('digraph G {\n}\n')).toThrow(/Graphviz/)
     expect(swapExtension('notes.dot', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.gv', 'pdf')).toBe('notes.pdf')
+    expect(toMf2t('Demo', ['Một', 'Hai\ndòng'])).toContain('MFile 1 2 480')
+    expect(toMf2t('Demo', ['Một'])).toContain('MTrk')
+    expect(toMf2t('Demo', ['Một'])).toContain('Meta TrkName "Trang 1"')
+    expect(toMf2t('Demo', ['Một'])).toContain('Meta Text "Một"')
+    expect(toMf2t('Demo', ['Một'])).toContain('# Demo')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('digraph G')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('xlabel="Trang')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('<graphml')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('<node id="n1">')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('<smil')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('<par>')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('%abc-2.1')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('\nW:')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('<mei')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('<measure')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('<dir>')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('<score-partwise')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('<SAMI')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/ttml"')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('<speak')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('<math')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toMf2t('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(pagesFromMf2t(toMf2t('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('mf2t', toMf2t('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromMf2t('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromMf2t('MTrk\n0 Meta Text "Một"\n0 Meta TrkEnd\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.mf2t', { type: '' }))).toBe('mf2t')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.mid.txt', { type: 'text/x-mf2t' })),
+    ).toBe('mf2t')
+    expect(sourceKindFromFile(new File(['x'], 'notes.dot', { type: '' }))).toBe('dot')
+    expect(sourceKindFromFile(new File(['x'], 'notes.graphml', { type: '' }))).toBe('graphml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.mf2t.mf2t', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.mid', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.midi', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.mf', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() => pagesFromMf2t('MFile 1 0 480\n')).toThrow(/MIDI/)
+    expect(swapExtension('notes.mf2t', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.mid.txt', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

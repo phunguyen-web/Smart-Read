@@ -5166,6 +5166,8 @@ export const PAGE_USER_UNIT = 2
 export const PAGE_TAB_ORDER = 'R'
 /** ISO 32000 catalog `/URI` `/Base`. Distinct from URI link annotations. */
 export const CATALOG_URI_BASE = 'https://smart-read.local/'
+/** ISO 32000 catalog `/Legal` `/Attestation`. Distinct from catalog `/URI`. */
+export const CATALOG_LEGAL_ATTESTATION = 'Smart-Read'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5304,6 +5306,36 @@ export async function setCatalogUri(
     PDFName.of('URI'),
     doc.context.obj({
       Base: PDFString.of(CATALOG_URI_BASE),
+    }),
+  )
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write catalog `/Legal` (`Attestation` CATALOG_LEGAL_ATTESTATION) when at
+ * least one page is selected. Empty indexes throw. Replacing an existing Legal
+ * dictionary is allowed. This is a catalog document-level legal attestation,
+ * not catalog `/URI` **Cơ sở**, not a URI link annotation **Liên kết**, not
+ * page `/Tabs` **Thứ tự**, not MarkInfo `/S` **Thẻ**, not `/UserUnit`
+ * **Đơn vị**, not `/Dur` **Thời lượng**, not `/Trans` **Hiệu ứng**, not
+ * catalog `/Names` JavaScript **Lệnh**, not OpenAction **Khi mở**, not catalog
+ * `/AA` **Sự kiện**, not overlay-box markup, not AcroForm, not PKCS#7, not XFA,
+ * and not `/AF`. Unselected pages keep no page-level `/Legal`.
+ */
+export async function setCatalogLegal(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn pháp lý.')
+  }
+  doc.catalog.set(
+    PDFName.of('Legal'),
+    doc.context.obj({
+      Attestation: PDFString.of(CATALOG_LEGAL_ATTESTATION),
     }),
   )
   return new Uint8Array(await doc.save())
