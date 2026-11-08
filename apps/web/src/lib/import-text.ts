@@ -213,6 +213,7 @@ export type ImportedTextKind =
   | 'zpl'
   | 'itl'
   | 'xbel'
+  | 'nzb'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1038,6 +1039,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'xbel') {
     return pagesFromXbel(text)
+  }
+  if (kind === 'nzb') {
+    return pagesFromNzb(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8703,6 +8707,36 @@ export function pagesFromXbel(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp XBEL cần các mục title.')
+}
+
+function textFromNzbSubject(value: string): string {
+  const page = unescapeXml(value.replace(/<[^>]+>/g, '')).trim()
+  if (page.length === 0 || /^Trang\s+\d+$/.test(page)) {
+    return ''
+  }
+  return page
+}
+
+export function pagesFromNzb(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const fromFiles = [
+    ...trimmed.matchAll(/<file\b[^>]*>\s*<subject\b[^>]*>([\s\S]*?)<\/subject>/gi),
+  ]
+    .map((match) => textFromNzbSubject(match[1]!))
+    .filter((page) => page.length > 0)
+  if (fromFiles.length > 0) {
+    return capPages(fromFiles)
+  }
+  const pages = [...trimmed.matchAll(/<subject\b[^>]*>([\s\S]*?)<\/subject>/gi)]
+    .map((match) => textFromNzbSubject(match[1]!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp NZB cần các mục subject.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
