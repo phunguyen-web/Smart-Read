@@ -5250,6 +5250,53 @@ export async function setPageUserUnits(
   return new Uint8Array(await doc.save())
 }
 
+function javascriptNameForPage(pageIndex: number): string {
+  return `Page${pageIndex + 1}`
+}
+
+/**
+ * Set catalog `/Names` `/JavaScript` name tree with one named JavaScript action
+ * per unique-sorted selected page (`Page{n}` → `/S` `/JavaScript` `/JS`
+ * `/* page n *\/`). Empty indexes throw. Replacing an existing JavaScript
+ * name tree is allowed. Merges into the catalog Names dictionary so `/Dests`
+ * and `/EmbeddedFiles` stay. This is catalog document-level JavaScript, not
+ * catalog `/AA` **Sự kiện**, not OpenAction **Khi mở**, not page `/Dur`
+ * **Thời lượng**, not `/Trans` **Hiệu ứng**, not `/UserUnit` **Đơn vị**, not
+ * overlay-box markup, not AcroForm submit/reset, not PKCS#7, not XFA, and not
+ * `/AF`. Unselected pages do not add name-tree keys.
+ */
+export async function setJavaScriptNames(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn lệnh.')
+  }
+  let namesDict = doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)
+  if (!namesDict) {
+    namesDict = doc.context.obj({})
+    doc.catalog.set(PDFName.of('Names'), namesDict)
+  }
+  const namesArray = doc.context.obj([])
+  for (const index of unique) {
+    namesArray.push(PDFString.of(javascriptNameForPage(index)))
+    namesArray.push(
+      doc.context.obj({
+        Type: 'Action',
+        S: 'JavaScript',
+        JS: PDFString.of(`/* page ${index + 1} */`),
+      }),
+    )
+  }
+  const jsTree = doc.context.obj({})
+  jsTree.set(PDFName.of('Names'), namesArray)
+  namesDict.set(PDFName.of('JavaScript'), jsTree)
+  return new Uint8Array(await doc.save())
+}
+
 function pdfNumberOf(value: unknown): number | undefined {
   return value instanceof PDFNumber ? value.asNumber() : undefined
 }

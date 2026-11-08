@@ -214,6 +214,7 @@ import {
   toMusicxml,
   toMei,
   toAbc,
+  toSmil,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -423,6 +424,7 @@ import {
   pagesFromMusicxml,
   pagesFromMei,
   pagesFromAbc,
+  pagesFromSmil,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -710,6 +712,7 @@ import {
   PAGE_DURATION,
   setPageUserUnits,
   PAGE_USER_UNIT,
+  setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
   setViewerPreferences,
@@ -2338,6 +2341,47 @@ describe('pdf edits', () => {
     expect(againDoc.getPage(1).node.lookup(PDFName.of('UserUnit'), PDFNumber).asNumber()).toBe(PAGE_USER_UNIT)
     expect(againDoc.getPage(0).node.lookup(PDFName.of('UserUnit'), PDFNumber).asNumber()).toBe(PAGE_USER_UNIT)
     await expect(setPageUserUnits(bytes, [])).rejects.toThrow(/đơn vị/)
+  })
+
+  it('sets catalog Names JavaScript on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    const filled = await setJavaScriptNames(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    const names = doc.catalog.lookup(PDFName.of('Names'), PDFDict)
+    const js = names.lookup(PDFName.of('JavaScript'), PDFDict)
+    const arr = js.lookup(PDFName.of('Names'), PDFArray)
+    expect(arr.size()).toBe(4)
+    expect((arr.get(0) as PDFString).decodeText()).toBe('Page1')
+    expect((arr.get(2) as PDFString).decodeText()).toBe('Page3')
+    const action0 = arr.lookup(1, PDFDict)
+    expect(action0.lookup(PDFName.of('Type'))).toBe(PDFName.of('Action'))
+    expect(action0.lookup(PDFName.of('S'))).toBe(PDFName.of('JavaScript'))
+    expect((action0.lookup(PDFName.of('JS')) as PDFString).decodeText()).toContain('page 1')
+    expect((arr.lookup(3, PDFDict).lookup(PDFName.of('JS')) as PDFString).decodeText()).toContain(
+      'page 3',
+    )
+    expect(doc.getPage(0).node.get(PDFName.of('UserUnit'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Dur'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Trans'), PDFDict)).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.getPage(0).node.get(PDFName.of('AA'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OpenAction'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Collection'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Lang'))).toBeUndefined()
+    const again = await setJavaScriptNames(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    const againArr = againDoc.catalog
+      .lookup(PDFName.of('Names'), PDFDict)
+      .lookup(PDFName.of('JavaScript'), PDFDict)
+      .lookup(PDFName.of('Names'), PDFArray)
+    expect(againArr.size()).toBe(2)
+    expect((againArr.get(0) as PDFString).decodeText()).toBe('Page2')
+    expect(
+      (againArr.lookup(1, PDFDict).lookup(PDFName.of('JS')) as PDFString).decodeText(),
+    ).toContain('page 2')
+    await expect(setJavaScriptNames(bytes, [])).rejects.toThrow(/lệnh/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -8469,6 +8513,9 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toAbc('Demo', ['Một'])).not.toContain('<level1>')
     expect(toAbc('Demo', ['Một'])).not.toContain('<topic')
     expect(toAbc('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toAbc('Demo', ['Một'])).not.toContain('<smil')
+    expect(toAbc('Demo', ['Một'])).not.toContain('<par>')
+    expect(toAbc('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/SMIL"')
     expect(pagesFromAbc(toAbc('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('abc', toAbc('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromAbc('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -8485,6 +8532,48 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => sourceKindFromFile(new File(['x'], 'notes.ab', { type: '' }))).toThrow(/Chỉ nhận/)
     expect(() => pagesFromAbc('%abc-2.1\nO:Demo\n')).toThrow(/ABC/)
     expect(swapExtension('notes.abc', 'pdf')).toBe('notes.pdf')
+
+    expect(toSmil('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/SMIL"')
+    expect(toSmil('Demo', ['Một'])).toContain('<smil')
+    expect(toSmil('Demo', ['Một'])).toContain('<par>')
+    expect(toSmil('Demo', ['Một'])).toContain('<text>Trang 1</text>')
+    expect(toSmil('Demo', ['Một'])).toContain('<text>Một</text>')
+    expect(toSmil('Demo', ['Một'])).toContain('content="Demo"')
+    expect(toSmil('Demo', ['Một'])).not.toContain('%abc-2.1')
+    expect(toSmil('Demo', ['Một'])).not.toContain('\nW:')
+    expect(toSmil('Demo', ['Một'])).not.toContain('\nK:C')
+    expect(toSmil('Demo', ['Một'])).not.toContain('<mei')
+    expect(toSmil('Demo', ['Một'])).not.toContain('<measure')
+    expect(toSmil('Demo', ['Một'])).not.toContain('<dir>')
+    expect(toSmil('Demo', ['Một'])).not.toContain('<score-partwise')
+    expect(toSmil('Demo', ['Một'])).not.toContain('<words>')
+    expect(toSmil('Demo', ['Một'])).not.toContain('<SAMI')
+    expect(toSmil('Demo', ['Một'])).not.toContain('<SYNC')
+    expect(toSmil('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/ttml"')
+    expect(toSmil('Demo', ['Một'])).not.toContain('<speak')
+    expect(toSmil('Demo', ['Một'])).not.toContain('<math')
+    expect(toSmil('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toSmil('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(pagesFromSmil(toSmil('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('smil', toSmil('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromSmil('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromSmil('<par><text>Một</text></par>\n')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.smil', { type: '' }))).toBe('smil')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.smil.xml', { type: 'application/smil+xml' })),
+    ).toBe('smil')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.smi', { type: '' }))).toBe('sami')
+    expect(sourceKindFromFile(new File(['x'], 'notes.sami', { type: '' }))).toBe('sami')
+    expect(sourceKindFromFile(new File(['x'], 'notes.abc', { type: '' }))).toBe('abc')
+    expect(sourceKindFromFile(new File(['x'], 'notes.mei', { type: '' }))).toBe('mei')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.smil.smil', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.sm', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() => pagesFromSmil('<smil></smil>\n')).toThrow(/SMIL/)
+    expect(swapExtension('notes.smil', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.smil.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

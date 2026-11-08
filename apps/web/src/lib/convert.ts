@@ -192,6 +192,7 @@ export type ExportFormat =
   | 'musicxml'
   | 'mei'
   | 'abc'
+  | 'smil'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4329,6 +4330,32 @@ ${tunes}
 `
 }
 
+export function toSmil(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const pars = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `      <text>${escapeHtml(line)}</text>`)
+        .join('\n')
+      return `    <par>
+      <text>Trang ${index + 1}</text>
+${lines}
+    </par>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<smil xmlns="http://www.w3.org/ns/SMIL" version="3.0">
+  <head>
+    <meta name="title" content="${heading}"/>
+  </head>
+  <body>
+${pars}
+  </body>
+</smil>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5510,6 +5537,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/mei+xml;charset=utf-8'
     case 'abc':
       return 'text/vnd.abc;charset=utf-8'
+    case 'smil':
+      return 'application/smil+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
