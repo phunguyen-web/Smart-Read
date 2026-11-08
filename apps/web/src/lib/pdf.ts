@@ -5160,6 +5160,8 @@ export const PAGE_TRANSITION_STYLE = 'Dissolve' as const
 export const PAGE_TRANSITION_DURATION = 1
 /** ISO 32000 page `/Dur` presentation duration in seconds. Distinct from `/Trans` `D`. */
 export const PAGE_DURATION = 4
+/** ISO 32000 page `/UserUnit` default user-space multiplier. Distinct from `/Dur`. */
+export const PAGE_USER_UNIT = 2
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5219,6 +5221,31 @@ export async function setPageDurations(
   }
   for (const index of unique) {
     doc.getPage(index).node.set(PDFName.of('Dur'), PDFNumber.of(PAGE_DURATION))
+  }
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write a PDF page `/UserUnit` number (default user space multiplier, ISO 32000
+ * 1.6) on unique-sorted selected pages. Empty indexes throw. Replacing an
+ * existing `/UserUnit` is allowed. This is a page dictionary user unit, not a
+ * `/Dur` presentation duration, not a `/Trans` transition, not catalog `/Names`
+ * JavaScript, not OpenAction, not catalog `/AA`, not overlay-box markup, not
+ * AcroForm, not PKCS#7, not XFA, and not `/AF`. Unselected pages keep no
+ * `/UserUnit`.
+ */
+export async function setPageUserUnits(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn đơn vị.')
+  }
+  for (const index of unique) {
+    doc.getPage(index).node.set(PDFName.of('UserUnit'), PDFNumber.of(PAGE_USER_UNIT))
   }
   return new Uint8Array(await doc.save())
 }

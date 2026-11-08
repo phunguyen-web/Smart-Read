@@ -194,6 +194,7 @@ export type ImportedTextKind =
   | 'pls'
   | 'musicxml'
   | 'mei'
+  | 'abc'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -962,6 +963,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'mei') {
     return pagesFromMei(text)
+  }
+  if (kind === 'abc') {
+    return pagesFromAbc(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -7883,6 +7887,37 @@ export function pagesFromMei(text: string): string[] {
     return capPages(dirs)
   }
   throw new Error('Tệp MEI cần các mục measure / dir.')
+}
+
+function textFromAbcTune(record: string): string {
+  const words = [...record.matchAll(/^W:(.*)$/gm)]
+    .map((match) => match[1]!.trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (words.length > 0) {
+    return words.join('\n')
+  }
+  return ''
+}
+
+export function pagesFromAbc(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const chunks = trimmed
+    .split(/(?=^X:\s*\d+)/m)
+    .filter((chunk) => /^X:\s*\d+/m.test(chunk))
+  const pages = chunks.map((chunk) => textFromAbcTune(chunk)).filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  const words = [...trimmed.matchAll(/^W:(.*)$/gm)]
+    .map((match) => match[1]!.trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (words.length > 0) {
+    return capPages(words)
+  }
+  throw new Error('Tệp ABC cần các mục X: / W:.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

@@ -191,6 +191,7 @@ export type ExportFormat =
   | 'pls'
   | 'musicxml'
   | 'mei'
+  | 'abc'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4307,6 +4308,27 @@ ${measures}
 `
 }
 
+export function toAbc(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const tunes = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `W:${line.replace(/\r/g, '')}`)
+        .join('\n')
+      return `X:${index + 1}
+T:Trang ${index + 1}
+K:C
+${lines}
+z4`
+    })
+    .join('\n\n')
+  return `%abc-2.1
+O:${heading}
+${tunes}
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5486,6 +5508,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/vnd.recordare.musicxml+xml;charset=utf-8'
     case 'mei':
       return 'application/mei+xml;charset=utf-8'
+    case 'abc':
+      return 'text/vnd.abc;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
