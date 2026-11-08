@@ -204,6 +204,7 @@ export type ImportedTextKind =
   | 'xspf'
   | 'm3u'
   | 'jspf'
+  | 'wpl'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1002,6 +1003,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'jspf') {
     return pagesFromJspf(text)
+  }
+  if (kind === 'wpl') {
+    return pagesFromWpl(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8276,6 +8280,46 @@ export function pagesFromJspf(text: string): string[] {
     }
   }
   throw new Error('Tệp JSPF cần các mục track.')
+}
+
+function wplAttr(tag: string, name: 'title' | 'albumTitle'): string {
+  const match =
+    name === 'title'
+      ? tag.match(/\btitle\s*=\s*"([^"]*)"/i)
+      : tag.match(/\balbumTitle\s*=\s*"([^"]*)"/i)
+  return match ? unescapeXml(match[1]!).trim() : ''
+}
+
+function textFromWplMedia(tag: string, inner: string): string {
+  const descs = [...inner.matchAll(/<desc\b[^>]*>([\s\S]*?)<\/desc>/gi)]
+    .map((match) => unescapeXml(match[1]!.replace(/<[^>]+>/g, '')).trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (descs.length > 0) {
+    return descs.join('\n')
+  }
+  const title = wplAttr(tag, 'title')
+  if (title.length > 0 && !/^Trang\s+\d+$/.test(title)) {
+    return title
+  }
+  const albumTitle = wplAttr(tag, 'albumTitle')
+  if (albumTitle.length > 0 && !/^Trang\s+\d+$/.test(albumTitle)) {
+    return albumTitle
+  }
+  return ''
+}
+
+export function pagesFromWpl(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = [...trimmed.matchAll(/<media\b([^>]*?)(?:\/>|>([\s\S]*?)<\/media>)/gi)]
+    .map((match) => textFromWplMedia(match[1]!, match[2] ?? ''))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp WPL cần các mục media.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
