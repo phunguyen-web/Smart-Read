@@ -204,6 +204,7 @@ export type ExportFormat =
   | 'wpl'
   | 'asx'
   | 'b4s'
+  | 'mpcpl'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4606,6 +4607,26 @@ ${entries}
 `
 }
 
+export function toMpcpl(title: string, pages: string[]): string {
+  const heading = (title.trim() || 'Tài liệu').replace(/\r?\n/g, ' ')
+  const entries = pages
+    .map((text, index) => {
+      const n = index + 1
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `${n},subtitle,${line.replace(/\r/g, '')}`)
+        .join('\n')
+      return `${n},type,0
+${n},filename,file:page-${n}.txt
+${lines}`
+    })
+    .join('\n')
+  return `MPCPLAYLIST
+0,filename,${heading}
+${entries}
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5811,6 +5832,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'video/x-ms-asx;charset=utf-8'
     case 'b4s':
       return 'audio/x-ms-b4s;charset=utf-8'
+    case 'mpcpl':
+      return 'application/x-mpcpl;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

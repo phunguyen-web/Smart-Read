@@ -207,6 +207,7 @@ export type ImportedTextKind =
   | 'wpl'
   | 'asx'
   | 'b4s'
+  | 'mpcpl'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1014,6 +1015,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'b4s') {
     return pagesFromB4s(text)
+  }
+  if (kind === 'mpcpl') {
+    return pagesFromMpcpl(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8408,6 +8412,61 @@ export function pagesFromB4s(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp B4S cần các mục entry.')
+}
+
+function isMpcplPlaceholderFilename(value: string): boolean {
+  return /^(file:)?page-\d+\.txt$/i.test(value.trim())
+}
+
+function textFromMpcplEntry(fields: { filename: string[]; subtitle: string[] }): string {
+  const subtitles = fields.subtitle
+    .map((line) => line.trim())
+    .filter((page) => page.length > 0 && !/^Trang\s+\d+$/.test(page))
+  if (subtitles.length > 0) {
+    return subtitles.join('\n')
+  }
+  const filenames = fields.filename
+    .map((line) => line.trim())
+    .filter(
+      (page) =>
+        page.length > 0 &&
+        !/^Trang\s+\d+$/.test(page) &&
+        !isMpcplPlaceholderFilename(page),
+    )
+  if (filenames.length > 0) {
+    return filenames.join('\n')
+  }
+  return ''
+}
+
+export function pagesFromMpcpl(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const grouped = new Map<number, { filename: string[]; subtitle: string[] }>()
+  for (const raw of trimmed.split(/\r?\n/)) {
+    const match = raw.match(/^\s*(\d+)\s*,\s*(filename|subtitle)\s*,(.*)$/i)
+    if (!match) {
+      continue
+    }
+    const index = Number(match[1])
+    if (!Number.isInteger(index) || index <= 0) {
+      continue
+    }
+    const key = match[2]!.toLowerCase() === 'subtitle' ? 'subtitle' : 'filename'
+    const record = grouped.get(index) ?? { filename: [], subtitle: [] }
+    record[key].push(match[3] ?? '')
+    grouped.set(index, record)
+  }
+  const pages = [...grouped.keys()]
+    .sort((a, b) => a - b)
+    .map((index) => textFromMpcplEntry(grouped.get(index)!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp MPCPL cần các mục entry.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

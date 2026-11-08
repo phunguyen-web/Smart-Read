@@ -5198,6 +5198,8 @@ export const CATALOG_REQUIREMENT_TYPE = 'Requirements'
 export const CATALOG_REQUIREMENT_S = 'EnableJavaScript'
 /** ISO 32000 catalog `/Requirements` `/V` enabled flag. */
 export const CATALOG_REQUIREMENT_V = true
+/** ISO 32000 AcroForm `/NeedAppearances`. Distinct from catalog `/Requirements` **Yêu cầu**. */
+export const ACROFORM_NEED_APPEARANCES = true
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5619,6 +5621,32 @@ export async function setCatalogRequirements(
       },
     ]),
   )
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Set AcroForm `/NeedAppearances` (`ACROFORM_NEED_APPEARANCES` true) when at
+ * least one page is selected. Empty indexes throw. Replacing an existing
+ * NeedAppearances flag is allowed. This is an AcroForm dictionary boolean, not
+ * catalog `/Requirements` **Yêu cầu**, not catalog `/Extensions` **Mở rộng**,
+ * not catalog `/Version` **Phiên bản**, not catalog `/Names` JavaScript **Lệnh**,
+ * not catalog `/AA` **Sự kiện**, not overlay submit **Gửi** or reset **Xóa mẫu**,
+ * not `/NeedsRendering`, not `/Perms`, not `/DSS`, not PKCS#7, not XFA, and not
+ * `/AF`. Unselected pages keep no page-level `/NeedAppearances`.
+ */
+export async function setNeedAppearances(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn hiện sẵn.')
+  }
+  ensureAcroFormFields(doc)
+  const acroForm = doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict)
+  acroForm.set(PDFName.of('NeedAppearances'), doc.context.obj(ACROFORM_NEED_APPEARANCES))
   return new Uint8Array(await doc.save())
 }
 
