@@ -208,6 +208,7 @@ export type ExportFormat =
   | 'dpl'
   | 'fpl'
   | 'zpl'
+  | 'itl'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4696,6 +4697,53 @@ ${media}
 `
 }
 
+export function toItl(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const tracks = pages
+    .map((text, index) => {
+      const n = index + 1
+      const name = escapeHtml(text.trim() || '(không có chữ)')
+      return `    <key>${n}</key>
+    <dict>
+      <key>Track ID</key><integer>${n}</integer>
+      <key>Name</key><string>${name}</string>
+      <key>Location</key><string>file://page-${n}.txt</string>
+    </dict>`
+    })
+    .join('\n')
+  const items = pages
+    .map((_, index) => {
+      const n = index + 1
+      return `        <dict>
+          <key>Track ID</key><integer>${n}</integer>
+        </dict>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Major Version</key><integer>1</integer>
+  <key>Application Version</key><string>Smart-Read</string>
+  <key>Tracks</key>
+  <dict>
+${tracks}
+  </dict>
+  <key>Playlists</key>
+  <array>
+    <dict>
+      <key>Name</key><string>${heading}</string>
+      <key>Playlist Items</key>
+      <array>
+${items}
+      </array>
+    </dict>
+  </array>
+</dict>
+</plist>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5909,6 +5957,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/x-fpl;charset=utf-8'
     case 'zpl':
       return 'application/x-zpl;charset=utf-8'
+    case 'itl':
+      return 'application/x-itl;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

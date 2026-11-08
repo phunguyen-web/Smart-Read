@@ -211,6 +211,7 @@ export type ImportedTextKind =
   | 'dpl'
   | 'fpl'
   | 'zpl'
+  | 'itl'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1030,6 +1031,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'zpl') {
     return pagesFromZpl(text)
+  }
+  if (kind === 'itl') {
+    return pagesFromItl(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8629,6 +8633,42 @@ export function pagesFromZpl(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp ZPL cần các mục media.')
+}
+
+function textFromItlName(value: string): string {
+  const page = unescapeXml(value).trim()
+  if (page.length === 0 || /^Trang\s+\d+$/.test(page)) {
+    return ''
+  }
+  return page
+}
+
+function namesFromItlTrackDicts(text: string): string[] {
+  return [
+    ...text.matchAll(
+      /<dict>\s*<key>\s*Track ID\s*<\/key>\s*<integer>\s*\d+\s*<\/integer>\s*<key>\s*Name\s*<\/key>\s*<string>([\s\S]*?)<\/string>/gi,
+    ),
+  ]
+    .map((match) => textFromItlName(match[1]!))
+    .filter((page) => page.length > 0)
+}
+
+export function pagesFromItl(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const fromTracks = namesFromItlTrackDicts(trimmed)
+  if (fromTracks.length > 0) {
+    return capPages(fromTracks)
+  }
+  const pages = [...trimmed.matchAll(/<key>\s*Name\s*<\/key>\s*<string>([\s\S]*?)<\/string>/gi)]
+    .map((match) => textFromItlName(match[1]!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp ITL cần các mục Name.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

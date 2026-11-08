@@ -5212,6 +5212,8 @@ export const ACROFORM_DR_SUBTYPE = 'Type1'
 export const ACROFORM_DR_ENCODING = 'WinAnsiEncoding'
 /** ISO 32000 AcroForm `/SigFlags` SignaturesExist bit. Distinct from overlay **Ký số**. */
 export const ACROFORM_SIG_FLAGS = 1
+/** ISO 32000 AcroForm `/CO` calculation-order array size. Distinct from page `/Tabs` **Thứ tự**. */
+export const ACROFORM_CO_SIZE = 0
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5755,6 +5757,35 @@ export async function setSignatureFlags(
   ensureAcroFormFields(doc)
   const acroForm = doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict)
   acroForm.set(PDFName.of('SigFlags'), PDFNumber.of(ACROFORM_SIG_FLAGS))
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Set AcroForm `/CO` calculation order (`ACROFORM_CO_SIZE` empty array) when at
+ * least one page is selected. Empty indexes throw. Replacing an existing CO
+ * array is allowed. This is an AcroForm `/CO` array of field references, not
+ * page `/Tabs` **Thứ tự**, not overlay signature fields **Ký số**, not AcroForm
+ * `/SigFlags` **Cờ ký**, not AcroForm `/DR` **Tài nguyên**, not AcroForm `/DA`
+ * **Nét mẫu**, not AcroForm `/NeedAppearances` **Hiện sẵn**, not catalog
+ * `/Requirements` **Yêu cầu**, not catalog `/Extensions` **Mở rộng**, not
+ * catalog `/Version` **Phiên bản**, not catalog `/Names` JavaScript **Lệnh**,
+ * not catalog `/AA` **Sự kiện**, not overlay submit **Gửi** or reset **Xóa mẫu**,
+ * not `/NeedsRendering`, not `/Perms`, not `/DSS`, not PKCS#7, not XFA, and not
+ * `/AF`. Unselected pages keep no page-level `/CO`.
+ */
+export async function setCalculationOrder(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn tính toán.')
+  }
+  ensureAcroFormFields(doc)
+  const acroForm = doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict)
+  acroForm.set(PDFName.of('CO'), doc.context.obj([]))
   return new Uint8Array(await doc.save())
 }
 
