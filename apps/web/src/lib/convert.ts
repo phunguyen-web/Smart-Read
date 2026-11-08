@@ -201,6 +201,7 @@ export type ExportFormat =
   | 'xspf'
   | 'm3u'
   | 'jspf'
+  | 'wpl'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4530,6 +4531,34 @@ export function toJspf(title: string, pages: string[]): string {
   return `${JSON.stringify({ playlist: { title: heading, track } })}\n`
 }
 
+export function toWpl(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const media = pages
+    .map((text, index) => {
+      const lines = (text.trim() || '(không có chữ)')
+        .split(/\n+/)
+        .map((line) => `        <desc>${escapeHtml(line)}</desc>`)
+        .join('\n')
+      return `      <media src="page-${index + 1}.txt" albumTitle="Trang ${index + 1}">
+${lines}
+      </media>`
+    })
+    .join('\n')
+  return `<?wpl version="1.0"?>
+<smil>
+  <head>
+    <meta name="Generator" content="Smart-Read"/>
+    <title>${heading}</title>
+  </head>
+  <body>
+    <seq>
+${media}
+    </seq>
+  </body>
+</smil>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -5729,6 +5758,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'audio/x-mpegurl;charset=utf-8'
     case 'jspf':
       return 'application/x-jspf+json;charset=utf-8'
+    case 'wpl':
+      return 'application/vnd.ms-wpl;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

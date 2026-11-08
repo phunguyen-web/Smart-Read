@@ -5182,6 +5182,8 @@ export const PAGE_LAYOUT = 'TwoColumnLeft'
 export const PAGE_MODE = 'UseThumbs'
 /** ISO 32000 page `/Group` subtype. Distinct from catalog OutputIntents **Màu in** and OCG **Lớp**. */
 export const PAGE_GROUP_SUBTYPE = 'Transparency'
+/** ISO 32000 catalog `/Version`. Distinct from page `/Group` **Nhóm** and header `%PDF-`. */
+export const CATALOG_VERSION = '1.7'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5509,6 +5511,31 @@ export async function setPageGroups(
       }),
     )
   }
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write catalog `/Version` (`CATALOG_VERSION` 1.7) when at least one page is
+ * selected. Empty indexes throw. Replacing an existing Version name is
+ * allowed. This is a catalog document-level version override, not the file
+ * header `%PDF-`, not page `/Group` **Nhóm**, not catalog `/PageMode`
+ * **Hình nhỏ**, not catalog `/PageLayout` **Bố cục**, not catalog
+ * `/OutputIntents` **Màu in**, not catalog `/OCProperties` **Lớp**, not
+ * catalog `/Collection` **Hồ sơ**, not overlay-box markup, not AcroForm, not
+ * PKCS#7, not XFA, and not `/AF`. Unselected pages keep no page-level
+ * `/Version`.
+ */
+export async function setCatalogVersion(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn phiên bản.')
+  }
+  doc.catalog.set(PDFName.of('Version'), PDFName.of(CATALOG_VERSION))
   return new Uint8Array(await doc.save())
 }
 
