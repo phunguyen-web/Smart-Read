@@ -216,6 +216,7 @@ export type ImportedTextKind =
   | 'nzb'
   | 'rss'
   | 'foaf'
+  | 'ttl'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1050,6 +1051,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'foaf') {
     return pagesFromFoaf(text)
+  }
+  if (kind === 'ttl') {
+    return pagesFromTurtle(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8806,6 +8810,43 @@ export function pagesFromFoaf(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp FOAF cần các mục name.')
+}
+
+function unescapeTurtleString(value: string): string {
+  return value.replace(/\\([\\nrt"])/g, (_match, code: string) => {
+    if (code === 'n') {
+      return '\n'
+    }
+    if (code === 'r') {
+      return '\r'
+    }
+    if (code === 't') {
+      return '\t'
+    }
+    return code
+  })
+}
+
+function textFromTurtleDescription(value: string): string {
+  const page = unescapeTurtleString(value).trim()
+  if (page.length === 0 || /^Trang\s+\d+$/.test(page)) {
+    return ''
+  }
+  return page
+}
+
+export function pagesFromTurtle(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  const pages = [...trimmed.matchAll(/\bdc:description\s+"((?:[^"\\]|\\.)*)"/g)]
+    .map((match) => textFromTurtleDescription(match[1]!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  throw new Error('Tệp Turtle cần các mục description.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

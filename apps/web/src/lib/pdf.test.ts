@@ -235,6 +235,7 @@ import {
   toNzb,
   toRss,
   toFoaf,
+  toTurtle,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -465,6 +466,7 @@ import {
   pagesFromNzb,
   pagesFromRss,
   pagesFromFoaf,
+  pagesFromTurtle,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -802,6 +804,7 @@ import {
   PAGE_PRES_STEPS_NAME,
   setPageTrimBoxes,
   setPageBleedBoxes,
+  setPageArtBoxes,
   setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
@@ -3373,6 +3376,57 @@ describe('pdf edits', () => {
     expect(againDoc.getPage(0).node.lookup(PDFName.of('BleedBox'), PDFArray).size()).toBe(4)
     expect(againDoc.catalog.get(PDFName.of('BleedBox'))).toBeUndefined()
     await expect(setPageBleedBoxes(bytes, [])).rejects.toThrow(/lề in/)
+  })
+
+  it('sets page art boxes on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    const filled = await setPageArtBoxes(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    const art0 = doc.getPage(0).node.lookup(PDFName.of('ArtBox'), PDFArray)
+    const art2 = doc.getPage(2).node.lookup(PDFName.of('ArtBox'), PDFArray)
+    expect(art0.size()).toBe(4)
+    expect(art2.size()).toBe(4)
+    expect(art0.lookup(0, PDFNumber).asNumber()).toBe(0)
+    expect(art0.lookup(1, PDFNumber).asNumber()).toBe(0)
+    const { width, height } = doc.getPage(0).getSize()
+    expect(art0.lookup(2, PDFNumber).asNumber()).toBe(width)
+    expect(art0.lookup(3, PDFNumber).asNumber()).toBe(height)
+    expect(doc.getPage(1).node.get(PDFName.of('ArtBox'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('ArtBox'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('BleedBox'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('TrimBox'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('PresSteps'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('VP'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('CO'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('SigFlags'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('DR'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('DA'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('NeedAppearances'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Requirements'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('BleedBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('TrimBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PresSteps'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('VP'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('CO'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('SigFlags'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Group'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('CropBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageMode'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageLayout'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OutputIntents'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeUndefined()
+    const again = await setPageArtBoxes(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    const againArt1 = againDoc.getPage(1).node.lookup(PDFName.of('ArtBox'), PDFArray)
+    expect(againArt1.size()).toBe(4)
+    expect(againDoc.getPage(0).node.lookup(PDFName.of('ArtBox'), PDFArray).size()).toBe(4)
+    expect(againDoc.catalog.get(PDFName.of('ArtBox'))).toBeUndefined()
+    await expect(setPageArtBoxes(bytes, [])).rejects.toThrow(/vùng vẽ/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -10875,6 +10929,99 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromFoaf('<rdf:RDF xmlns:foaf="http://xmlns.com/foaf/0.1/">\n')).toThrow(/FOAF/)
     expect(swapExtension('notes.foaf', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.foaf.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toFoaf('Demo', ['Một'])).not.toContain('@prefix')
+    expect(toRss('Demo', ['Một'])).not.toContain('@prefix')
+    expect(toTurtle('Demo', ['Một', 'Hai\ndòng'])).toContain('@prefix dc:')
+    expect(toTurtle('Demo', ['Một'])).toContain('dc:title "Demo"')
+    expect(toTurtle('Demo', ['Một'])).toContain('dc:description "Một"')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<rss')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<item>')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<description>Một</description>')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('rdf:Description')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('xmlns:foaf')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<foaf:Person')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<foaf:name>')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<rdf:RDF')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<!DOCTYPE nzb')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<nzb')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<!DOCTYPE xbel')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<bookmark')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<plist')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('Track ID')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<key>Name</key>')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<?zpl')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('trackTitle')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<media')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('foobar2000')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('playlist=')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('|title|')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('DAUMPLAYLIST')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('playname=')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('*title*')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('MPCPLAYLIST')
+    expect(toTurtle('Demo', ['Một'])).not.toContain(',subtitle,')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('#EXTM3U')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('#EXTINF:')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('http://xspf.org/ns/0/')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('"playlist"')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('"annotation":')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<?wpl')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('albumTitle')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<desc>')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<asx')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<abstract')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<WinampXML')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('Playstring')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<Name>')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<par>')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/SMIL"')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('**kern')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('MFile')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('MTrk')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('digraph G')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('xlabel="Trang')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<graphml')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<node id="n1">')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('%abc-2.1')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('\nW:')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<mei')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<measure')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<dir>')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<score-partwise')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<SAMI')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('xmlns="http://www.w3.org/ns/ttml"')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<speak')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<math')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<dtbook')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('BEGIN:VEVENT')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('\\version')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('\\markup \\column')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('TRACK 01 AUDIO')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<feed')
+    expect(toTurtle('Demo', ['Một'])).not.toContain('<entry>')
+    expect(pagesFromTurtle(toTurtle('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('ttl', toTurtle('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromTurtle('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(pagesFromTurtle('dc:description "Một"')).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.ttl', { type: '' }))).toBe('ttl')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.turtle', { type: 'text/turtle' })),
+    ).toBe('ttl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.foaf', { type: '' }))).toBe('foaf')
+    expect(sourceKindFromFile(new File(['x'], 'notes.rss', { type: '' }))).toBe('rss')
+    expect(sourceKindFromFile(new File(['x'], 'notes.rdf', { type: '' }))).toBe('rdf')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ttml', { type: '' }))).toBe('ttml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.atom', { type: '' }))).toBe('atom')
+    expect(sourceKindFromFile(new File(['x'], 'notes.xml', { type: '' }))).toBe('xml')
+    expect(sourceKindFromFile(new File(['x'], 'notes.txt', { type: '' }))).toBe('txt')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.ttl.ttl', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.tt', { type: '' }))).toThrow(/Chỉ nhận/)
+    expect(() => pagesFromTurtle('@prefix dc: <http://purl.org/dc/terms/> .\n')).toThrow(/Turtle/)
+    expect(swapExtension('notes.ttl', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.turtle', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

@@ -213,6 +213,7 @@ export type ExportFormat =
   | 'nzb'
   | 'rss'
   | 'foaf'
+  | 'ttl'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4840,6 +4841,30 @@ ${people}
 `
 }
 
+function escapeTurtle(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t')
+}
+
+export function toTurtle(title: string, pages: string[]): string {
+  const heading = escapeTurtle((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const triples = pages
+    .map((text, index) => {
+      const name = escapeTurtle(text.trim() || '(không có chữ)')
+      return `<urn:smart-read:page:${index + 1}> dc:description "${name}" .`
+    })
+    .join('\n')
+  return `@prefix dc: <http://purl.org/dc/terms/> .
+
+<urn:smart-read:doc> dc:title "${heading}" .
+${triples}
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -6063,6 +6088,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/rss+xml;charset=utf-8'
     case 'foaf':
       return 'application/foaf+xml;charset=utf-8'
+    case 'ttl':
+      return 'text/turtle;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':
