@@ -5230,6 +5230,8 @@ export const BOX_COLOR_INFO_B = 0
 export const BOX_COLOR_INFO_WIDTH = 1
 /** ISO 32000 BoxStyle `/S` solid stroke. */
 export const BOX_COLOR_INFO_STYLE = 'S' as const
+/** ISO 32000 page `/LastModified` date. Distinct from catalog `/PieceInfo` **Mảnh**. */
+export const PAGE_LAST_MODIFIED = 'D:20260101000000Z'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -5986,6 +5988,33 @@ export async function setPageBoxColorInfo(
     const info = doc.context.obj({})
     info.set(PDFName.of('ArtBox'), style)
     page.node.set(PDFName.of('BoxColorInfo'), info)
+  }
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write a PDF page `/LastModified` date (`PAGE_LAST_MODIFIED`) on unique-sorted
+ * selected pages. Empty indexes throw. Replacing an existing `/LastModified` is
+ * allowed. This is a page dictionary modification date, not catalog `/PieceInfo`
+ * **Mảnh**, not annot `/LastModified`, not crop **Cắt lề**, not pad **Thêm lề**,
+ * not page `/ArtBox` **Vùng vẽ**, not page `/BleedBox` **Lề in**, not page
+ * `/TrimBox` **Cắt thành**, not page `/BoxColorInfo` **Màu hộp**, not catalog
+ * `/OutputIntents` **Màu in**, not overlay-box markup, not `/NeedsRendering`,
+ * not `/Perms`, not `/DSS`, not PKCS#7, not XFA, and not `/AF`. Unselected pages
+ * keep no `/LastModified`. Catalog `/LastModified` stays unset.
+ */
+export async function setPageLastModified(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn sửa lúc.')
+  }
+  for (const index of unique) {
+    doc.getPage(index).node.set(PDFName.of('LastModified'), PDFString.of(PAGE_LAST_MODIFIED))
   }
   return new Uint8Array(await doc.save())
 }

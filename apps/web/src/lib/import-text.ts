@@ -218,6 +218,7 @@ export type ImportedTextKind =
   | 'foaf'
   | 'ttl'
   | 'nt'
+  | 'n3'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1058,6 +1059,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'nt') {
     return pagesFromNtriples(text)
+  }
+  if (kind === 'n3') {
+    return pagesFromN3(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8877,6 +8881,22 @@ export function pagesFromNtriples(text: string): string[] {
     return capPages(pages)
   }
   throw new Error('Tệp N-Triples cần các mục description.')
+}
+
+export function pagesFromN3(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  const pages = [
+    ...trimmed.matchAll(/\{\s*<[^>]+>\s*dc:description\s+"((?:[^"\\]|\\.)*)"\s*\.\s*\}/g),
+  ]
+    .map((match) => textFromTurtleDescription(match[1]!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  throw new Error('Tệp N3 cần các mục description.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
