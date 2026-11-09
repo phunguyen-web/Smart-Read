@@ -218,6 +218,7 @@ export type ExportFormat =
   | 'n3'
   | 'doap'
   | 'skos'
+  | 'owl'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4939,6 +4940,28 @@ ${concepts}
 `
 }
 
+export function toOwl(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const classes = pages
+    .map((text, index) => {
+      const comment = escapeHtml(text.trim() || '(không có chữ)')
+      return `  <owl:Class rdf:about="urn:smart-read:page:${index + 1}">
+    <rdfs:comment>${comment}</rdfs:comment>
+  </owl:Class>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#">
+  <owl:Ontology rdf:about="urn:smart-read:doc">
+    <rdfs:label>${heading}</rdfs:label>
+  </owl:Ontology>
+${classes}
+</rdf:RDF>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -6172,6 +6195,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/doap+xml;charset=utf-8'
     case 'skos':
       return 'application/skos+xml;charset=utf-8'
+    case 'owl':
+      return 'application/owl+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

@@ -240,6 +240,7 @@ import {
   toN3,
   toDoap,
   toSkos,
+  toOwl,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -475,6 +476,7 @@ import {
   pagesFromN3,
   pagesFromDoap,
   pagesFromSkos,
+  pagesFromOwl,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -825,6 +827,9 @@ import {
   PAGE_STRUCT_PARENTS,
   setPageSeparationInfo,
   PAGE_SEPARATION_COLORANT,
+  setPageIds,
+  PAGE_ID_A,
+  PAGE_ID_B,
   setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
@@ -3645,6 +3650,59 @@ describe('pdf edits', () => {
     ).toBe(PDFName.of(PAGE_SEPARATION_COLORANT))
     expect(againDoc.catalog.get(PDFName.of('SeparationInfo'))).toBeUndefined()
     await expect(setPageSeparationInfo(bytes, [])).rejects.toThrow(/tách màu/)
+  })
+
+  it('sets page identifiers on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(PAGE_ID_A).toBe('SmartReadA')
+    expect(PAGE_ID_B).toBe('SmartReadB')
+    const filled = await setPageIds(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    const id0 = doc.getPage(0).node.lookup(PDFName.of('ID'), PDFArray)
+    const id2 = doc.getPage(2).node.lookup(PDFName.of('ID'), PDFArray)
+    expect((id0.lookup(0, PDFString) as PDFString).decodeText()).toBe(PAGE_ID_A)
+    expect((id0.lookup(1, PDFString) as PDFString).decodeText()).toBe(PAGE_ID_B)
+    expect((id2.lookup(0, PDFString) as PDFString).decodeText()).toBe(PAGE_ID_A)
+    expect((id2.lookup(1, PDFString) as PDFString).decodeText()).toBe(PAGE_ID_B)
+    expect(doc.getPage(1).node.get(PDFName.of('ID'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('ID'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('SeparationInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('StructParents'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('LastModified'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('BoxColorInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('ArtBox'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('MarkInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('OutputIntents'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('SeparationInfo'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('StructParents'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('LastModified'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('BoxColorInfo'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('ArtBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('BleedBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('TrimBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PresSteps'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('VP'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('CropBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Group'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageMode'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageLayout'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OutputIntents'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeUndefined()
+    const again = await setPageIds(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    expect(
+      (againDoc.getPage(1).node.lookup(PDFName.of('ID'), PDFArray).lookup(0, PDFString) as PDFString).decodeText(),
+    ).toBe(PAGE_ID_A)
+    expect(
+      (againDoc.getPage(0).node.lookup(PDFName.of('ID'), PDFArray).lookup(0, PDFString) as PDFString).decodeText(),
+    ).toBe(PAGE_ID_A)
+    expect(againDoc.catalog.get(PDFName.of('ID'))).toBeUndefined()
+    await expect(setPageIds(bytes, [])).rejects.toThrow(/định danh/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -11524,6 +11582,59 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.skos', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.skos.xml', 'pdf')).toBe('notes.pdf')
+    expect(toSkos('Demo', ['Một'])).not.toContain('xmlns:owl')
+    expect(toSkos('Demo', ['Một'])).not.toContain('<owl:Class')
+    expect(toSkos('Demo', ['Một'])).not.toContain('<rdfs:comment>')
+
+    expect(toOwl('Demo', ['Một', 'Hai\ndòng'])).toContain('<owl:Class rdf:about="urn:smart-read:page:')
+    expect(toOwl('Demo', ['Một'])).toContain('xmlns:owl="http://www.w3.org/2002/07/owl#"')
+    expect(toOwl('Demo', ['Một'])).toContain('xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"')
+    expect(toOwl('Demo', ['Một'])).toContain('<rdfs:label>Demo</rdfs:label>')
+    expect(toOwl('Demo', ['Một'])).toContain('<rdfs:comment>Một</rdfs:comment>')
+    expect(toOwl('Demo', ['Một'])).not.toContain('xmlns:skos')
+    expect(toOwl('Demo', ['Một'])).not.toContain('<skos:Concept')
+    expect(toOwl('Demo', ['Một'])).not.toContain('<skos:definition>')
+    expect(toOwl('Demo', ['Một'])).not.toContain('xmlns:doap')
+    expect(toOwl('Demo', ['Một'])).not.toContain('<doap:Project')
+    expect(toOwl('Demo', ['Một'])).not.toContain('<doap:description>')
+    expect(toOwl('Demo', ['Một'])).not.toContain('@prefix dc:')
+    expect(toOwl('Demo', ['Một'])).not.toContain('{ <urn:smart-read:page:')
+    expect(toOwl('Demo', ['Một'])).not.toContain('<http://purl.org/dc/terms/description>')
+    expect(toOwl('Demo', ['Một'])).not.toContain('dc:description "Một"')
+    expect(toOwl('Demo', ['Một'])).not.toContain('<rss')
+    expect(toOwl('Demo', ['Một'])).not.toContain('<item>')
+    expect(toOwl('Demo', ['Một'])).not.toContain('<description>Một</description>')
+    expect(toOwl('Demo', ['Một'])).not.toContain('rdf:Description')
+    expect(toOwl('Demo', ['Một'])).not.toContain('xmlns:foaf')
+    expect(toOwl('Demo', ['Một'])).not.toContain('<foaf:Person')
+    expect(toOwl('Demo', ['Một'])).not.toContain('<foaf:name>')
+    expect(pagesFromOwl(toOwl('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('owl', toOwl('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromOwl('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromOwl(
+        '<owl:Class rdf:about="urn:smart-read:page:1"><rdfs:comment>Một</rdfs:comment></owl:Class>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.owl', { type: '' }))).toBe('owl')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.owl.xml', { type: 'application/owl+xml' })),
+    ).toBe('owl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.skos', { type: '' }))).toBe('skos')
+    expect(sourceKindFromFile(new File(['x'], 'notes.doap', { type: '' }))).toBe('doap')
+    expect(sourceKindFromFile(new File(['x'], 'notes.n3', { type: '' }))).toBe('n3')
+    expect(sourceKindFromFile(new File(['x'], 'notes.nt', { type: '' }))).toBe('nt')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ttl', { type: '' }))).toBe('ttl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.foaf', { type: '' }))).toBe('foaf')
+    expect(sourceKindFromFile(new File(['x'], 'notes.rdf', { type: '' }))).toBe('rdf')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.owl.owl', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => pagesFromOwl('<rdf:RDF xmlns:owl="http://www.w3.org/2002/07/owl#"></rdf:RDF>\n')).toThrow(
+      /OWL/,
+    )
+    expect(swapExtension('notes.owl', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.owl.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

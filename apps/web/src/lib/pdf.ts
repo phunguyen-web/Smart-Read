@@ -5236,6 +5236,9 @@ export const PAGE_LAST_MODIFIED = 'D:20260101000000Z'
 export const PAGE_STRUCT_PARENTS = 0
 /** ISO 32000 page `/SeparationInfo` DeviceColorant. WinAnsi-safe. Distinct from **Màu hộp**. */
 export const PAGE_SEPARATION_COLORANT = 'Black'
+/** ISO 32000 page `/ID` file-identifier pair. WinAnsi-safe. Distinct from trailer ID. */
+export const PAGE_ID_A = 'SmartReadA'
+export const PAGE_ID_B = 'SmartReadB'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -6078,6 +6081,35 @@ export async function setPageSeparationInfo(
       DeviceColorant: PAGE_SEPARATION_COLORANT,
     })
     doc.getPage(index).node.set(PDFName.of('SeparationInfo'), info)
+  }
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write a PDF page `/ID` identifier array (`PAGE_ID_A`, `PAGE_ID_B`) on unique-sorted
+ * selected pages. Empty indexes throw. Replacing an existing `/ID` is allowed. This
+ * is a page dictionary file-identifier array, not trailer `/ID`, not catalog `/ID`,
+ * not page `/SeparationInfo` **Tách màu**, not page `/StructParents` **Số gốc**, not
+ * page `/LastModified` **Sửa lúc**, not page `/BoxColorInfo` **Màu hộp**, not page
+ * `/ArtBox` **Vùng vẽ**, not crop **Cắt lề**, not pad **Thêm lề**, not overlay-box
+ * markup, not `/NeedsRendering`, not `/Perms`, not `/DSS`, not PKCS#7, not XFA, and
+ * not `/AF`. Unselected pages keep no `/ID`. Catalog `/ID` stays unset.
+ */
+export async function setPageIds(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn định danh.')
+  }
+  for (const index of unique) {
+    const id = doc.context.obj([])
+    id.push(PDFString.of(PAGE_ID_A))
+    id.push(PDFString.of(PAGE_ID_B))
+    doc.getPage(index).node.set(PDFName.of('ID'), id)
   }
   return new Uint8Array(await doc.save())
 }
