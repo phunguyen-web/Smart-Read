@@ -6154,6 +6154,43 @@ export async function setCatalogStructTreeRoot(
   return new Uint8Array(await doc.save())
 }
 
+/**
+ * Write a PDF page `/PieceInfo` dictionary (`PIECE_INFO_APP` LastModified +
+ * Private Data) on unique-sorted selected pages. Empty indexes throw. Replacing
+ * an existing `/PieceInfo` is allowed. This is a page dictionary page-piece
+ * dictionary, not catalog `/PieceInfo` **Mảnh**, not catalog `/Collection`
+ * **Hồ sơ**, not page `/PieceInfo` `/Collection` from **Hồ sơ**, not catalog
+ * `/StructTreeRoot` **Cây cấu**, not page `/ID` **Định danh**, not page
+ * `/SeparationInfo` **Tách màu**, not overlay-box markup, not `/NeedsRendering`,
+ * not `/Perms`, not `/DSS`, not PKCS#7, not XFA, and not `/AF`. Unselected pages
+ * keep no `/PieceInfo`. Catalog `/PieceInfo` stays unset.
+ */
+export async function setPagePieceInfo(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn mảnh trang.')
+  }
+  for (const index of unique) {
+    doc.getPage(index).node.set(
+      PDFName.of('PieceInfo'),
+      doc.context.obj({
+        SmartRead: {
+          LastModified: PDFString.of(PIECE_INFO_MODIFIED),
+          Private: {
+            Data: PDFString.of(PIECE_INFO_DATA),
+          },
+        },
+      }),
+    )
+  }
+  return new Uint8Array(await doc.save())
+}
+
 function javascriptNameForPage(pageIndex: number): string {
   return `Page${pageIndex + 1}`
 }

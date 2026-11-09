@@ -220,6 +220,7 @@ export type ExportFormat =
   | 'skos'
   | 'owl'
   | 'prov'
+  | 'dcat'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4985,6 +4986,29 @@ ${entities}
 `
 }
 
+export function toDcat(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const datasets = pages
+    .map((text, index) => {
+      const description = escapeHtml(text.trim() || '(không có chữ)')
+      return `  <dcat:Dataset rdf:about="urn:smart-read:page:${index + 1}">
+    <dct:description>${description}</dct:description>
+  </dcat:Dataset>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:dcat="http://www.w3.org/ns/dcat#"
+         xmlns:dct="http://purl.org/dc/terms/"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#">
+  <dcat:Catalog rdf:about="urn:smart-read:doc">
+    <rdfs:label>${heading}</rdfs:label>
+  </dcat:Catalog>
+${datasets}
+</rdf:RDF>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -6222,6 +6246,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/owl+xml;charset=utf-8'
     case 'prov':
       return 'application/prov+xml;charset=utf-8'
+    case 'dcat':
+      return 'application/dcat+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

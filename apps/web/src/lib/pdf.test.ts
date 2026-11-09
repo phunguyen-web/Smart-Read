@@ -242,6 +242,7 @@ import {
   toSkos,
   toOwl,
   toProv,
+  toDcat,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -479,6 +480,7 @@ import {
   pagesFromSkos,
   pagesFromOwl,
   pagesFromProv,
+  pagesFromDcat,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -833,6 +835,7 @@ import {
   PAGE_ID_A,
   PAGE_ID_B,
   setCatalogStructTreeRoot,
+  setPagePieceInfo,
   STRUCT_TREE_ROOT_TYPE,
   STRUCT_TREE_ELEM_TYPE,
   STRUCT_TREE_ROLE,
@@ -3746,6 +3749,62 @@ describe('pdf edits', () => {
     ).toBe(PDFName.of(STRUCT_TREE_ROOT_TYPE))
     expect(againDoc.getPage(1).node.get(PDFName.of('StructTreeRoot'))).toBeUndefined()
     await expect(setCatalogStructTreeRoot(bytes, [])).rejects.toThrow(/cây cấu/)
+  })
+
+  it('sets page PieceInfo on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(PIECE_INFO_APP).toBe('SmartRead')
+    expect(PIECE_INFO_DATA).toBe('Smart-Read')
+    expect(PIECE_INFO_MODIFIED).toBe('D:20260101000000Z')
+    const filled = await setPagePieceInfo(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    const piece0 = doc.getPage(0).node.lookup(PDFName.of('PieceInfo'), PDFDict)
+    const app0 = piece0.lookup(PDFName.of(PIECE_INFO_APP), PDFDict)
+    expect((app0.lookup(PDFName.of('LastModified')) as PDFString).decodeText()).toBe(PIECE_INFO_MODIFIED)
+    expect((app0.lookup(PDFName.of('Private'), PDFDict).lookup(PDFName.of('Data')) as PDFString).decodeText()).toBe(
+      PIECE_INFO_DATA,
+    )
+    expect(app0.lookupMaybe(PDFName.of('Collection'), PDFDict)).toBeUndefined()
+    const piece2 = doc.getPage(2).node.lookup(PDFName.of('PieceInfo'), PDFDict)
+    expect(
+      (piece2.lookup(PDFName.of(PIECE_INFO_APP), PDFDict).lookup(PDFName.of('Private'), PDFDict).lookup(
+        PDFName.of('Data'),
+      ) as PDFString).decodeText(),
+    ).toBe(PIECE_INFO_DATA)
+    expect(doc.getPage(1).node.get(PDFName.of('PieceInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('PieceInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('Collection'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('StructTreeRoot'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('StructTreeRoot'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('ID'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('SeparationInfo'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('StructParents'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('LastModified'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('MarkInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('MarkInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('ID'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict)).toBeUndefined()
+    const again = await setPagePieceInfo(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    expect(
+      (
+        againDoc.getPage(1).node.lookup(PDFName.of('PieceInfo'), PDFDict)
+          .lookup(PDFName.of(PIECE_INFO_APP), PDFDict)
+          .lookup(PDFName.of('Private'), PDFDict)
+          .lookup(PDFName.of('Data')) as PDFString
+      ).decodeText(),
+    ).toBe(PIECE_INFO_DATA)
+    expect(
+      (
+        againDoc.getPage(0).node.lookup(PDFName.of('PieceInfo'), PDFDict)
+          .lookup(PDFName.of(PIECE_INFO_APP), PDFDict)
+          .lookup(PDFName.of('Private'), PDFDict)
+          .lookup(PDFName.of('Data')) as PDFString
+      ).decodeText(),
+    ).toBe(PIECE_INFO_DATA)
+    expect(againDoc.catalog.get(PDFName.of('PieceInfo'))).toBeUndefined()
+    await expect(setPagePieceInfo(bytes, [])).rejects.toThrow(/mảnh trang/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -11733,6 +11792,69 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.prov', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.prov.xml', 'pdf')).toBe('notes.pdf')
+    expect(toProv('Demo', ['Một'])).not.toContain('xmlns:dcat')
+    expect(toProv('Demo', ['Một'])).not.toContain('<dcat:Dataset')
+    expect(toProv('Demo', ['Một'])).not.toContain('<dct:description>')
+    expect(toOwl('Demo', ['Một'])).not.toContain('xmlns:dcat')
+    expect(toOwl('Demo', ['Một'])).not.toContain('<dcat:Dataset')
+
+    expect(toDcat('Demo', ['Một', 'Hai\ndòng'])).toContain('<dcat:Dataset rdf:about="urn:smart-read:page:')
+    expect(toDcat('Demo', ['Một'])).toContain('xmlns:dcat="http://www.w3.org/ns/dcat#"')
+    expect(toDcat('Demo', ['Một'])).toContain('xmlns:dct="http://purl.org/dc/terms/"')
+    expect(toDcat('Demo', ['Một'])).toContain('xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"')
+    expect(toDcat('Demo', ['Một'])).toContain('<rdfs:label>Demo</rdfs:label>')
+    expect(toDcat('Demo', ['Một'])).toContain('<dct:description>Một</dct:description>')
+    expect(toDcat('Demo', ['Một'])).not.toContain('<dct:title>')
+    expect(toDcat('Demo', ['Một'])).not.toContain('xmlns:prov')
+    expect(toDcat('Demo', ['Một'])).not.toContain('<prov:Entity')
+    expect(toDcat('Demo', ['Một'])).not.toContain('xmlns:owl')
+    expect(toDcat('Demo', ['Một'])).not.toContain('<owl:Class')
+    expect(toDcat('Demo', ['Một'])).not.toContain('xmlns:skos')
+    expect(toDcat('Demo', ['Một'])).not.toContain('<skos:Concept')
+    expect(toDcat('Demo', ['Một'])).not.toContain('<skos:definition>')
+    expect(toDcat('Demo', ['Một'])).not.toContain('xmlns:doap')
+    expect(toDcat('Demo', ['Một'])).not.toContain('<doap:Project')
+    expect(toDcat('Demo', ['Một'])).not.toContain('<doap:description>')
+    expect(toDcat('Demo', ['Một'])).not.toContain('@prefix dc:')
+    expect(toDcat('Demo', ['Một'])).not.toContain('{ <urn:smart-read:page:')
+    expect(toDcat('Demo', ['Một'])).not.toContain('<http://purl.org/dc/terms/description>')
+    expect(toDcat('Demo', ['Một'])).not.toContain('dc:description "Một"')
+    expect(toDcat('Demo', ['Một'])).not.toContain('<rss')
+    expect(toDcat('Demo', ['Một'])).not.toContain('<item>')
+    expect(toDcat('Demo', ['Một'])).not.toContain('<description>Một</description>')
+    expect(toDcat('Demo', ['Một'])).not.toContain('rdf:Description')
+    expect(toDcat('Demo', ['Một'])).not.toContain('xmlns:foaf')
+    expect(toDcat('Demo', ['Một'])).not.toContain('<foaf:Person')
+    expect(toDcat('Demo', ['Một'])).not.toContain('<foaf:name>')
+    expect(pagesFromDcat(toDcat('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('dcat', toDcat('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromDcat('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromDcat(
+        '<dcat:Dataset rdf:about="urn:smart-read:page:1"><dct:description>Một</dct:description></dcat:Dataset>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.dcat', { type: '' }))).toBe('dcat')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.dcat.xml', { type: 'application/dcat+xml' })),
+    ).toBe('dcat')
+    expect(sourceKindFromFile(new File(['x'], 'notes.prov', { type: '' }))).toBe('prov')
+    expect(sourceKindFromFile(new File(['x'], 'notes.owl', { type: '' }))).toBe('owl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.skos', { type: '' }))).toBe('skos')
+    expect(sourceKindFromFile(new File(['x'], 'notes.doap', { type: '' }))).toBe('doap')
+    expect(sourceKindFromFile(new File(['x'], 'notes.n3', { type: '' }))).toBe('n3')
+    expect(sourceKindFromFile(new File(['x'], 'notes.nt', { type: '' }))).toBe('nt')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ttl', { type: '' }))).toBe('ttl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.foaf', { type: '' }))).toBe('foaf')
+    expect(sourceKindFromFile(new File(['x'], 'notes.rdf', { type: '' }))).toBe('rdf')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.dcat.dcat', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => pagesFromDcat('<rdf:RDF xmlns:dcat="http://www.w3.org/ns/dcat#"></rdf:RDF>\n')).toThrow(
+      /DCAT/,
+    )
+    expect(swapExtension('notes.dcat', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.dcat.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

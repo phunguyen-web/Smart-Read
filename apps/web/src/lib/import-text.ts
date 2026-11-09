@@ -223,6 +223,7 @@ export type ImportedTextKind =
   | 'skos'
   | 'owl'
   | 'prov'
+  | 'dcat'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1078,6 +1079,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'prov') {
     return pagesFromProv(text)
+  }
+  if (kind === 'dcat') {
+    return pagesFromDcat(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -9041,6 +9045,38 @@ export function pagesFromProv(text: string): string[] {
     return pagesFromJson(trimmed)
   }
   throw new Error('Tệp PROV-O cần các mục comment.')
+}
+
+function textFromDcatDescription(value: string): string {
+  const page = unescapeXml(value.replace(/<[^>]+>/g, '')).trim()
+  if (page.length === 0 || /^Trang\s+\d+$/.test(page)) {
+    return ''
+  }
+  return page
+}
+
+export function pagesFromDcat(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  const fromDatasets = [
+    ...trimmed.matchAll(
+      /<dcat:Dataset\b[^>]*>\s*[\s\S]*?<dct:description\b[^>]*>([\s\S]*?)<\/dct:description>/gi,
+    ),
+  ]
+    .map((match) => textFromDcatDescription(match[1]!))
+    .filter((page) => page.length > 0)
+  if (fromDatasets.length > 0) {
+    return capPages(fromDatasets)
+  }
+  const pages = [...trimmed.matchAll(/<dct:description\b[^>]*>([\s\S]*?)<\/dct:description>/gi)]
+    .map((match) => textFromDcatDescription(match[1]!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  throw new Error('Tệp DCAT cần các mục description.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
