@@ -220,6 +220,7 @@ export type ImportedTextKind =
   | 'nt'
   | 'n3'
   | 'doap'
+  | 'skos'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1066,6 +1067,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'doap') {
     return pagesFromDoap(text)
+  }
+  if (kind === 'skos') {
+    return pagesFromSkos(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8933,6 +8937,38 @@ export function pagesFromDoap(text: string): string[] {
     return pagesFromJson(trimmed)
   }
   throw new Error('Tệp DOAP cần các mục description.')
+}
+
+function textFromSkosDefinition(value: string): string {
+  const page = unescapeXml(value.replace(/<[^>]+>/g, '')).trim()
+  if (page.length === 0 || /^Trang\s+\d+$/.test(page)) {
+    return ''
+  }
+  return page
+}
+
+export function pagesFromSkos(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  const fromConcepts = [
+    ...trimmed.matchAll(
+      /<skos:Concept\b[^>]*>\s*[\s\S]*?<skos:definition\b[^>]*>([\s\S]*?)<\/skos:definition>/gi,
+    ),
+  ]
+    .map((match) => textFromSkosDefinition(match[1]!))
+    .filter((page) => page.length > 0)
+  if (fromConcepts.length > 0) {
+    return capPages(fromConcepts)
+  }
+  const pages = [...trimmed.matchAll(/<skos:definition\b[^>]*>([\s\S]*?)<\/skos:definition>/gi)]
+    .map((match) => textFromSkosDefinition(match[1]!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  throw new Error('Tệp SKOS cần các mục definition.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

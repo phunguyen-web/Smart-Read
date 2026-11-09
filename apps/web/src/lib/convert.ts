@@ -217,6 +217,7 @@ export type ExportFormat =
   | 'nt'
   | 'n3'
   | 'doap'
+  | 'skos'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4917,6 +4918,27 @@ ${projects}
 `
 }
 
+export function toSkos(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const concepts = pages
+    .map((text, index) => {
+      const definition = escapeHtml(text.trim() || '(không có chữ)')
+      return `  <skos:Concept rdf:about="urn:smart-read:page:${index + 1}">
+    <skos:definition>${definition}</skos:definition>
+  </skos:Concept>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:skos="http://www.w3.org/2004/02/skos/core#">
+  <skos:Concept rdf:about="urn:smart-read:doc">
+    <skos:prefLabel>${heading}</skos:prefLabel>
+  </skos:Concept>
+${concepts}
+</rdf:RDF>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -6148,6 +6170,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'text/n3;charset=utf-8'
     case 'doap':
       return 'application/doap+xml;charset=utf-8'
+    case 'skos':
+      return 'application/skos+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

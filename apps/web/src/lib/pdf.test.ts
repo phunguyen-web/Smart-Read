@@ -239,6 +239,7 @@ import {
   toNtriples,
   toN3,
   toDoap,
+  toSkos,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -473,6 +474,7 @@ import {
   pagesFromNtriples,
   pagesFromN3,
   pagesFromDoap,
+  pagesFromSkos,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -821,6 +823,8 @@ import {
   PAGE_LAST_MODIFIED,
   setPageStructParents,
   PAGE_STRUCT_PARENTS,
+  setPageSeparationInfo,
+  PAGE_SEPARATION_COLORANT,
   setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
@@ -3587,6 +3591,60 @@ describe('pdf edits', () => {
     ).toBe(PAGE_STRUCT_PARENTS)
     expect(againDoc.catalog.get(PDFName.of('StructParents'))).toBeUndefined()
     await expect(setPageStructParents(bytes, [])).rejects.toThrow(/số gốc/)
+  })
+
+  it('sets page separation info on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(PAGE_SEPARATION_COLORANT).toBe('Black')
+    const filled = await setPageSeparationInfo(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    const info0 = doc.getPage(0).node.lookup(PDFName.of('SeparationInfo'), PDFDict)
+    const info2 = doc.getPage(2).node.lookup(PDFName.of('SeparationInfo'), PDFDict)
+    expect(info0.lookup(PDFName.of('DeviceColorant'), PDFName)).toBe(PDFName.of(PAGE_SEPARATION_COLORANT))
+    expect(info2.lookup(PDFName.of('DeviceColorant'), PDFName)).toBe(PDFName.of(PAGE_SEPARATION_COLORANT))
+    expect(doc.getPage(1).node.get(PDFName.of('SeparationInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('SeparationInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('StructParents'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('LastModified'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('BoxColorInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('ArtBox'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('MarkInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('OutputIntents'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('StructParents'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('LastModified'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('BoxColorInfo'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('ArtBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('BleedBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('TrimBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PresSteps'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('VP'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('CropBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Group'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageMode'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageLayout'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OutputIntents'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeUndefined()
+    const again = await setPageSeparationInfo(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    expect(
+      againDoc.getPage(1).node.lookup(PDFName.of('SeparationInfo'), PDFDict).lookup(
+        PDFName.of('DeviceColorant'),
+        PDFName,
+      ),
+    ).toBe(PDFName.of(PAGE_SEPARATION_COLORANT))
+    expect(
+      againDoc.getPage(0).node.lookup(PDFName.of('SeparationInfo'), PDFDict).lookup(
+        PDFName.of('DeviceColorant'),
+        PDFName,
+      ),
+    ).toBe(PDFName.of(PAGE_SEPARATION_COLORANT))
+    expect(againDoc.catalog.get(PDFName.of('SeparationInfo'))).toBeUndefined()
+    await expect(setPageSeparationInfo(bytes, [])).rejects.toThrow(/tách màu/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -11393,6 +11451,9 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toDoap('Demo', ['Một'])).not.toContain('xmlns:foaf')
     expect(toDoap('Demo', ['Một'])).not.toContain('<foaf:Person')
     expect(toDoap('Demo', ['Một'])).not.toContain('<foaf:name>')
+    expect(toDoap('Demo', ['Một'])).not.toContain('xmlns:skos')
+    expect(toDoap('Demo', ['Một'])).not.toContain('<skos:Concept')
+    expect(toDoap('Demo', ['Một'])).not.toContain('<skos:definition>')
     expect(pagesFromDoap(toDoap('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('doap', toDoap('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromDoap('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -11418,6 +11479,51 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.doap', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.doap.xml', 'pdf')).toBe('notes.pdf')
+
+    expect(toSkos('Demo', ['Một', 'Hai\ndòng'])).toContain('<skos:Concept rdf:about="urn:smart-read:page:')
+    expect(toSkos('Demo', ['Một'])).toContain('xmlns:skos="http://www.w3.org/2004/02/skos/core#"')
+    expect(toSkos('Demo', ['Một'])).toContain('<skos:prefLabel>Demo</skos:prefLabel>')
+    expect(toSkos('Demo', ['Một'])).toContain('<skos:definition>Một</skos:definition>')
+    expect(toSkos('Demo', ['Một'])).not.toContain('xmlns:doap')
+    expect(toSkos('Demo', ['Một'])).not.toContain('<doap:Project')
+    expect(toSkos('Demo', ['Một'])).not.toContain('<doap:description>')
+    expect(toSkos('Demo', ['Một'])).not.toContain('@prefix dc:')
+    expect(toSkos('Demo', ['Một'])).not.toContain('{ <urn:smart-read:page:')
+    expect(toSkos('Demo', ['Một'])).not.toContain('<http://purl.org/dc/terms/description>')
+    expect(toSkos('Demo', ['Một'])).not.toContain('dc:description "Một"')
+    expect(toSkos('Demo', ['Một'])).not.toContain('<rss')
+    expect(toSkos('Demo', ['Một'])).not.toContain('<item>')
+    expect(toSkos('Demo', ['Một'])).not.toContain('<description>Một</description>')
+    expect(toSkos('Demo', ['Một'])).not.toContain('rdf:Description')
+    expect(toSkos('Demo', ['Một'])).not.toContain('xmlns:foaf')
+    expect(toSkos('Demo', ['Một'])).not.toContain('<foaf:Person')
+    expect(toSkos('Demo', ['Một'])).not.toContain('<foaf:name>')
+    expect(pagesFromSkos(toSkos('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('skos', toSkos('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromSkos('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromSkos(
+        '<skos:Concept rdf:about="urn:smart-read:page:1"><skos:definition>Một</skos:definition></skos:Concept>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.skos', { type: '' }))).toBe('skos')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.skos.xml', { type: 'application/skos+xml' })),
+    ).toBe('skos')
+    expect(sourceKindFromFile(new File(['x'], 'notes.doap', { type: '' }))).toBe('doap')
+    expect(sourceKindFromFile(new File(['x'], 'notes.n3', { type: '' }))).toBe('n3')
+    expect(sourceKindFromFile(new File(['x'], 'notes.nt', { type: '' }))).toBe('nt')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ttl', { type: '' }))).toBe('ttl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.foaf', { type: '' }))).toBe('foaf')
+    expect(sourceKindFromFile(new File(['x'], 'notes.rdf', { type: '' }))).toBe('rdf')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.skos.skos', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => pagesFromSkos('<rdf:RDF xmlns:skos="http://www.w3.org/2004/02/skos/core#"></rdf:RDF>\n')).toThrow(
+      /SKOS/,
+    )
+    expect(swapExtension('notes.skos', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.skos.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
