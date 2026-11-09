@@ -219,6 +219,7 @@ export type ImportedTextKind =
   | 'ttl'
   | 'nt'
   | 'n3'
+  | 'doap'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1062,6 +1063,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'n3') {
     return pagesFromN3(text)
+  }
+  if (kind === 'doap') {
+    return pagesFromDoap(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -8897,6 +8901,38 @@ export function pagesFromN3(text: string): string[] {
     return pagesFromJson(trimmed)
   }
   throw new Error('Tệp N3 cần các mục description.')
+}
+
+function textFromDoapDescription(value: string): string {
+  const page = unescapeXml(value.replace(/<[^>]+>/g, '')).trim()
+  if (page.length === 0 || /^Trang\s+\d+$/.test(page)) {
+    return ''
+  }
+  return page
+}
+
+export function pagesFromDoap(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  const fromProjects = [
+    ...trimmed.matchAll(
+      /<doap:Project\b[^>]*>\s*[\s\S]*?<doap:description\b[^>]*>([\s\S]*?)<\/doap:description>/gi,
+    ),
+  ]
+    .map((match) => textFromDoapDescription(match[1]!))
+    .filter((page) => page.length > 0)
+  if (fromProjects.length > 0) {
+    return capPages(fromProjects)
+  }
+  const pages = [...trimmed.matchAll(/<doap:description\b[^>]*>([\s\S]*?)<\/doap:description>/gi)]
+    .map((match) => textFromDoapDescription(match[1]!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  throw new Error('Tệp DOAP cần các mục description.')
 }
 
 export function pagesFromBibtex(text: string): string[] {

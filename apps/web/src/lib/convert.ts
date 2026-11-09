@@ -216,6 +216,7 @@ export type ExportFormat =
   | 'ttl'
   | 'nt'
   | 'n3'
+  | 'doap'
   | 'xlsx'
   | 'docx'
   | 'doc'
@@ -4895,6 +4896,27 @@ ${formulae}
 `
 }
 
+export function toDoap(title: string, pages: string[]): string {
+  const heading = escapeHtml((title.trim() || 'Tài liệu').replace(/\r?\n/g, ' '))
+  const projects = pages
+    .map((text, index) => {
+      const description = escapeHtml(text.trim() || '(không có chữ)')
+      return `  <doap:Project rdf:about="urn:smart-read:page:${index + 1}">
+    <doap:description>${description}</doap:description>
+  </doap:Project>`
+    })
+    .join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:doap="http://usefulinc.com/ns/doap#">
+  <doap:Project rdf:about="urn:smart-read:doc">
+    <doap:name>${heading}</doap:name>
+  </doap:Project>
+${projects}
+</rdf:RDF>
+`
+}
+
 export function toLatex(title: string, pages: string[]): string {
   const heading = escapeLatex(title.trim() || 'Tai lieu')
   const body = pages
@@ -6124,6 +6146,8 @@ export function mimeFor(format: ExportFormat): string {
       return 'application/n-triples;charset=utf-8'
     case 'n3':
       return 'text/n3;charset=utf-8'
+    case 'doap':
+      return 'application/doap+xml;charset=utf-8'
     case 'xlsx':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     case 'png':

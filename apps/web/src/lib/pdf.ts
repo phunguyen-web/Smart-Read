@@ -5232,6 +5232,8 @@ export const BOX_COLOR_INFO_WIDTH = 1
 export const BOX_COLOR_INFO_STYLE = 'S' as const
 /** ISO 32000 page `/LastModified` date. Distinct from catalog `/PieceInfo` **Mảnh**. */
 export const PAGE_LAST_MODIFIED = 'D:20260101000000Z'
+/** ISO 32000 page `/StructParents` tree key. Distinct from catalog `/MarkInfo` **Thẻ**. */
+export const PAGE_STRUCT_PARENTS = 0
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -6015,6 +6017,33 @@ export async function setPageLastModified(
   }
   for (const index of unique) {
     doc.getPage(index).node.set(PDFName.of('LastModified'), PDFString.of(PAGE_LAST_MODIFIED))
+  }
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write a PDF page `/StructParents` integer (`PAGE_STRUCT_PARENTS`) on unique-sorted
+ * selected pages. Empty indexes throw. Replacing an existing `/StructParents` is
+ * allowed. This is a page dictionary structure-parent-tree key, not catalog
+ * `/MarkInfo` **Thẻ**, not page `/Tabs` **Thứ tự**, not catalog `/PieceInfo`
+ * **Mảnh**, not annot `/LastModified`, not page `/LastModified` **Sửa lúc**, not
+ * page `/BoxColorInfo` **Màu hộp**, not page `/ArtBox` **Vùng vẽ**, not crop
+ * **Cắt lề**, not pad **Thêm lề**, not overlay-box markup, not `/NeedsRendering`,
+ * not `/Perms`, not `/DSS`, not PKCS#7, not XFA, and not `/AF`. Unselected pages
+ * keep no `/StructParents`. Catalog `/StructParents` stays unset.
+ */
+export async function setPageStructParents(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn số gốc.')
+  }
+  for (const index of unique) {
+    doc.getPage(index).node.set(PDFName.of('StructParents'), PDFNumber.of(PAGE_STRUCT_PARENTS))
   }
   return new Uint8Array(await doc.save())
 }

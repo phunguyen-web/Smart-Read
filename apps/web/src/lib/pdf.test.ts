@@ -238,6 +238,7 @@ import {
   toTurtle,
   toNtriples,
   toN3,
+  toDoap,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -471,6 +472,7 @@ import {
   pagesFromTurtle,
   pagesFromNtriples,
   pagesFromN3,
+  pagesFromDoap,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -817,6 +819,8 @@ import {
   BOX_COLOR_INFO_STYLE,
   setPageLastModified,
   PAGE_LAST_MODIFIED,
+  setPageStructParents,
+  PAGE_STRUCT_PARENTS,
   setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
@@ -3539,6 +3543,50 @@ describe('pdf edits', () => {
     ).toBe(PAGE_LAST_MODIFIED)
     expect(againDoc.catalog.get(PDFName.of('LastModified'))).toBeUndefined()
     await expect(setPageLastModified(bytes, [])).rejects.toThrow(/sửa lúc/)
+  })
+
+  it('sets page struct parents on selected pages', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    const filled = await setPageStructParents(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    const key0 = doc.getPage(0).node.lookup(PDFName.of('StructParents'), PDFNumber)
+    const key2 = doc.getPage(2).node.lookup(PDFName.of('StructParents'), PDFNumber)
+    expect(key0.asNumber()).toBe(PAGE_STRUCT_PARENTS)
+    expect(key2.asNumber()).toBe(PAGE_STRUCT_PARENTS)
+    expect(doc.getPage(1).node.get(PDFName.of('StructParents'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('StructParents'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('LastModified'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('BoxColorInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('ArtBox'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('MarkInfo'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('LastModified'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('BoxColorInfo'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('ArtBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('BleedBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('TrimBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('PresSteps'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('VP'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('CropBox'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('Group'))).toBeUndefined()
+    expect(doc.getPage(0).node.lookupMaybe(PDFName.of('Annots'), PDFArray)?.size() ?? 0).toBe(0)
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageMode'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('PageLayout'), PDFName)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OutputIntents'), PDFArray)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('OCProperties'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AA'), PDFDict)).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeUndefined()
+    const again = await setPageStructParents(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    expect(
+      (againDoc.getPage(1).node.lookup(PDFName.of('StructParents'), PDFNumber) as PDFNumber).asNumber(),
+    ).toBe(PAGE_STRUCT_PARENTS)
+    expect(
+      (againDoc.getPage(0).node.lookup(PDFName.of('StructParents'), PDFNumber) as PDFNumber).asNumber(),
+    ).toBe(PAGE_STRUCT_PARENTS)
+    expect(againDoc.catalog.get(PDFName.of('StructParents'))).toBeUndefined()
+    await expect(setPageStructParents(bytes, [])).rejects.toThrow(/số gốc/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -11307,6 +11355,9 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(toN3('Demo', ['Một'])).not.toContain('TRACK 01 AUDIO')
     expect(toN3('Demo', ['Một'])).not.toContain('<feed')
     expect(toN3('Demo', ['Một'])).not.toContain('<entry>')
+    expect(toN3('Demo', ['Một'])).not.toContain('xmlns:doap')
+    expect(toN3('Demo', ['Một'])).not.toContain('<doap:Project')
+    expect(toN3('Demo', ['Một'])).not.toContain('<doap:description>')
     expect(pagesFromN3(toN3('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
     expect(pagesFromImportedText('n3', toN3('Demo', ['Hi']))).toEqual(['Hi'])
     expect(pagesFromN3('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
@@ -11326,6 +11377,47 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     expect(() => pagesFromN3('@prefix dc: <http://purl.org/dc/terms/> .\n')).toThrow(/N3/)
     expect(swapExtension('notes.n3', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.notation3', 'pdf')).toBe('notes.pdf')
+
+    expect(toDoap('Demo', ['Một', 'Hai\ndòng'])).toContain('<doap:Project rdf:about="urn:smart-read:page:')
+    expect(toDoap('Demo', ['Một'])).toContain('xmlns:doap="http://usefulinc.com/ns/doap#"')
+    expect(toDoap('Demo', ['Một'])).toContain('<doap:name>Demo</doap:name>')
+    expect(toDoap('Demo', ['Một'])).toContain('<doap:description>Một</doap:description>')
+    expect(toDoap('Demo', ['Một'])).not.toContain('@prefix dc:')
+    expect(toDoap('Demo', ['Một'])).not.toContain('{ <urn:smart-read:page:')
+    expect(toDoap('Demo', ['Một'])).not.toContain('<http://purl.org/dc/terms/description>')
+    expect(toDoap('Demo', ['Một'])).not.toContain('dc:description "Một"')
+    expect(toDoap('Demo', ['Một'])).not.toContain('<rss')
+    expect(toDoap('Demo', ['Một'])).not.toContain('<item>')
+    expect(toDoap('Demo', ['Một'])).not.toContain('<description>Một</description>')
+    expect(toDoap('Demo', ['Một'])).not.toContain('rdf:Description')
+    expect(toDoap('Demo', ['Một'])).not.toContain('xmlns:foaf')
+    expect(toDoap('Demo', ['Một'])).not.toContain('<foaf:Person')
+    expect(toDoap('Demo', ['Một'])).not.toContain('<foaf:name>')
+    expect(pagesFromDoap(toDoap('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('doap', toDoap('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromDoap('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromDoap(
+        '<doap:Project rdf:about="urn:smart-read:page:1"><doap:description>Một</doap:description></doap:Project>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.doap', { type: '' }))).toBe('doap')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.doap.xml', { type: 'application/doap+xml' })),
+    ).toBe('doap')
+    expect(sourceKindFromFile(new File(['x'], 'notes.n3', { type: '' }))).toBe('n3')
+    expect(sourceKindFromFile(new File(['x'], 'notes.nt', { type: '' }))).toBe('nt')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ttl', { type: '' }))).toBe('ttl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.foaf', { type: '' }))).toBe('foaf')
+    expect(sourceKindFromFile(new File(['x'], 'notes.rdf', { type: '' }))).toBe('rdf')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.doap.doap', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => pagesFromDoap('<rdf:RDF xmlns:doap="http://usefulinc.com/ns/doap#"></rdf:RDF>\n')).toThrow(
+      /DOAP/,
+    )
+    expect(swapExtension('notes.doap', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.doap.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')
