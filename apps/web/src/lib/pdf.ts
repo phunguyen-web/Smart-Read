@@ -5239,6 +5239,12 @@ export const PAGE_SEPARATION_COLORANT = 'Black'
 /** ISO 32000 page `/ID` file-identifier pair. WinAnsi-safe. Distinct from trailer ID. */
 export const PAGE_ID_A = 'SmartReadA'
 export const PAGE_ID_B = 'SmartReadB'
+/** ISO 32000 catalog `/StructTreeRoot` type. Distinct from page `/StructParents` **Số gốc**. */
+export const STRUCT_TREE_ROOT_TYPE = 'StructTreeRoot'
+/** ISO 32000 structure element `/Type`. Distinct from catalog `/MarkInfo` **Thẻ**. */
+export const STRUCT_TREE_ELEM_TYPE = 'StructElem'
+/** ISO 32000 structure element `/S` role. WinAnsi-safe. Distinct from **Thẻ**. */
+export const STRUCT_TREE_ROLE = 'Document'
 
 /**
  * Write a PDF `/Trans` dictionary on selected pages (`Type` Trans, `S` Dissolve,
@@ -6111,6 +6117,40 @@ export async function setPageIds(
     id.push(PDFString.of(PAGE_ID_B))
     doc.getPage(index).node.set(PDFName.of('ID'), id)
   }
+  return new Uint8Array(await doc.save())
+}
+
+/**
+ * Write catalog `/StructTreeRoot` (`Type` `STRUCT_TREE_ROOT_TYPE`, `K` a
+ * `STRUCT_TREE_ELEM_TYPE` element with `/S` `STRUCT_TREE_ROLE` Document) when
+ * at least one page is selected. Empty indexes throw. Replacing an existing
+ * StructTreeRoot dictionary is allowed. This is a catalog structure tree root,
+ * not catalog `/MarkInfo` **Thẻ**, not page `/StructParents` **Số gốc**, not
+ * page `/ID` **Định danh**, not page `/SeparationInfo` **Tách màu**, not page
+ * `/LastModified` **Sửa lúc**, not overlay-box markup, not `/NeedsRendering`,
+ * not `/Perms`, not `/DSS`, not PKCS#7, not XFA, and not `/AF`. Unselected
+ * pages keep no page-level `/StructTreeRoot`. Page `/StructTreeRoot` stays unset.
+ */
+export async function setCatalogStructTreeRoot(
+  bytes: Uint8Array,
+  pageIndexes: number[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const unique = uniqueSorted(pageIndexes, false).filter((index) => index >= 0 && index < count)
+  if (unique.length === 0) {
+    throw new Error('Chọn ít nhất một trang để gắn cây cấu.')
+  }
+  doc.catalog.set(
+    PDFName.of('StructTreeRoot'),
+    doc.context.obj({
+      Type: STRUCT_TREE_ROOT_TYPE,
+      K: {
+        Type: STRUCT_TREE_ELEM_TYPE,
+        S: STRUCT_TREE_ROLE,
+      },
+    }),
+  )
   return new Uint8Array(await doc.save())
 }
 

@@ -241,6 +241,7 @@ import {
   toDoap,
   toSkos,
   toOwl,
+  toProv,
   escapeNbib,
   escapePs,
   escapeRis,
@@ -477,6 +478,7 @@ import {
   pagesFromDoap,
   pagesFromSkos,
   pagesFromOwl,
+  pagesFromProv,
   pagesFromJsonl,
   pagesFromLatex,
   pagesFromOrg,
@@ -830,6 +832,10 @@ import {
   setPageIds,
   PAGE_ID_A,
   PAGE_ID_B,
+  setCatalogStructTreeRoot,
+  STRUCT_TREE_ROOT_TYPE,
+  STRUCT_TREE_ELEM_TYPE,
+  STRUCT_TREE_ROLE,
   setJavaScriptNames,
   flattenAnnotations,
   setOpenAction,
@@ -3703,6 +3709,43 @@ describe('pdf edits', () => {
     ).toBe(PAGE_ID_A)
     expect(againDoc.catalog.get(PDFName.of('ID'))).toBeUndefined()
     await expect(setPageIds(bytes, [])).rejects.toThrow(/định danh/)
+  })
+
+  it('sets catalog StructTreeRoot when pages are selected', async () => {
+    const bytes = await samplePdf(['Note', 'Two', 'Three'])
+    expect(STRUCT_TREE_ROOT_TYPE).toBe('StructTreeRoot')
+    expect(STRUCT_TREE_ELEM_TYPE).toBe('StructElem')
+    expect(STRUCT_TREE_ROLE).toBe('Document')
+    const filled = await setCatalogStructTreeRoot(bytes, [2, 0])
+    expect(await pageCount(filled)).toBe(3)
+    const doc = await PDFDocument.load(filled)
+    const root = doc.catalog.lookup(PDFName.of('StructTreeRoot'), PDFDict)
+    expect(root.lookup(PDFName.of('Type'), PDFName)).toBe(PDFName.of(STRUCT_TREE_ROOT_TYPE))
+    expect(root.lookup(PDFName.of('K'), PDFDict).lookup(PDFName.of('Type'), PDFName)).toBe(
+      PDFName.of(STRUCT_TREE_ELEM_TYPE),
+    )
+    expect(root.lookup(PDFName.of('K'), PDFDict).lookup(PDFName.of('S'), PDFName)).toBe(
+      PDFName.of(STRUCT_TREE_ROLE),
+    )
+    expect(doc.getPage(0).node.get(PDFName.of('StructTreeRoot'))).toBeUndefined()
+    expect(doc.getPage(1).node.get(PDFName.of('StructTreeRoot'))).toBeUndefined()
+    expect(doc.getPage(2).node.get(PDFName.of('StructTreeRoot'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('StructParents'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('ID'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('SeparationInfo'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('LastModified'))).toBeUndefined()
+    expect(doc.getPage(0).node.get(PDFName.of('MarkInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('MarkInfo'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('ID'))).toBeUndefined()
+    expect(doc.catalog.get(PDFName.of('StructParents'))).toBeUndefined()
+    expect(doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict)).toBeUndefined()
+    const again = await setCatalogStructTreeRoot(filled, [1])
+    const againDoc = await PDFDocument.load(again)
+    expect(
+      againDoc.catalog.lookup(PDFName.of('StructTreeRoot'), PDFDict).lookup(PDFName.of('Type'), PDFName),
+    ).toBe(PDFName.of(STRUCT_TREE_ROOT_TYPE))
+    expect(againDoc.getPage(1).node.get(PDFName.of('StructTreeRoot'))).toBeUndefined()
+    await expect(setCatalogStructTreeRoot(bytes, [])).rejects.toThrow(/cây cấu/)
   })
 
   it('flattens annotations on selected pages into page content', async () => {
@@ -11635,6 +11678,61 @@ Dialogue: Marked=0,0,0:00:04.00,0:00:08.00,Default,,0,0,0,,Hai`),
     )
     expect(swapExtension('notes.owl', 'pdf')).toBe('notes.pdf')
     expect(swapExtension('notes.owl.xml', 'pdf')).toBe('notes.pdf')
+    expect(toOwl('Demo', ['Một'])).not.toContain('xmlns:prov')
+    expect(toOwl('Demo', ['Một'])).not.toContain('<prov:Entity')
+
+    expect(toProv('Demo', ['Một', 'Hai\ndòng'])).toContain('<prov:Entity rdf:about="urn:smart-read:page:')
+    expect(toProv('Demo', ['Một'])).toContain('xmlns:prov="http://www.w3.org/ns/prov#"')
+    expect(toProv('Demo', ['Một'])).toContain('xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"')
+    expect(toProv('Demo', ['Một'])).toContain('<rdfs:label>Demo</rdfs:label>')
+    expect(toProv('Demo', ['Một'])).toContain('<rdfs:comment>Một</rdfs:comment>')
+    expect(toProv('Demo', ['Một'])).not.toContain('xmlns:owl')
+    expect(toProv('Demo', ['Một'])).not.toContain('<owl:Class')
+    expect(toProv('Demo', ['Một'])).not.toContain('xmlns:skos')
+    expect(toProv('Demo', ['Một'])).not.toContain('<skos:Concept')
+    expect(toProv('Demo', ['Một'])).not.toContain('<skos:definition>')
+    expect(toProv('Demo', ['Một'])).not.toContain('xmlns:doap')
+    expect(toProv('Demo', ['Một'])).not.toContain('<doap:Project')
+    expect(toProv('Demo', ['Một'])).not.toContain('<doap:description>')
+    expect(toProv('Demo', ['Một'])).not.toContain('@prefix dc:')
+    expect(toProv('Demo', ['Một'])).not.toContain('{ <urn:smart-read:page:')
+    expect(toProv('Demo', ['Một'])).not.toContain('<http://purl.org/dc/terms/description>')
+    expect(toProv('Demo', ['Một'])).not.toContain('dc:description "Một"')
+    expect(toProv('Demo', ['Một'])).not.toContain('<rss')
+    expect(toProv('Demo', ['Một'])).not.toContain('<item>')
+    expect(toProv('Demo', ['Một'])).not.toContain('<description>Một</description>')
+    expect(toProv('Demo', ['Một'])).not.toContain('rdf:Description')
+    expect(toProv('Demo', ['Một'])).not.toContain('xmlns:foaf')
+    expect(toProv('Demo', ['Một'])).not.toContain('<foaf:Person')
+    expect(toProv('Demo', ['Một'])).not.toContain('<foaf:name>')
+    expect(pagesFromProv(toProv('Demo', ['Một', 'Hai\ndòng']))).toEqual(['Một', 'Hai\ndòng'])
+    expect(pagesFromImportedText('prov', toProv('Demo', ['Hi']))).toEqual(['Hi'])
+    expect(pagesFromProv('{"pages":[{"text":"Hi"}]}')).toEqual(['Hi'])
+    expect(
+      pagesFromProv(
+        '<prov:Entity rdf:about="urn:smart-read:page:1"><rdfs:comment>Một</rdfs:comment></prov:Entity>',
+      ),
+    ).toEqual(['Một'])
+    expect(sourceKindFromFile(new File(['x'], 'notes.prov', { type: '' }))).toBe('prov')
+    expect(
+      sourceKindFromFile(new File(['x'], 'notes.prov.xml', { type: 'application/prov+xml' })),
+    ).toBe('prov')
+    expect(sourceKindFromFile(new File(['x'], 'notes.owl', { type: '' }))).toBe('owl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.skos', { type: '' }))).toBe('skos')
+    expect(sourceKindFromFile(new File(['x'], 'notes.doap', { type: '' }))).toBe('doap')
+    expect(sourceKindFromFile(new File(['x'], 'notes.n3', { type: '' }))).toBe('n3')
+    expect(sourceKindFromFile(new File(['x'], 'notes.nt', { type: '' }))).toBe('nt')
+    expect(sourceKindFromFile(new File(['x'], 'notes.ttl', { type: '' }))).toBe('ttl')
+    expect(sourceKindFromFile(new File(['x'], 'notes.foaf', { type: '' }))).toBe('foaf')
+    expect(sourceKindFromFile(new File(['x'], 'notes.rdf', { type: '' }))).toBe('rdf')
+    expect(() => sourceKindFromFile(new File(['x'], 'notes.prov.prov', { type: '' }))).toThrow(
+      /Chỉ nhận/,
+    )
+    expect(() => pagesFromProv('<rdf:RDF xmlns:prov="http://www.w3.org/ns/prov#"></rdf:RDF>\n')).toThrow(
+      /PROV/,
+    )
+    expect(swapExtension('notes.prov', 'pdf')).toBe('notes.pdf')
+    expect(swapExtension('notes.prov.xml', 'pdf')).toBe('notes.pdf')
 
     expect(formatTtmlTime(4)).toBe('00:00:04.000')
     expect(toTtml('Demo', ['Một', 'Hai\ndòng'])).toContain('xmlns="http://www.w3.org/ns/ttml"')

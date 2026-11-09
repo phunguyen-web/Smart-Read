@@ -222,6 +222,7 @@ export type ImportedTextKind =
   | 'doap'
   | 'skos'
   | 'owl'
+  | 'prov'
   | 'rtf'
   | 'fb2'
 export type ZipImportKind = 'docx' | 'epub' | 'odt' | 'ods' | 'xlsx' | 'pptx' | 'odp' | 'cbz'
@@ -1074,6 +1075,9 @@ export function pagesFromImportedText(kind: ImportedTextKind, text: string): str
   }
   if (kind === 'owl') {
     return pagesFromOwl(text)
+  }
+  if (kind === 'prov') {
+    return pagesFromProv(text)
   }
   if (kind === 'rtf') {
     return pagesFromRtf(text)
@@ -9005,6 +9009,38 @@ export function pagesFromOwl(text: string): string[] {
     return pagesFromJson(trimmed)
   }
   throw new Error('Tệp OWL cần các mục comment.')
+}
+
+function textFromProvComment(value: string): string {
+  const page = unescapeXml(value.replace(/<[^>]+>/g, '')).trim()
+  if (page.length === 0 || /^Trang\s+\d+$/.test(page)) {
+    return ''
+  }
+  return page
+}
+
+export function pagesFromProv(text: string): string[] {
+  const trimmed = assertImportBudget(text)
+  const fromEntities = [
+    ...trimmed.matchAll(
+      /<prov:Entity\b[^>]*>\s*[\s\S]*?<rdfs:comment\b[^>]*>([\s\S]*?)<\/rdfs:comment>/gi,
+    ),
+  ]
+    .map((match) => textFromProvComment(match[1]!))
+    .filter((page) => page.length > 0)
+  if (fromEntities.length > 0) {
+    return capPages(fromEntities)
+  }
+  const pages = [...trimmed.matchAll(/<rdfs:comment\b[^>]*>([\s\S]*?)<\/rdfs:comment>/gi)]
+    .map((match) => textFromProvComment(match[1]!))
+    .filter((page) => page.length > 0)
+  if (pages.length > 0) {
+    return capPages(pages)
+  }
+  if (/^\s*\{/.test(trimmed)) {
+    return pagesFromJson(trimmed)
+  }
+  throw new Error('Tệp PROV-O cần các mục comment.')
 }
 
 export function pagesFromBibtex(text: string): string[] {
